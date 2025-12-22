@@ -1,0 +1,23 @@
+# Dependencies
+node_modules/
+
+# Build output
+dist/
+
+# Environment
+.env
+.env.local
+.dev.vars
+
+# OS
+.DS_Store
+
+# IDE
+.idea/
+.vscode/
+
+# Wrangler
+.wrangler/
+
+# Claude Code (machine-specific settings)
+.claude/settings.local.json
