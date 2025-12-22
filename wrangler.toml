@@ -1,17 +1,21 @@
 name = "skillport-connector"
 main = "src/index.ts"
 compatibility_date = "2024-12-01"
+compatibility_flags = ["nodejs_compat"]
 
 [vars]
 # Configure your marketplace repo here
-# MARKETPLACE_REPO = "your-org/your-marketplace"
+MARKETPLACE_REPO = "cto4ai/skillport-template"
 
 # OAuth KV namespace for storing tokens
+# Create with: wrangler kv namespace create OAUTH_KV
+# Then update the id below
 [[kv_namespaces]]
 binding = "OAUTH_KV"
 id = "your-kv-namespace-id"
 
 # Secrets (set via `wrangler secret put`)
-# GITHUB_CLIENT_ID
-# GITHUB_CLIENT_SECRET
-# COOKIE_ENCRYPTION_KEY
+# GOOGLE_CLIENT_ID        - Google OAuth client ID (set in vars for convenience)
+# GOOGLE_CLIENT_SECRET    - Google OAuth client secret
+# GITHUB_SERVICE_TOKEN    - PAT for GitHub API access
+# COOKIE_ENCRYPTION_KEY   - 32+ char random string for session encryption
