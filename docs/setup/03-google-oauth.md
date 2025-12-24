@@ -11,18 +11,15 @@ Configure Google Cloud Console for user authentication.
 ## Step 2: Configure OAuth Consent Screen
 
 1. Navigate to **APIs & Services > OAuth consent screen**
-2. Choose user type:
+   <!-- 2. Choose user type: -->
    - **Internal**: Only users in your Google Workspace org (recommended for enterprise)
    - **External**: Any Google account (requires verification for production)
-3. Fill in required fields:
+2. Fill in required fields:
    - App name: `Skillport Connector`
    - User support email: Your email
    - Developer contact: Your email
-4. Add scopes:
-   - `openid`
-   - `email`
-   - `profile`
-5. Save and continue
+3. Scopes: Skip or leave defaults (scopes are requested at runtime in the code)
+4. Save and continue
 
 ## Step 3: Create OAuth 2.0 Credentials
 
@@ -33,11 +30,13 @@ Configure Google Cloud Console for user authentication.
 5. Add Authorized redirect URIs:
 
 ### For Local Development
+
 ```
 http://localhost:8787/callback
 ```
 
 ### For Production (after deployment)
+
 ```
 https://skillport-connector.<your-subdomain>.workers.dev/callback
 ```
@@ -68,14 +67,17 @@ if (user.hd !== "your-domain.com") {
 ## Troubleshooting
 
 ### "redirect_uri_mismatch" Error
+
 - Ensure the redirect URI in Google Console exactly matches your callback URL
 - Check for trailing slashes
 - For local dev, use `http://localhost:8787/callback` (not https)
 
 ### "Access Denied" Error
+
 - For Internal apps: User must be in your Workspace org
 - For External apps: Add test users in OAuth consent screen during development
 
 ### Token Exchange Fails
+
 - Verify client secret is correct
 - Check that credentials haven't been regenerated

@@ -15,6 +15,7 @@ dist/
 # IDE
 .idea/
 .vscode/
+.history/
 
 # Wrangler
 .wrangler/
