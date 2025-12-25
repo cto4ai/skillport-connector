@@ -12,6 +12,33 @@ type EnvWithOAuth = Env & { OAUTH_PROVIDER: OAuthHelpers };
 
 const app = new Hono<{ Bindings: EnvWithOAuth }>();
 
+/**
+ * GET /.well-known/oauth-protected-resource
+ * RFC 9728 - Required for Claude.ai to discover the authorization server
+ */
+app.get("/.well-known/oauth-protected-resource", (c) => {
+  const origin = new URL(c.req.url).origin;
+  return c.json({
+    resource: origin,
+    authorization_servers: [origin],
+  });
+});
+
+/**
+ * GET / - Root endpoint
+ * Returns basic server info for Claude.ai discovery
+ */
+app.get("/", (c) => {
+  return c.json({
+    name: "Skillport Connector",
+    version: "1.0.0",
+    mcp: {
+      endpoint: "/sse",
+      version: "2025-06-18",
+    },
+  });
+});
+
 // Google OAuth endpoints
 const GOOGLE_AUTH_URL = "https://accounts.google.com/o/oauth2/v2/auth";
 const GOOGLE_TOKEN_URL = "https://oauth2.googleapis.com/token";
