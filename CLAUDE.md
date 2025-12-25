@@ -62,6 +62,13 @@ npm run dev          # Local development server (localhost:8788)
 npm run deploy       # Deploy to Cloudflare
 ```
 
+**Note:** Wrangler v4 requires Node v20+. The VS Code extension runs Node v19.3.0, so run wrangler directly:
+```bash
+node node_modules/wrangler/bin/wrangler.js dev
+node node_modules/wrangler/bin/wrangler.js deploy
+node node_modules/wrangler/bin/wrangler.js secret put <SECRET_NAME>
+```
+
 ## Configuration
 
 ### wrangler.toml
