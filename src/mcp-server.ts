@@ -35,6 +35,11 @@ export class SkillportMCP extends McpAgent<Env, unknown, UserProps> {
       "list_plugins",
       "List all plugins available in the marketplace. Optionally filter by category or target surface.",
       {
+        user_email: z
+          .string()
+          .email()
+          .optional()
+          .describe("User email for audit logging (provided by Skillport Skill)"),
         category: z
           .string()
           .optional()
@@ -46,8 +51,11 @@ export class SkillportMCP extends McpAgent<Env, unknown, UserProps> {
             "Filter by surface: 'claude-code', 'claude-desktop', or 'claude-ai'"
           ),
       },
-      async ({ category, surface }) => {
+      async ({ user_email, category, surface }) => {
         try {
+          if (user_email) {
+            console.log(`list_plugins called by ${user_email} at ${new Date().toISOString()}`);
+          }
           const github = this.getGitHubClient();
           const plugins = await github.listPlugins({ category, surface });
 
@@ -95,10 +103,18 @@ export class SkillportMCP extends McpAgent<Env, unknown, UserProps> {
       "get_plugin",
       "Get detailed information about a specific plugin including its manifest and metadata.",
       {
+        user_email: z
+          .string()
+          .email()
+          .optional()
+          .describe("User email for audit logging (provided by Skillport Skill)"),
         name: z.string().describe("Plugin name (e.g., 'sales-pitch')"),
       },
-      async ({ name }) => {
+      async ({ user_email, name }) => {
         try {
+          if (user_email) {
+            console.log(`get_plugin called by ${user_email} for ${name} at ${new Date().toISOString()}`);
+          }
           const github = this.getGitHubClient();
           const { entry, manifest } = await github.getPlugin(name);
 
@@ -148,10 +164,18 @@ export class SkillportMCP extends McpAgent<Env, unknown, UserProps> {
       "fetch_skill",
       "Fetch the skill files (SKILL.md and related resources) for installation on Claude.ai or Claude Desktop.",
       {
+        user_email: z
+          .string()
+          .email()
+          .optional()
+          .describe("User email for audit logging (provided by Skillport Skill)"),
         name: z.string().describe("Plugin name containing the skill"),
       },
-      async ({ name }) => {
+      async ({ user_email, name }) => {
         try {
+          if (user_email) {
+            console.log(`fetch_skill called by ${user_email} for ${name} at ${new Date().toISOString()}`);
+          }
           const github = this.getGitHubClient();
           const { plugin, files } = await github.fetchSkill(name);
 
@@ -205,6 +229,11 @@ export class SkillportMCP extends McpAgent<Env, unknown, UserProps> {
       "check_updates",
       "Check if any installed plugins have updates available in the marketplace.",
       {
+        user_email: z
+          .string()
+          .email()
+          .optional()
+          .describe("User email for audit logging (provided by Skillport Skill)"),
         installed: z
           .array(
             z.object({
@@ -214,8 +243,11 @@ export class SkillportMCP extends McpAgent<Env, unknown, UserProps> {
           )
           .describe("List of installed plugins with their versions"),
       },
-      async ({ installed }) => {
+      async ({ user_email, installed }) => {
         try {
+          if (user_email) {
+            console.log(`check_updates called by ${user_email} at ${new Date().toISOString()}`);
+          }
           const github = this.getGitHubClient();
           const updates = await github.checkUpdates(installed);
 

@@ -5,7 +5,9 @@
   "main": "src/index.ts",
   "scripts": {
     "dev": "wrangler dev",
+    "dev:authless": "wrangler dev -c wrangler-authless.toml",
     "deploy": "wrangler deploy",
+    "deploy:authless": "wrangler deploy -c wrangler-authless.toml",
     "test": "vitest",
     "cf-typegen": "wrangler types"
   },
