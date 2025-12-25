@@ -19,8 +19,8 @@ export { SkillportMCP };
 
 // Main export: OAuth provider wrapping the MCP server
 export default new OAuthProvider({
-  apiRoute: ["/sse", "/mcp"],
-  apiHandler: SkillportMCP.mount("/"),
+  apiRoute: ["/sse", "/sse/message", "/mcp"],
+  apiHandler: SkillportMCP.mount("/sse"),
   defaultHandler: googleHandler,
   authorizeEndpoint: "/authorize",
   tokenEndpoint: "/token",

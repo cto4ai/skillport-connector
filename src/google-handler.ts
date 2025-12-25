@@ -12,6 +12,33 @@ type EnvWithOAuth = Env & { OAUTH_PROVIDER: OAuthHelpers };
 
 const app = new Hono<{ Bindings: EnvWithOAuth }>();
 
+/**
+ * GET /.well-known/oauth-protected-resource
+ * RFC 9728 - Required for Claude.ai to discover the authorization server
+ */
+app.get("/.well-known/oauth-protected-resource", (c) => {
+  const origin = new URL(c.req.url).origin;
+  return c.json({
+    resource: origin,
+    authorization_servers: [origin],
+  });
+});
+
+/**
+ * GET / - Root endpoint
+ * Returns basic server info for Claude.ai discovery
+ */
+app.get("/", (c) => {
+  return c.json({
+    name: "Skillport Connector",
+    version: "1.0.0",
+    mcp: {
+      endpoint: "/sse",
+      version: "2025-06-18",
+    },
+  });
+});
+
 // Google OAuth endpoints
 const GOOGLE_AUTH_URL = "https://accounts.google.com/o/oauth2/v2/auth";
 const GOOGLE_TOKEN_URL = "https://oauth2.googleapis.com/token";
@@ -154,9 +181,9 @@ app.get("/callback", async (c) => {
 
   // Optional: Verify user is from allowed domain
   // Uncomment and set your domain to restrict access
-  // if (user.hd !== "your-domain.com") {
-  //   return c.text("Unauthorized domain", 403);
-  // }
+  if (user.hd !== "craftycto.com") {
+    return c.text("Unauthorized domain", 403);
+  }
 
   // Complete the OAuth flow
   const { redirectTo } = await c.env.OAUTH_PROVIDER.completeAuthorization({

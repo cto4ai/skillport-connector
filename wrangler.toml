@@ -12,7 +12,16 @@ MARKETPLACE_REPO = "cto4ai/skillport-template"
 # Then update the id below
 [[kv_namespaces]]
 binding = "OAUTH_KV"
-id = "your-kv-namespace-id"
+id = "2328f53c6e5846d6830cae916254634c"
+
+# Durable Object for MCP server
+[[durable_objects.bindings]]
+name = "MCP_OBJECT"
+class_name = "SkillportMCP"
+
+[[migrations]]
+tag = "v1"
+new_sqlite_classes = ["SkillportMCP"]
 
 # Secrets (set via `wrangler secret put`)
 # GOOGLE_CLIENT_ID        - Google OAuth client ID (set in vars for convenience)
