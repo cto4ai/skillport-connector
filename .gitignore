@@ -22,3 +22,4 @@ dist/
 
 # Claude Code (machine-specific settings)
 .claude/settings.local.json
+.dev.vars-real-oauth
