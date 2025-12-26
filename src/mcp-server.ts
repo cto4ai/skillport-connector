@@ -73,6 +73,12 @@ export class SkillportMCP extends McpAgent<Env, unknown, UserProps> {
                       category: p.category,
                       surfaces: p.surfaces,
                     })),
+                    tip:
+                      "Before presenting results: Check /mnt/skills/user/ for installed skills. " +
+                      "Mark any already-installed skills with '(already installed)'. " +
+                      "If skillport-browser is NOT installed, recommend installing it first " +
+                      "to enable one-click installation. If skillport-browser IS installed, " +
+                      "omit it from the list (it's infrastructure, not a feature skill).",
                   },
                   null,
                   2
