@@ -17,8 +17,8 @@ import { SkillportMCP } from "./mcp-server";
 // Export the MCP server class for Durable Objects
 export { SkillportMCP };
 
-// Main export: OAuth provider wrapping the MCP server
-export default new OAuthProvider({
+// Create the OAuth provider
+const oauthProvider = new OAuthProvider({
   apiRoute: ["/sse", "/sse/message", "/mcp"],
   apiHandler: SkillportMCP.mount("/sse"),
   defaultHandler: googleHandler,
@@ -26,3 +26,33 @@ export default new OAuthProvider({
   tokenEndpoint: "/token",
   clientRegistrationEndpoint: "/register",
 });
+
+/**
+ * Wrapper to add missing CORS headers required by Claude.ai
+ * The @cloudflare/workers-oauth-provider doesn't include Access-Control-Expose-Headers
+ * which is required for Claude to read the WWW-Authenticate header
+ */
+export default {
+  async fetch(
+    request: Request,
+    env: Env,
+    ctx: ExecutionContext
+  ): Promise<Response> {
+    // Delegate to OAuth provider
+    const response = await oauthProvider.fetch(request, env, ctx);
+
+    // Add Access-Control-Expose-Headers if Origin is present (CORS request)
+    const origin = request.headers.get("Origin");
+    if (origin) {
+      const newResponse = new Response(response.body, response);
+      // Expose WWW-Authenticate header so Claude can read the auth challenge
+      newResponse.headers.set(
+        "Access-Control-Expose-Headers",
+        "WWW-Authenticate"
+      );
+      return newResponse;
+    }
+
+    return response;
+  },
+};
