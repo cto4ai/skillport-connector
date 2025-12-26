@@ -98,8 +98,10 @@ MARKETPLACE_REPO = "your-org/your-marketplace"
 
 | Version | URL | Use Case |
 |---------|-----|----------|
-| OAuth | https://skillport-connector.jack-ivers.workers.dev | Claude Code |
-| Authless | https://skillport-connector-authless.jack-ivers.workers.dev | Claude.ai |
+| OAuth (recommended) | https://skillport-connector.jack-ivers.workers.dev/sse | Claude.ai, Claude Desktop, Claude Code |
+| Authless (deprecated) | https://skillport-connector-authless.jack-ivers.workers.dev/sse?api_key=... | Fallback only |
+
+**Note:** OAuth is now the recommended authentication method. The authless version with API key in query string was created as a workaround when OAuth had bugs, but OAuth is now working correctly.
 
 ## Implementation Status
 
