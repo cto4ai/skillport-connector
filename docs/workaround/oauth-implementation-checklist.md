@@ -11,6 +11,7 @@ This checklist documents the **specific technical requirements** that people hav
 This document was compiled from research conducted on December 26, 2025. Key sources:
 
 ### Working Implementation Guides
+- **Skillport Connector** (this repo) - Cloudflare Workers + Google OAuth, verified working December 26, 2025
 - **buildwithmatija.com** - [OAuth for MCP Server: Complete Guide to Protecting Claude](https://www.buildwithmatija.com/blog/oauth-mcp-server-claude) - December 2025, Next.js/Vercel implementation with detailed troubleshooting
 - **George Vetticaden on Medium** - [The Missing MCP Playbook: Deploying Custom Agents on Claude.ai](https://medium.com/@george.vetticaden/the-missing-mcp-playbook-deploying-custom-agents-on-claude-ai-and-claude-mobile-05274f60a970) - November 2025, Auth0 + Google Cloud Run implementation
 
