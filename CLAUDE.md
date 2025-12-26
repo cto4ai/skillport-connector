@@ -6,7 +6,7 @@ MCP connector that bridges Claude Code Plugin Marketplaces to Claude.ai and Clau
 
 This is a **Cloudflare Worker** that:
 - Exposes a Plugin Marketplace via MCP protocol
-- Authenticates users via GitHub OAuth
+- Authenticates users via Google OAuth (OAuth version) or API key (authless version)
 - Provides tools to browse and fetch Skills for Claude.ai/Desktop users
 
 ## Sibling Repository
@@ -32,15 +32,18 @@ Plugin Marketplace Repo → Claude Code (native)
 - **Runtime**: Cloudflare Workers
 - **Language**: TypeScript
 - **MCP SDK**: @modelcontextprotocol/sdk
-- **Auth**: GitHub OAuth with Dynamic Client Registration (DCR)
-- **Storage**: Cloudflare KV (for OAuth tokens)
+- **Auth**: Google OAuth (OAuth version) or API key (authless version)
+- **Storage**: Cloudflare KV (for OAuth tokens and API keys)
 
 ## Key Files
 
 | File | Purpose |
 |------|---------|
-| [src/index.ts](src/index.ts) | Main MCP server with tool definitions |
-| [wrangler.toml](wrangler.toml) | Cloudflare Worker configuration |
+| [src/index.ts](src/index.ts) | OAuth entry point (for Claude Code) |
+| [src/index-authless.ts](src/index-authless.ts) | API key entry point (for Claude.ai) |
+| [src/mcp-server.ts](src/mcp-server.ts) | MCP server with tool definitions |
+| [wrangler.toml](wrangler.toml) | OAuth worker configuration |
+| [wrangler-authless.toml](wrangler-authless.toml) | Authless worker configuration |
 | [package.json](package.json) | Dependencies and scripts |
 
 ## MCP Tools
@@ -57,16 +60,19 @@ The connector exposes these MCP tools:
 ## Development
 
 ```bash
-npm install          # Install dependencies
-npm run dev          # Local development server (localhost:8788)
-npm run deploy       # Deploy to Cloudflare
+npm install              # Install dependencies
+npm run dev              # OAuth version (localhost:8788)
+npm run dev:authless     # Authless version (localhost:8788)
+npm run deploy           # Deploy OAuth version
+npm run deploy:authless  # Deploy authless version
 ```
 
 **Note:** Wrangler v4 requires Node v20+. The VS Code extension runs Node v19.3.0, so run wrangler directly:
 ```bash
 node node_modules/wrangler/bin/wrangler.js dev
+node node_modules/wrangler/bin/wrangler.js dev -c wrangler-authless.toml
 node node_modules/wrangler/bin/wrangler.js deploy
-node node_modules/wrangler/bin/wrangler.js secret put <SECRET_NAME>
+node node_modules/wrangler/bin/wrangler.js deploy -c wrangler-authless.toml
 ```
 
 ## Configuration
@@ -78,20 +84,39 @@ MARKETPLACE_REPO = "your-org/your-marketplace"
 ```
 
 ### Secrets (via wrangler secret put)
-- `GITHUB_CLIENT_ID`
-- `GITHUB_CLIENT_SECRET`
+
+**OAuth version:**
+- `GOOGLE_CLIENT_ID`
+- `GOOGLE_CLIENT_SECRET`
+- `GITHUB_SERVICE_TOKEN`
 - `COOKIE_ENCRYPTION_KEY`
+
+**Authless version:**
+- `GITHUB_SERVICE_TOKEN`
+
+## Production URLs
+
+| Version | URL | Use Case |
+|---------|-----|----------|
+| OAuth (recommended) | https://skillport-connector.jack-ivers.workers.dev/sse | Claude.ai, Claude Desktop, Claude Code |
+| Authless (deprecated) | https://skillport-connector-authless.jack-ivers.workers.dev/sse?api_key=... | Fallback only |
+
+**Note:** OAuth is now the recommended authentication method. The authless version with API key in query string was created as a workaround when OAuth had bugs, but OAuth is now working correctly.
 
 ## Implementation Status
 
-Current state: **Scaffold with TODOs**
+Current state: **Production (OAuth + Authless)**
 
 - [x] MCP server structure
 - [x] Tool definitions with schemas
-- [ ] GitHub OAuth handler
-- [ ] GitHub API client for fetching marketplace
-- [ ] Tool implementations
-- [ ] KV storage setup
+- [x] Google OAuth handler (OAuth version)
+- [x] API key authentication (authless version)
+- [x] GitHub API client for marketplace
+- [x] Tool implementations
+- [x] KV storage setup
+- [x] User email parameter for audit logging
+- [ ] Rate limiting
+- [ ] Unit tests
 
 ## Documentation
 

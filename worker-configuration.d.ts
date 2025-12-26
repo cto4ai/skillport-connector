@@ -2,6 +2,9 @@ interface Env {
   // KV namespace for OAuth tokens and cache
   OAUTH_KV: KVNamespace;
 
+  // KV namespace for API keys (authless mode)
+  API_KEYS: KVNamespace;
+
   // Google OAuth credentials
   GOOGLE_CLIENT_ID: string;
   GOOGLE_CLIENT_SECRET: string;

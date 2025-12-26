@@ -15,12 +15,18 @@ const app = new Hono<{ Bindings: EnvWithOAuth }>();
 /**
  * GET /.well-known/oauth-protected-resource
  * RFC 9728 - Required for Claude.ai to discover the authorization server
+ *
+ * IMPORTANT: This must return HTTP 200 (not 401) for Claude.ai to work correctly.
+ * See: https://www.buildwithmatija.com/blog/oauth-mcp-server-claude
  */
 app.get("/.well-known/oauth-protected-resource", (c) => {
   const origin = new URL(c.req.url).origin;
   return c.json({
     resource: origin,
     authorization_servers: [origin],
+    // Required fields per MCP OAuth spec
+    scopes_supported: ["mcp:read"],
+    bearer_methods_supported: ["header"],
   });
 });
 
