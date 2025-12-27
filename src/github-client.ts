@@ -303,8 +303,10 @@ export class GitHubClient {
     const fullSkillDir = skillDir ? `${basePath}/${skillDir}` : basePath;
 
     // Fetch all files in skill directory with caching
+    // Include version in cache key so updates invalidate cache
+    const version = entry.version || "unknown";
     const files = await this.fetchWithCache(
-      `skill-dir:${this.repo}:${name}`,
+      `skill-dir:${this.repo}:${name}:${version}`,
       21600, // 6 hours
       async () => this.fetchDirectoryRecursive(fullSkillDir, fullSkillDir)
     );
