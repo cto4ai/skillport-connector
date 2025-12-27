@@ -54,6 +54,28 @@ Research sources:
 - [anthropics/skills repository](https://github.com/anthropics/skills)
 - [skill-creator SKILL.md](https://github.com/anthropics/skills/blob/main/skills/skill-creator/SKILL.md)
 
+## Additional Research: Claude Code Plugin Installation
+
+**Question:** Can we learn from how Claude Code handles marketplace plugin installation?
+
+**Finding:** Claude Code's source is **not open source** - the npm package `@anthropic-ai/claude-code` is distributed as compiled binary. The [github.com/anthropics/claude-code](https://github.com/anthropics/claude-code) repo contains only documentation and example plugins.
+
+**How Claude Code handles plugins:**
+- Plugins are **copied to a cache directory** (not used in-place)
+- Only files within the plugin directory are copied
+- Uses `${CLAUDE_PLUGIN_ROOT}` variable for path resolution
+- Symlinks are followed during copying
+
+**Key difference:**
+- **Claude Code**: Has automated file copying to a known cache location
+- **Claude.ai/Desktop**: No automated installer - Claude writes files directly
+
+**Conclusion:** Our `fetch_skill` returns data in a similar format to what Claude Code uses internally. The difference is Claude.ai/Desktop lacks an automated installer, so Claude just writes files directly - which is the correct pattern we should embrace.
+
+Additional sources:
+- [Claude Code Plugin Marketplaces Docs](https://code.claude.com/docs/en/plugin-marketplaces)
+- [Claude Code Plugins Blog](https://claude.com/blog/claude-code-plugins)
+
 ---
 
-**Last Updated:** 2025-12-26 23:00:00
+**Last Updated:** 2025-12-26 23:15:00
