@@ -37,6 +37,25 @@ export interface PluginManifest {
 export interface SkillFile {
   path: string;
   content: string;
+  encoding?: "base64";
+}
+
+interface GitHubContentItem {
+  name: string;
+  path: string;
+  type: "file" | "dir";
+  size: number;
+}
+
+const BINARY_EXTENSIONS = [
+  ".png", ".jpg", ".jpeg", ".gif", ".ico", ".webp",
+  ".pdf", ".zip", ".tar", ".gz",
+  ".woff", ".woff2", ".ttf", ".eot"
+];
+
+function isBinaryFile(filename: string): boolean {
+  const lower = filename.toLowerCase();
+  return BINARY_EXTENSIONS.some(ext => lower.endsWith(ext));
 }
 
 const GITHUB_API = "https://api.github.com";
@@ -53,7 +72,65 @@ export class GitHubClient {
   }
 
   /**
-   * Fetch a file from the repository
+   * List contents of a directory
+   */
+  private async listDirectory(dirPath: string): Promise<GitHubContentItem[]> {
+    const response = await fetch(
+      `${GITHUB_API}/repos/${this.repo}/contents/${dirPath}`,
+      {
+        headers: {
+          Authorization: `Bearer ${this.token}`,
+          Accept: "application/vnd.github.v3+json",
+          "User-Agent": "Skillport-Connector/1.0",
+        },
+      }
+    );
+
+    if (!response.ok) {
+      if (response.status === 404) {
+        throw new Error(`Directory not found: ${dirPath}`);
+      }
+      throw new Error(`GitHub API error: ${response.status}`);
+    }
+
+    return response.json() as Promise<GitHubContentItem[]>;
+  }
+
+  /**
+   * Recursively fetch all files in a directory
+   */
+  private async fetchDirectoryRecursive(
+    dirPath: string,
+    basePath: string
+  ): Promise<SkillFile[]> {
+    const items = await this.listDirectory(dirPath);
+    const files: SkillFile[] = [];
+
+    for (const item of items) {
+      if (item.type === "file") {
+        const relativePath = item.path.replace(basePath + "/", "");
+
+        if (isBinaryFile(item.name)) {
+          // Fetch binary file as base64
+          const content = await this.fetchFileBase64(item.path);
+          files.push({ path: relativePath, content, encoding: "base64" });
+        } else {
+          // Fetch text file
+          const content = await this.fetchFile(item.path);
+          files.push({ path: relativePath, content });
+        }
+      } else if (item.type === "dir") {
+        // Recurse into subdirectory
+        const subFiles = await this.fetchDirectoryRecursive(item.path, basePath);
+        files.push(...subFiles);
+      }
+    }
+
+    return files;
+  }
+
+  /**
+   * Fetch a file from the repository as text
    */
   private async fetchFile(path: string): Promise<string> {
     const response = await fetch(
@@ -78,6 +155,33 @@ export class GitHubClient {
     }
 
     return response.text();
+  }
+
+  /**
+   * Fetch a file from the repository as base64 (for binary files)
+   */
+  private async fetchFileBase64(path: string): Promise<string> {
+    const response = await fetch(
+      `${GITHUB_API}/repos/${this.repo}/contents/${path}`,
+      {
+        headers: {
+          Authorization: `Bearer ${this.token}`,
+          Accept: "application/vnd.github.v3+json",
+          "User-Agent": "Skillport-Connector/1.0",
+        },
+      }
+    );
+
+    if (!response.ok) {
+      if (response.status === 404) {
+        throw new Error(`File not found: ${path}`);
+      }
+      throw new Error(`GitHub API error: ${response.status}`);
+    }
+
+    const data = await response.json() as { content: string };
+    // GitHub returns base64 content with newlines, remove them
+    return data.content.replace(/\n/g, "");
   }
 
   /**
@@ -178,24 +282,40 @@ export class GitHubClient {
   }
 
   /**
-   * Fetch skill files for installation
+   * Fetch all skill files for installation
+   * Returns entire skill directory contents plus plugin.json for versioning
    */
   async fetchSkill(name: string): Promise<{
     plugin: PluginEntry;
     files: SkillFile[];
   }> {
-    const { entry } = await this.getPlugin(name);
+    const { entry, manifest } = await this.getPlugin(name);
     const basePath = entry.source.replace("./", "");
     const skillPath = entry.skillPath || "skills/SKILL.md";
-    const files: SkillFile[] = [];
 
-    // Fetch SKILL.md
-    const skillContent = await this.fetchWithCache(
-      `skill:${this.repo}:${name}`,
+    // Derive skill directory from skillPath
+    // "skills/SKILL.md" → "skills"
+    // "SKILL.md" → "" (skill is at plugin root)
+    const skillDir = skillPath.includes("/")
+      ? skillPath.substring(0, skillPath.lastIndexOf("/"))
+      : "";
+
+    const fullSkillDir = skillDir ? `${basePath}/${skillDir}` : basePath;
+
+    // Fetch all files in skill directory with caching
+    const files = await this.fetchWithCache(
+      `skill-dir:${this.repo}:${name}`,
       21600, // 6 hours
-      async () => this.fetchFile(`${basePath}/${skillPath}`)
+      async () => this.fetchDirectoryRecursive(fullSkillDir, fullSkillDir)
     );
-    files.push({ path: "SKILL.md", content: skillContent });
+
+    // Include plugin.json for versioning (if it exists)
+    if (manifest) {
+      files.push({
+        path: "plugin.json",
+        content: JSON.stringify(manifest, null, 2),
+      });
+    }
 
     return { plugin: entry, files };
   }
