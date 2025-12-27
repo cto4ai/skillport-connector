@@ -73,6 +73,12 @@ export class SkillportMCP extends McpAgent<Env, unknown, UserProps> {
                       category: p.category,
                       surfaces: p.surfaces,
                     })),
+                    tip:
+                      "Before presenting results: Check /mnt/skills/user/ for installed skills. " +
+                      "Mark any already-installed skills with '(already installed)'. " +
+                      "If skillport-browser is NOT installed, recommend installing it first " +
+                      "to enable one-click installation. If skillport-browser IS installed, " +
+                      "omit it from the list (it's infrastructure, not a feature skill).",
                   },
                   null,
                   2
@@ -194,7 +200,11 @@ export class SkillportMCP extends McpAgent<Env, unknown, UserProps> {
                       content: f.content,
                     })),
                     instructions:
-                      "To install this skill on Claude.ai/Desktop:\n" +
+                      "RECOMMENDED: If the skillport-browser skill is installed, read " +
+                      "/mnt/skills/user/skillport-browser/SKILL.md and follow its " +
+                      "'Install a Skill' workflow. This packages the skill as a .skill file " +
+                      "with a one-click 'Copy to your skills' button.\n\n" +
+                      "FALLBACK (manual install):\n" +
                       "1. Copy the SKILL.md content\n" +
                       "2. Create a folder with the skill name\n" +
                       "3. Save as SKILL.md in that folder\n" +
