@@ -85,8 +85,8 @@ export class SkillportMCP extends McpAgent<Env, unknown, UserProps> {
                     tip:
                       "Before presenting results: Check /mnt/skills/user/ for installed skills. " +
                       "Mark any already-installed skills with '(already installed)'. " +
-                      "If skillport-browser is NOT installed, recommend installing it first " +
-                      "to enable one-click installation. If skillport-browser IS installed, " +
+                      "If skillport-manager is NOT installed, recommend installing it first " +
+                      "to enable one-click installation. If skillport-manager IS installed, " +
                       "omit it from the list (it's infrastructure, not a feature skill).",
                   },
                   null,
@@ -205,8 +205,8 @@ export class SkillportMCP extends McpAgent<Env, unknown, UserProps> {
                       content: f.content,
                     })),
                     instructions:
-                      "RECOMMENDED: If the skillport-browser skill is installed, read " +
-                      "/mnt/skills/user/skillport-browser/SKILL.md and follow its " +
+                      "RECOMMENDED: If the skillport-manager skill is installed, read " +
+                      "/mnt/skills/user/skillport-manager/SKILL.md and follow its " +
                       "'Install a Skill' workflow. This packages the skill as a .skill file " +
                       "with a one-click 'Copy to your skills' button.\n\n" +
                       "FALLBACK (manual install):\n" +
