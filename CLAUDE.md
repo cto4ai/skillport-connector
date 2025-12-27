@@ -103,6 +103,16 @@ MARKETPLACE_REPO = "your-org/your-marketplace"
 
 **Note:** OAuth is now the recommended authentication method. The authless version with API key in query string was created as a workaround when OAuth had bugs, but OAuth is now working correctly.
 
+## User Email & Audit Logging
+
+**OAuth version:** User email is captured from Google OAuth and stored in `this.props.email` via the McpAgent session. This is the authoritative source for user identity.
+
+**Authless version:** Has a `user_email` parameter on each tool - this was a workaround before OAuth was working. Now deprecated.
+
+**Current approach:** Use `this.props.email` from OAuth session and log to console. View logs via `wrangler tail` or Cloudflare dashboard.
+
+**Implementation:** `logAction()` method uses `this.props.email` (OAuth) with fallback to `user_email` param (authless).
+
 ## Implementation Status
 
 Current state: **Production (OAuth + Authless)**
@@ -114,7 +124,7 @@ Current state: **Production (OAuth + Authless)**
 - [x] GitHub API client for marketplace
 - [x] Tool implementations
 - [x] KV storage setup
-- [x] User email parameter for audit logging
+- [x] Audit logging via `logAction()` (OAuth email with authless fallback)
 - [ ] Rate limiting
 - [ ] Unit tests
 
