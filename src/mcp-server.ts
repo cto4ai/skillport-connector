@@ -209,6 +209,10 @@ export class SkillportMCP extends McpAgent<Env, unknown, UserProps> {
                       "/mnt/skills/user/skillport-manager/SKILL.md and follow its " +
                       "'Install a Skill' workflow. This packages the skill as a .skill file " +
                       "with a one-click 'Copy to your skills' button.\n\n" +
+                      "IMPORTANT: After installing a skill, the user must start a NEW " +
+                      "conversation to use it. Skills are snapshotted when a conversation " +
+                      "starts and don't update mid-conversation (even after app restart " +
+                      "or browser refresh).\n\n" +
                       "FALLBACK (manual install):\n" +
                       "1. Copy the SKILL.md content\n" +
                       "2. Create a folder with the skill name\n" +
