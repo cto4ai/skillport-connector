@@ -29,6 +29,17 @@ export class SkillportMCP extends McpAgent<Env, unknown, UserProps> {
     );
   }
 
+  /**
+   * Log user action for audit trail
+   * Priority: OAuth session email > user_email param (authless) > "unknown"
+   */
+  private logAction(action: string, opts?: { plugin?: string; user_email?: string }): void {
+    const email = this.props?.email || opts?.user_email || "unknown";
+    const timestamp = new Date().toISOString();
+    const pluginInfo = opts?.plugin ? ` plugin=${opts.plugin}` : "";
+    console.log(`[AUDIT] ${timestamp} user=${email} action=${action}${pluginInfo}`);
+  }
+
   async init() {
     // Tool: list_plugins
     this.server.tool(
@@ -53,9 +64,7 @@ export class SkillportMCP extends McpAgent<Env, unknown, UserProps> {
       },
       async ({ user_email, category, surface }) => {
         try {
-          if (user_email) {
-            console.log(`list_plugins called by ${user_email} at ${new Date().toISOString()}`);
-          }
+          this.logAction("list_plugins", { user_email });
           const github = this.getGitHubClient();
           const plugins = await github.listPlugins({ category, surface });
 
@@ -118,9 +127,7 @@ export class SkillportMCP extends McpAgent<Env, unknown, UserProps> {
       },
       async ({ user_email, name }) => {
         try {
-          if (user_email) {
-            console.log(`get_plugin called by ${user_email} for ${name} at ${new Date().toISOString()}`);
-          }
+          this.logAction("get_plugin", { plugin: name, user_email });
           const github = this.getGitHubClient();
           const { entry, manifest } = await github.getPlugin(name);
 
@@ -179,9 +186,7 @@ export class SkillportMCP extends McpAgent<Env, unknown, UserProps> {
       },
       async ({ user_email, name }) => {
         try {
-          if (user_email) {
-            console.log(`fetch_skill called by ${user_email} for ${name} at ${new Date().toISOString()}`);
-          }
+          this.logAction("fetch_skill", { plugin: name, user_email });
           const github = this.getGitHubClient();
           const { plugin, files } = await github.fetchSkill(name);
 
@@ -255,9 +260,7 @@ export class SkillportMCP extends McpAgent<Env, unknown, UserProps> {
       },
       async ({ user_email, installed }) => {
         try {
-          if (user_email) {
-            console.log(`check_updates called by ${user_email} at ${new Date().toISOString()}`);
-          }
+          this.logAction("check_updates", { user_email });
           const github = this.getGitHubClient();
           const updates = await github.checkUpdates(installed);
 
