@@ -60,6 +60,47 @@ function isBinaryFile(filename: string): boolean {
 
 const GITHUB_API = "https://api.github.com";
 
+/**
+ * Parse semver string into comparable parts
+ * Handles: "1.0.0", "1.0", "1", "1.0.0-beta.1"
+ */
+function parseSemver(version: string): { major: number; minor: number; patch: number; prerelease: string } {
+  const [mainPart, prerelease = ""] = version.split("-");
+  const parts = mainPart.split(".").map(p => parseInt(p, 10) || 0);
+  return {
+    major: parts[0] || 0,
+    minor: parts[1] || 0,
+    patch: parts[2] || 0,
+    prerelease,
+  };
+}
+
+/**
+ * Compare two semver versions
+ * Returns: -1 if a < b, 0 if a == b, 1 if a > b
+ */
+function compareSemver(a: string, b: string): number {
+  const va = parseSemver(a);
+  const vb = parseSemver(b);
+
+  // Compare major.minor.patch
+  if (va.major !== vb.major) return va.major < vb.major ? -1 : 1;
+  if (va.minor !== vb.minor) return va.minor < vb.minor ? -1 : 1;
+  if (va.patch !== vb.patch) return va.patch < vb.patch ? -1 : 1;
+
+  // Prerelease versions have lower precedence than release
+  // e.g., 1.0.0-beta < 1.0.0
+  if (va.prerelease && !vb.prerelease) return -1;
+  if (!va.prerelease && vb.prerelease) return 1;
+
+  // Both have prerelease, compare lexically
+  if (va.prerelease && vb.prerelease) {
+    return va.prerelease < vb.prerelease ? -1 : va.prerelease > vb.prerelease ? 1 : 0;
+  }
+
+  return 0;
+}
+
 export class GitHubClient {
   private token: string;
   private repo: string;
@@ -263,11 +304,13 @@ export class GitHubClient {
     }
 
     // Try to fetch plugin.json for additional details
+    // Include version in cache key so updates invalidate cache
     let manifest: PluginManifest | null = null;
     try {
       const basePath = entry.source.replace("./", "");
+      const version = entry.version || "unknown";
       manifest = await this.fetchWithCache(
-        `plugin:${this.repo}:${name}`,
+        `plugin:${this.repo}:${name}:${version}`,
         3600, // 1 hour
         async () => {
           const content = await this.fetchFile(`${basePath}/plugin.json`);
@@ -303,8 +346,10 @@ export class GitHubClient {
     const fullSkillDir = skillDir ? `${basePath}/${skillDir}` : basePath;
 
     // Fetch all files in skill directory with caching
+    // Include version in cache key so updates invalidate cache
+    const version = entry.version || "unknown";
     const files = await this.fetchWithCache(
-      `skill-dir:${this.repo}:${name}`,
+      `skill-dir:${this.repo}:${name}:${version}`,
       21600, // 6 hours
       async () => this.fetchDirectoryRecursive(fullSkillDir, fullSkillDir)
     );
@@ -341,7 +386,8 @@ export class GitHubClient {
 
     for (const inst of installed) {
       const plugin = marketplace.plugins.find((p) => p.name === inst.name);
-      if (plugin && plugin.version && plugin.version !== inst.version) {
+      // Use semver comparison: only report update if available > installed
+      if (plugin && plugin.version && compareSemver(plugin.version, inst.version) > 0) {
         updates.push({
           name: inst.name,
           installedVersion: inst.version,
