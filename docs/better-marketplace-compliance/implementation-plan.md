@@ -60,25 +60,54 @@ Align Skillport Connector with the official Anthropic Plugin Marketplace format.
 
 ## Phase 3: Support skills Array
 
-**Status:** Future consideration
+**Status:** ✅ Complete
 
-Add support for official `skills` array format in marketplace.json:
+Added support for official `skills` array format in marketplace.json:
 
 ```json
 {
   "plugins": [{
-    "name": "my-skills",
+    "name": "example-skills",
     "source": "./",
-    "skills": ["./skills/foo", "./skills/bar"]
+    "skills": ["./skills/pdf", "./skills/xlsx", "./skills/docx"]
   }]
 }
 ```
 
-This allows multiple skills per plugin entry (official pattern).
+### UX Design: Expand to Individual Entries
+
+When a plugin has a `skills` array, each skill is expanded as a separate entry using `plugin:skill` naming:
+
+```
+list_plugins returns:
+- example-skills:pdf
+- example-skills:xlsx
+- example-skills:docx
+
+fetch_skill("example-skills:pdf") → fetches ./skills/pdf/SKILL.md
+```
+
+### Changes Made
+
+**3.1 Updated PluginEntry interface**
+- Added `skills?: string[]` field
+- Added `_expandedFrom?: { pluginName, skillPath }` for internal tracking
+
+**3.2 Updated listPlugins**
+- Detects plugins with `skills` array
+- Expands into individual entries with `pluginName:skillName` naming
+- Added `getSkillNameFromPath()` helper
+
+**3.3 Updated getPlugin**
+- Parses `plugin:skill` format
+- Looks up parent plugin, then finds skill path in array
+
+**3.4 Updated fetchSkill**
+- Uses `_expandedFrom.skillPath` for expanded skills
+- Falls back to `skillPath` field (legacy) or plugin root (official)
 
 **Files:**
-- `src/github-client.ts` - `listPlugins`, `getPlugin`
-- `src/mcp-server.ts` - `fetch_skill`
+- `src/github-client.ts` - All changes in github-client
 
 ---
 

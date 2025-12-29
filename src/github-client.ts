@@ -23,7 +23,10 @@ export interface PluginEntry {
   tags?: string[];
   surfaces?: string[];
   skillPath?: string;
+  skills?: string[];  // Official format: array of skill paths (e.g., ["./skills/pdf", "./skills/xlsx"])
   permissions?: string[];
+  // Internal: set when this entry was expanded from a skills array
+  _expandedFrom?: { pluginName: string; skillPath: string };
 }
 
 export interface PluginManifest {
@@ -287,14 +290,52 @@ export class GitHubClient {
   }
 
   /**
+   * Extract skill name from a skill path
+   * "./skills/pdf" → "pdf"
+   * "./skills/foo/bar" → "bar"
+   */
+  private getSkillNameFromPath(skillPath: string): string {
+    // Remove leading "./" if present
+    const normalized = skillPath.replace(/^\.\//, "");
+    // Get the last segment
+    const segments = normalized.split("/").filter(Boolean);
+    return segments[segments.length - 1] || normalized;
+  }
+
+  /**
    * List plugins with optional filtering
+   * Expands plugins with skills arrays into individual entries using plugin:skill naming
    */
   async listPlugins(options?: {
     surface?: string;
     category?: string;
   }): Promise<PluginEntry[]> {
     const marketplace = await this.getMarketplace();
-    let plugins = marketplace.plugins;
+    let plugins: PluginEntry[] = [];
+
+    // Expand plugins with skills arrays
+    for (const plugin of marketplace.plugins) {
+      if (plugin.skills && plugin.skills.length > 0) {
+        // Expand each skill as a separate entry
+        for (const skillPath of plugin.skills) {
+          const skillName = this.getSkillNameFromPath(skillPath);
+          plugins.push({
+            ...plugin,
+            name: `${plugin.name}:${skillName}`,
+            // Store original info for fetching
+            _expandedFrom: {
+              pluginName: plugin.name,
+              skillPath: skillPath.replace(/^\.\//, ""),
+            },
+            // Clear the skills array on expanded entries
+            skills: undefined,
+          });
+        }
+      } else {
+        // Single skill plugin, keep as-is
+        plugins.push(plugin);
+      }
+    }
 
     // Filter by surface
     if (options?.surface) {
@@ -313,59 +354,88 @@ export class GitHubClient {
 
   /**
    * Get detailed plugin information
+   * Supports both regular names and plugin:skill format for expanded skills
    */
   async getPlugin(name: string): Promise<{
     entry: PluginEntry;
     manifest: PluginManifest | null;
   }> {
     const marketplace = await this.getMarketplace();
+
+    // Check if this is a plugin:skill format (expanded from skills array)
+    if (name.includes(":")) {
+      const [pluginName, skillName] = name.split(":");
+      const parentPlugin = marketplace.plugins.find((p) => p.name === pluginName);
+
+      if (!parentPlugin) {
+        throw new Error(`Plugin not found: ${pluginName}`);
+      }
+
+      if (!parentPlugin.skills || parentPlugin.skills.length === 0) {
+        throw new Error(`Plugin ${pluginName} does not have a skills array`);
+      }
+
+      // Find the skill path that matches this skill name
+      const skillPath = parentPlugin.skills.find(
+        (sp) => this.getSkillNameFromPath(sp) === skillName
+      );
+
+      if (!skillPath) {
+        throw new Error(`Skill ${skillName} not found in plugin ${pluginName}`);
+      }
+
+      // Return an expanded entry
+      const entry: PluginEntry = {
+        ...parentPlugin,
+        name,
+        _expandedFrom: {
+          pluginName,
+          skillPath: skillPath.replace(/^\.\//, ""),
+        },
+        skills: undefined,
+      };
+
+      return { entry, manifest: null };
+    }
+
+    // Regular plugin lookup
     const entry = marketplace.plugins.find((p) => p.name === name);
 
     if (!entry) {
       throw new Error(`Plugin not found: ${name}`);
     }
 
-    // Try to fetch plugin.json for additional details
-    // Include version in cache key so updates invalidate cache
-    let manifest: PluginManifest | null = null;
-    try {
-      const basePath = entry.source.replace("./", "");
-      const version = entry.version || "unknown";
-      manifest = await this.fetchWithCache(
-        `plugin:${this.repo}:${name}:${version}`,
-        3600, // 1 hour
-        async () => {
-          const content = await this.fetchFile(`${basePath}/plugin.json`);
-          return JSON.parse(content) as PluginManifest;
-        }
-      );
-    } catch {
-      // plugin.json is optional
-    }
-
-    return { entry, manifest };
+    // plugin.json is no longer required, skip manifest lookup
+    return { entry, manifest: null };
   }
 
   /**
    * Fetch all skill files for installation
-   * Returns entire skill directory contents plus plugin.json for versioning
+   * Handles both regular plugins and expanded skills (plugin:skill format)
    */
   async fetchSkill(name: string): Promise<{
     plugin: PluginEntry;
     files: SkillFile[];
   }> {
-    const { entry, manifest } = await this.getPlugin(name);
+    const { entry } = await this.getPlugin(name);
     const basePath = entry.source.replace("./", "");
-    const skillPath = entry.skillPath || "skills/SKILL.md";
 
-    // Derive skill directory from skillPath
-    // "skills/SKILL.md" → "skills"
-    // "SKILL.md" → "" (skill is at plugin root)
-    const skillDir = skillPath.includes("/")
-      ? skillPath.substring(0, skillPath.lastIndexOf("/"))
-      : "";
+    let fullSkillDir: string;
 
-    const fullSkillDir = skillDir ? `${basePath}/${skillDir}` : basePath;
+    if (entry._expandedFrom) {
+      // This is an expanded skill from a skills array
+      // The skillPath is relative to repo root (e.g., "skills/pdf")
+      fullSkillDir = entry._expandedFrom.skillPath;
+    } else if (entry.skillPath) {
+      // Legacy: explicit skillPath field
+      const skillDir = entry.skillPath.includes("/")
+        ? entry.skillPath.substring(0, entry.skillPath.lastIndexOf("/"))
+        : "";
+      fullSkillDir = skillDir ? `${basePath}/${skillDir}` : basePath;
+    } else {
+      // Default: SKILL.md at plugin root (official structure)
+      fullSkillDir = basePath;
+    }
 
     // Fetch all files in skill directory with caching
     // Include version in cache key so updates invalidate cache
@@ -375,14 +445,6 @@ export class GitHubClient {
       21600, // 6 hours
       async () => this.fetchDirectoryRecursive(fullSkillDir, fullSkillDir)
     );
-
-    // Include plugin.json for versioning (if it exists)
-    if (manifest) {
-      files.push({
-        path: "plugin.json",
-        content: JSON.stringify(manifest, null, 2),
-      });
-    }
 
     return { plugin: entry, files };
   }
