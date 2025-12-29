@@ -620,6 +620,27 @@ export class SkillportMCP extends McpAgent<Env, unknown, UserProps> {
                 isError: true,
               };
             }
+
+            // Reject bare skill file paths that should be under skills/ directory
+            // This prevents accidentally writing SKILL.md to plugin root instead of skills/SKILL.md
+            const bareSkillPaths = ["SKILL.md", "templates", "scripts", "references", "examples"];
+            const pathStart = sanitizedPath.split("/")[0];
+            if (bareSkillPaths.includes(pathStart)) {
+              return {
+                content: [
+                  {
+                    type: "text" as const,
+                    text: JSON.stringify({
+                      error: "Invalid file path",
+                      message: `Path "${file.path}" appears to be a skill file but is missing the "skills/" prefix. ` +
+                        `Use "skills/${file.path}" instead. Plugin root files like "plugin.json" don't need a prefix.`,
+                    }),
+                  },
+                ],
+                isError: true,
+              };
+            }
+
             validatedFiles.push({ path: file.path, content: file.content, sanitizedPath });
           }
 
