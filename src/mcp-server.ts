@@ -43,10 +43,9 @@ export class SkillportMCP extends McpAgent<Env, unknown, UserProps> {
 
   /**
    * Log user action for audit trail
-   * Priority: OAuth session email > user_email param (authless) > "unknown"
    */
-  private logAction(action: string, opts?: { plugin?: string; user_email?: string }): void {
-    const email = this.props?.email || opts?.user_email || "unknown";
+  private logAction(action: string, opts?: { plugin?: string }): void {
+    const email = this.props?.email || "unknown";
     const timestamp = new Date().toISOString();
     const pluginInfo = opts?.plugin ? ` plugin=${opts.plugin}` : "";
     console.log(`[AUDIT] ${timestamp} user=${email} action=${action}${pluginInfo}`);
@@ -58,11 +57,6 @@ export class SkillportMCP extends McpAgent<Env, unknown, UserProps> {
       "list_plugins",
       "List all plugins available in the marketplace. Optionally filter by category or target surface.",
       {
-        user_email: z
-          .string()
-          .email()
-          .optional()
-          .describe("User email for audit logging (provided by Skillport Skill)"),
         category: z
           .string()
           .optional()
@@ -74,9 +68,9 @@ export class SkillportMCP extends McpAgent<Env, unknown, UserProps> {
             "Filter by surface: 'claude-code', 'claude-desktop', or 'claude-ai'"
           ),
       },
-      async ({ user_email, category, surface }) => {
+      async ({ category, surface }) => {
         try {
-          this.logAction("list_plugins", { user_email });
+          this.logAction("list_plugins");
           const github = this.getGitHubClient();
           const accessControl = await this.getAccessControl();
           const allPlugins = await github.listPlugins({ category, surface });
@@ -144,16 +138,11 @@ export class SkillportMCP extends McpAgent<Env, unknown, UserProps> {
       "get_plugin",
       "Get detailed information about a specific plugin including its manifest and metadata.",
       {
-        user_email: z
-          .string()
-          .email()
-          .optional()
-          .describe("User email for audit logging (provided by Skillport Skill)"),
         name: z.string().describe("Plugin name (e.g., 'sales-pitch')"),
       },
-      async ({ user_email, name }) => {
+      async ({ name }) => {
         try {
-          this.logAction("get_plugin", { plugin: name, user_email });
+          this.logAction("get_plugin", { plugin: name });
           const accessControl = await this.getAccessControl();
 
           // Check read access
@@ -222,16 +211,11 @@ export class SkillportMCP extends McpAgent<Env, unknown, UserProps> {
       "fetch_skill",
       "Fetch the skill files (SKILL.md and related resources) for installation on Claude.ai or Claude Desktop.",
       {
-        user_email: z
-          .string()
-          .email()
-          .optional()
-          .describe("User email for audit logging (provided by Skillport Skill)"),
         name: z.string().describe("Plugin name containing the skill"),
       },
-      async ({ user_email, name }) => {
+      async ({ name }) => {
         try {
-          this.logAction("fetch_skill", { plugin: name, user_email });
+          this.logAction("fetch_skill", { plugin: name });
           const accessControl = await this.getAccessControl();
 
           // Check read access
@@ -312,11 +296,6 @@ export class SkillportMCP extends McpAgent<Env, unknown, UserProps> {
       "check_updates",
       "Check if any installed plugins have updates available in the marketplace.",
       {
-        user_email: z
-          .string()
-          .email()
-          .optional()
-          .describe("User email for audit logging (provided by Skillport Skill)"),
         installed: z
           .array(
             z.object({
@@ -326,9 +305,9 @@ export class SkillportMCP extends McpAgent<Env, unknown, UserProps> {
           )
           .describe("List of installed plugins with their versions"),
       },
-      async ({ user_email, installed }) => {
+      async ({ installed }) => {
         try {
-          this.logAction("check_updates", { user_email });
+          this.logAction("check_updates");
           const github = this.getGitHubClient();
           const updates = await github.checkUpdates(installed);
 
