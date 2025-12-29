@@ -64,6 +64,14 @@ export class SkillportMCP extends McpAgent<Env, unknown, UserProps> {
   }
 
   /**
+   * Validate plugin name to prevent path injection.
+   * Plugin names must be lowercase alphanumeric with hyphens only.
+   */
+  private validatePluginName(name: string): boolean {
+    return /^[a-z0-9-]+$/.test(name);
+  }
+
+  /**
    * Validate and sanitize a file path to prevent path traversal attacks.
    * Returns the sanitized path or null if the path is invalid.
    */
@@ -540,6 +548,22 @@ export class SkillportMCP extends McpAgent<Env, unknown, UserProps> {
       },
       async ({ name, files, commitMessage }) => {
         try {
+          // Validate plugin name to prevent path injection
+          if (!this.validatePluginName(name)) {
+            return {
+              content: [
+                {
+                  type: "text" as const,
+                  text: JSON.stringify({
+                    error: "Invalid plugin name",
+                    message: "Plugin name must be lowercase alphanumeric with hyphens only (e.g., 'my-skill')",
+                  }),
+                },
+              ],
+              isError: true,
+            };
+          }
+
           const accessControl = await this.getAccessControl();
 
           if (!accessControl.canWrite(name)) {
