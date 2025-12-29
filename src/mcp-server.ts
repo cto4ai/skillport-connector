@@ -621,26 +621,6 @@ export class SkillportMCP extends McpAgent<Env, unknown, UserProps> {
               };
             }
 
-            // Reject bare skill file paths that should be under skills/ directory
-            // This prevents accidentally writing SKILL.md to plugin root instead of skills/SKILL.md
-            const bareSkillPaths = ["SKILL.md", "templates", "scripts", "references", "examples"];
-            const pathStart = sanitizedPath.split("/")[0];
-            if (bareSkillPaths.includes(pathStart)) {
-              return {
-                content: [
-                  {
-                    type: "text" as const,
-                    text: JSON.stringify({
-                      error: "Invalid file path",
-                      message: `Path "${file.path}" appears to be a skill file but is missing the "skills/" prefix. ` +
-                        `Use "skills/${file.path}" instead. Plugin root files like "plugin.json" don't need a prefix.`,
-                    }),
-                  },
-                ],
-                isError: true,
-              };
-            }
-
             validatedFiles.push({ path: file.path, content: file.content, sanitizedPath });
           }
 
@@ -675,10 +655,7 @@ export class SkillportMCP extends McpAgent<Env, unknown, UserProps> {
                     files: results,
                     summary: `${created} file(s) created, ${updated} file(s) updated`,
                     nextSteps: isNewPlugin
-                      ? [
-                          "Ensure plugin.json was included in files (required for bump_version)",
-                          "Use publish_plugin to add to marketplace",
-                        ]
+                      ? ["Use publish_plugin to add to marketplace"]
                       : ["Use bump_version to release the update"],
                   },
                   null,
@@ -708,7 +685,7 @@ export class SkillportMCP extends McpAgent<Env, unknown, UserProps> {
     // Tool: bump_version
     this.server.tool(
       "bump_version",
-      "Bump the version of a plugin (updates both plugin.json and marketplace.json). Requires write access.",
+      "Bump the version of a plugin (updates marketplace.json). Requires write access.",
       {
         name: z.string().describe("Plugin name"),
         type: z
@@ -737,9 +714,9 @@ export class SkillportMCP extends McpAgent<Env, unknown, UserProps> {
           this.logAction("bump_version", { plugin: name });
 
           const github = this.getGitHubClient();
-          const { entry, manifest } = await github.getPlugin(name);
+          const { entry } = await github.getPlugin(name);
 
-          const currentVersion = manifest?.version || entry.version || "1.0.0";
+          const currentVersion = entry.version || "1.0.0";
           const [major, minor, patch] = currentVersion.split(".").map(Number);
 
           const newVersion =
@@ -750,20 +727,8 @@ export class SkillportMCP extends McpAgent<Env, unknown, UserProps> {
                 : `${major}.${minor}.${patch + 1}`;
 
           const writeClient = this.getWriteGitHubClient();
-          const basePath = entry.source.replace("./", "");
 
-          // Update plugin.json if it exists
-          if (manifest) {
-            const manifestPath = `${basePath}/plugin.json`;
-            const updatedManifest = { ...manifest, version: newVersion };
-            await writeClient.updateFile(
-              manifestPath,
-              JSON.stringify(updatedManifest, null, 2),
-              `Bump ${name} version to ${newVersion}\n\nRequested by: ${this.props.email}`
-            );
-          }
-
-          // Update marketplace.json
+          // Update marketplace.json (source of truth for version)
           await writeClient.updateMarketplaceVersion(name, newVersion, this.props.email);
 
           // Clear caches
@@ -845,26 +810,7 @@ export class SkillportMCP extends McpAgent<Env, unknown, UserProps> {
           const writeClient = this.getWriteGitHubClient();
           const pluginPath = `plugins/${name}`;
 
-          // Create plugin.json
-          const manifest = {
-            name,
-            version: "1.0.0",
-            description,
-            author: {
-              name: this.props.name,
-              email: this.props.email,
-            },
-            license: "MIT",
-            keywords: [],
-          };
-
-          await writeClient.createFile(
-            `${pluginPath}/plugin.json`,
-            JSON.stringify(manifest, null, 2),
-            `Create ${name} plugin\n\nRequested by: ${this.props.email}`
-          );
-
-          // Create SKILL.md template
+          // Create SKILL.md template at plugin root (official structure)
           const skillTemplate = `---
 name: ${name}
 description: ${description}
@@ -882,12 +828,12 @@ description: ${description}
 `;
 
           await writeClient.createFile(
-            `${pluginPath}/skills/SKILL.md`,
+            `${pluginPath}/SKILL.md`,
             skillTemplate,
-            `Add ${name} SKILL.md\n\nRequested by: ${this.props.email}`
+            `Create ${name} skill\n\nRequested by: ${this.props.email}`
           );
 
-          // Note: marketplace.json needs to be updated manually or via separate tool
+          // Note: marketplace.json needs to be updated via publish_plugin
           // This is intentional to allow review before publishing
 
           return {
@@ -899,10 +845,10 @@ description: ${description}
                     success: true,
                     name,
                     path: pluginPath,
-                    message: `Successfully created plugin ${name}. Note: You'll need to add it to marketplace.json to publish it.`,
+                    message: `Successfully created plugin ${name}. Use publish_plugin to add it to the marketplace.`,
                     nextSteps: [
                       "Edit the SKILL.md with your skill content",
-                      "Add the plugin to .claude-plugin/marketplace.json",
+                      "Use publish_plugin to add to marketplace",
                       "Use bump_version to release updates",
                     ],
                   },
@@ -974,9 +920,9 @@ description: ${description}
 
           const writeClient = this.getWriteGitHubClient();
 
-          // Verify plugin files exist
+          // Verify plugin files exist (check for SKILL.md at plugin root - official structure)
           const github = this.getGitHubClient();
-          const skillExists = await github.fileExists(`plugins/${name}/skills/SKILL.md`);
+          const skillExists = await github.fileExists(`plugins/${name}/SKILL.md`);
           if (!skillExists) {
             return {
               content: [
@@ -984,7 +930,7 @@ description: ${description}
                   type: "text" as const,
                   text: JSON.stringify({
                     error: "Plugin files not found",
-                    message: `No skill files found at plugins/${name}/skills/SKILL.md. Use save_skill first to create the skill files.`,
+                    message: `No skill files found at plugins/${name}/SKILL.md. Use save_skill or create_plugin first to create the skill files.`,
                   }),
                 },
               ],

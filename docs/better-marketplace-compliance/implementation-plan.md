@@ -8,64 +8,53 @@ Align Skillport Connector with the official Anthropic Plugin Marketplace format.
 
 ## Phase 1: Remove Bare Path Guard
 
-**Status:** Ready to implement
+**Status:** ✅ Complete
 
 **Changes:**
-- Remove the `bareSkillPaths` validation from `save_skill`
-- Allow any valid relative path (SKILL.md at root is valid)
+- Removed the `bareSkillPaths` validation from `save_skill`
+- Now allows any valid relative path (SKILL.md at root is valid)
 
 **Files:**
-- `src/mcp-server.ts` - Remove lines 624-642
+- `src/mcp-server.ts` - Removed bare path guard validation
 
-**Risk:** Low - this is a revert of recently added code
+**Risk:** Low - this was a revert of recently added code
 
 ---
 
 ## Phase 2: Remove plugin.json Requirement
 
-**Status:** Planning
+**Status:** ✅ Complete
 
 ### 2.1 Update bump_version
 
-**Current behavior:**
-1. Read `plugins/{name}/plugin.json`
-2. Increment version
-3. Write plugin.json
-4. Update marketplace.json
-
-**New behavior:**
-1. Read marketplace.json
-2. Find plugin entry by name
-3. Increment version in entry
-4. Write marketplace.json
+**Changes:**
+- Now reads version from marketplace.json entry only
+- Removed plugin.json update logic
+- Updated tool description
 
 **Files:**
-- `src/mcp-server.ts` - `bump_version` tool (~line 688)
+- `src/mcp-server.ts` - `bump_version` tool
 
 ### 2.2 Update create_plugin
 
-**Current behavior:**
-- Creates `plugin.json` + `skills/SKILL.md`
-
-**New behavior:**
-- Creates `SKILL.md` at plugin root
-- No plugin.json (version tracked in marketplace.json)
+**Changes:**
+- Creates `SKILL.md` at plugin root (not `skills/SKILL.md`)
+- No longer creates `plugin.json`
+- Updated next steps guidance
 
 **Files:**
-- `src/mcp-server.ts` - `create_plugin` tool (~line 788)
+- `src/mcp-server.ts` - `create_plugin` tool
 
 ### 2.3 Update publish_plugin
 
-**Current behavior:**
-- Adds entry to marketplace.json
-- Validates plugin files exist
-
-**New behavior:**
-- Same, but ensure `version: "1.0.0"` in entry
-- Don't require plugin.json
+**Changes:**
+- Checks for `SKILL.md` at plugin root (official structure)
+- Simplified version handling (always starts at 1.0.0)
+- Removed plugin.json lookup
 
 **Files:**
-- `src/mcp-server.ts` - `publish_plugin` tool (~line 913)
+- `src/mcp-server.ts` - `publish_plugin` tool
+- `src/github-client.ts` - `addToMarketplace` function
 
 ---
 

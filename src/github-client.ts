@@ -605,17 +605,8 @@ export class GitHubClient {
       throw new Error(`Plugin already exists in marketplace: ${plugin.name}`);
     }
 
-    // Try to read version from plugin.json if not provided
-    let version = plugin.version;
-    if (!version) {
-      try {
-        const pluginJsonContent = await this.fetchFile(`plugins/${plugin.name}/plugin.json`);
-        const pluginJson = JSON.parse(pluginJsonContent) as PluginManifest;
-        version = pluginJson.version;
-      } catch {
-        version = "1.0.0";
-      }
-    }
+    // New plugins start at version 1.0.0 (version tracked in marketplace.json)
+    const version = plugin.version || "1.0.0";
 
     // Add the new plugin entry
     const newEntry: PluginEntry = {
