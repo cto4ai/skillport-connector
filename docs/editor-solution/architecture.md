@@ -169,22 +169,14 @@ Is user email in editors list?
 
 ### Editor Tools (requires editor role)
 
-**Current (Phase 1-4):**
-
 | Tool | Description | Status |
 |------|-------------|--------|
-| `update_skill` | Edit SKILL.md content only | Implemented |
-| `bump_version` | Increment version (major/minor/patch) | Implemented |
-| `create_plugin` | Scaffold a new plugin | Implemented |
-| `whoami` | Show user's stable ID for access.json | Implemented |
-
-**Planned (Phase 5):**
-
-| Tool | Description | Status |
-|------|-------------|--------|
-| `save_skill` | Create/update multiple skill files (upsert) | Planned |
-| `publish_plugin` | Add plugin to marketplace.json | Rename from `create_plugin` |
-| `update_skill` | — | Deprecated by `save_skill` |
+| `save_skill` | Create/update multiple skill files (upsert) | ✅ Implemented |
+| `publish_plugin` | Add plugin to marketplace.json | ✅ Implemented |
+| `bump_version` | Increment version (major/minor/patch) | ✅ Implemented |
+| `whoami` | Show user's stable ID for access.json | ✅ Implemented |
+| `create_plugin` | Scaffold a new plugin (legacy) | ✅ Implemented |
+| `update_skill` | Edit SKILL.md only | ⚠️ Deprecated (use `save_skill`) |
 
 ---
 

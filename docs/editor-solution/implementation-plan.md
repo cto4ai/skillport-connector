@@ -17,7 +17,7 @@ Add skill editing capabilities to Skillport Connector using:
 | 2 | Permission-Filtered Tools | ✅ COMPLETE |
 | 3 | Editor Tools (SKILL.md only) | ✅ COMPLETE |
 | 4 | GitHub Client Write Operations | ✅ COMPLETE |
-| 5 | Multi-File Skill Editing | 🔜 NEXT |
+| 5 | Multi-File Skill Editing | ✅ COMPLETE |
 
 **Branch:** `feat/editor-support`
 **Deployed:** Yes (production)
@@ -401,7 +401,7 @@ private async getFileMeta(path: string): Promise<{ sha: string }> {
 
 ---
 
-## Phase 5: Multi-File Skill Editing (NEXT)
+## Phase 5: Multi-File Skill Editing (COMPLETE)
 
 ### Problem
 
@@ -429,11 +429,12 @@ This mirrors Anthropic's skill-creator workflow.
 
 | Tool | Purpose | Status |
 |------|---------|--------|
-| `save_skill` | Create/update skill files (upsert) | **NEW** |
-| `publish_plugin` | Add new plugin to marketplace.json | **RENAME** from `create_plugin` |
-| `bump_version` | Increment version | KEEP |
-| `whoami` | Show user ID | KEEP |
-| `update_skill` | SKILL.md only | **DEPRECATE** |
+| `save_skill` | Create/update skill files (upsert) | ✅ Implemented |
+| `publish_plugin` | Add new plugin to marketplace.json | ✅ Implemented |
+| `bump_version` | Increment version | ✅ Implemented |
+| `whoami` | Show user ID | ✅ Implemented |
+| `update_skill` | SKILL.md only | ⚠️ Deprecated (use `save_skill`) |
+| `create_plugin` | Create plugin scaffold | ✅ Implemented (legacy) |
 
 ### 5.1 `save_skill` - Upsert Tool
 
@@ -495,8 +496,44 @@ publish_plugin({
 
 ---
 
+## Testing Checklist (Phase 5)
+
+- [x] `save_skill` single file update
+- [x] `save_skill` multi-file (create + update mixed)
+- [x] `save_skill` new plugin creation
+- [x] `publish_plugin` adds to marketplace.json
+- [x] `publish_plugin` validates skill files exist first
+- [x] `bump_version` updates plugin.json + marketplace.json
+- [x] Files arrive correctly in GitHub repo
+
+---
+
 ## Rollout History
 
 1. ✅ Phase 1-4 deployed to production
 2. ✅ Tested with single editor (jack@craftycto.com)
-3. 🔜 Phase 5 implementation on separate branch
+3. ✅ Phase 5 implemented and tested (2024-12-28)
+
+---
+
+## Next Steps (V1 Completion)
+
+### Required for V1
+
+- [ ] **Test in Claude.ai**: Verify editor tools work end-to-end in Claude.ai with OAuth
+- [ ] **Test in Claude Desktop**: Verify editor tools work with Desktop MCP connection
+- [ ] **Create Editor Skill**: Build a skill that guides Claude through the editing workflow
+  - Discovers user ID via `whoami`
+  - Fetches existing skill via `fetch_skill`
+  - Guides user through edits
+  - Saves changes via `save_skill`
+  - Bumps version via `bump_version`
+- [ ] **Deploy Phase 5**: Deploy multi-file editing to production
+
+### Future Enhancements (V2+)
+
+- **Delete file tool**: Remove files from skills (currently only upsert)
+- **Batch commits**: Use GitHub Trees API for atomic multi-file commits
+- **Preview mode**: Show diff before committing changes
+- **Rollback**: Revert to previous version of skill files
+- **IdP Group Support**: Replace email lists with group references
