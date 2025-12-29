@@ -21,7 +21,7 @@ Align Skillport Connector with the official Anthropic Plugin Marketplace format.
 
 ---
 
-## Phase 2: Make plugin.json Optional
+## Phase 2: Remove plugin.json Requirement
 
 **Status:** Planning
 
@@ -38,7 +38,6 @@ Align Skillport Connector with the official Anthropic Plugin Marketplace format.
 2. Find plugin entry by name
 3. Increment version in entry
 4. Write marketplace.json
-5. If `plugin.json` exists, update it too (optional)
 
 **Files:**
 - `src/mcp-server.ts` - `bump_version` tool (~line 688)

@@ -158,31 +158,12 @@ The `version` field in plugin entries is part of the official schema:
 
 ---
 
-## Additive Capabilities
+## Migration
 
-These features are **additive** - they work if present but aren't required:
-
-1. **plugin.json** - If present, `bump_version` updates it too
-2. **skillPath field** - If present, use it; otherwise scan for SKILL.md
-3. **Version in plugin entry** - Skillport feature, but valid schema
-
----
-
-## Migration Path
-
-### Existing Skillport Repos
-
-1. Keep working as-is (backward compatible)
-2. Optionally simplify by:
-   - Moving SKILL.md from `skills/SKILL.md` to root
-   - Removing plugin.json (optional)
-   - Removing skillPath field (use skills array instead)
-
-### New Repos
-
-1. Use official structure (SKILL.md at skill root)
-2. Add version to marketplace.json plugin entries
-3. No plugin.json needed
+Existing skills in skillport-template will be updated to use official structure:
+1. Move SKILL.md from `skills/SKILL.md` to skill root
+2. Remove plugin.json files
+3. Update marketplace.json to use official schema
 
 ---
 
