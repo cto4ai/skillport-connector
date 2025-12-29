@@ -63,6 +63,45 @@ export class SkillportMCP extends McpAgent<Env, unknown, UserProps> {
     console.log(`[AUDIT] ${timestamp} user=${email} action=${action}${pluginInfo}`);
   }
 
+  /**
+   * Validate and sanitize a file path to prevent path traversal attacks.
+   * Returns the sanitized path or null if the path is invalid.
+   */
+  private validateFilePath(filePath: string): string | null {
+    // Reject empty paths
+    if (!filePath || filePath.trim() === "") {
+      return null;
+    }
+
+    // Reject absolute paths
+    if (filePath.startsWith("/")) {
+      return null;
+    }
+
+    // Normalize the path by resolving . and .. segments
+    const segments = filePath.split("/");
+    const normalized: string[] = [];
+
+    for (const segment of segments) {
+      if (segment === "" || segment === ".") {
+        // Skip empty segments and current directory references
+        continue;
+      }
+      if (segment === "..") {
+        // Reject any path that tries to go up (path traversal)
+        return null;
+      }
+      normalized.push(segment);
+    }
+
+    // Reject if the path is now empty
+    if (normalized.length === 0) {
+      return null;
+    }
+
+    return normalized.join("/");
+  }
+
   async init() {
     // Tool: list_plugins
     this.server.tool(
@@ -544,10 +583,31 @@ export class SkillportMCP extends McpAgent<Env, unknown, UserProps> {
           const results: Array<{ path: string; created: boolean }> = [];
           const baseMessage = commitMessage || `Update ${name} skill files`;
 
-          // Process each file
+          // Validate all file paths before processing any files
+          const validatedFiles: Array<{ path: string; content: string; sanitizedPath: string }> = [];
           for (const file of files) {
-            const fullPath = `${basePath}/${file.path}`;
-            const fileMessage = `${baseMessage}\n\nFile: ${file.path}\nRequested by: ${this.props.email}`;
+            const sanitizedPath = this.validateFilePath(file.path);
+            if (!sanitizedPath) {
+              return {
+                content: [
+                  {
+                    type: "text" as const,
+                    text: JSON.stringify({
+                      error: "Invalid file path",
+                      message: `Path "${file.path}" is invalid. Paths must be relative and cannot contain ".." segments.`,
+                    }),
+                  },
+                ],
+                isError: true,
+              };
+            }
+            validatedFiles.push({ path: file.path, content: file.content, sanitizedPath });
+          }
+
+          // Process each validated file
+          for (const file of validatedFiles) {
+            const fullPath = `${basePath}/${file.sanitizedPath}`;
+            const fileMessage = `${baseMessage}\n\nFile: ${file.sanitizedPath}\nRequested by: ${this.props.email}`;
 
             const { created } = await writeClient.upsertFile(
               fullPath,
