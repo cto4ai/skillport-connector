@@ -536,7 +536,7 @@ export class SkillportMCP extends McpAgent<Env, unknown, UserProps> {
         files: z
           .array(
             z.object({
-              path: z.string().describe("Relative path within skill directory (e.g., 'SKILL.md', 'templates/pitch.md')"),
+              path: z.string().describe("Relative path within plugin directory (e.g., 'plugin.json', 'skills/SKILL.md', 'skills/templates/pitch.md')"),
               content: z.string().describe("File content"),
             })
           )
@@ -586,21 +586,16 @@ export class SkillportMCP extends McpAgent<Env, unknown, UserProps> {
           const github = this.getGitHubClient();
           const writeClient = this.getWriteGitHubClient();
 
-          // Get plugin info to determine base path
+          // Get plugin info to determine base path (plugin root, not skills subdirectory)
           let basePath: string;
           let isNewPlugin = false;
           try {
             const { entry } = await github.getPlugin(name);
+            // Use plugin root directory (e.g., "plugins/my-skill")
             basePath = entry.source.replace("./", "");
-            // Derive skill directory from skillPath
-            const skillPath = entry.skillPath || "skills/SKILL.md";
-            const skillDir = skillPath.includes("/")
-              ? skillPath.substring(0, skillPath.lastIndexOf("/"))
-              : "";
-            basePath = skillDir ? `${basePath}/${skillDir}` : basePath;
           } catch {
             // Plugin doesn't exist yet, use default path
-            basePath = `plugins/${name}/skills`;
+            basePath = `plugins/${name}`;
             isNewPlugin = true;
           }
 
@@ -660,7 +655,7 @@ export class SkillportMCP extends McpAgent<Env, unknown, UserProps> {
                     summary: `${created} file(s) created, ${updated} file(s) updated`,
                     nextSteps: isNewPlugin
                       ? [
-                          "Create plugin.json if not included",
+                          "Ensure plugin.json was included in files (required for bump_version)",
                           "Use publish_plugin to add to marketplace",
                         ]
                       : ["Use bump_version to release the update"],
