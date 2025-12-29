@@ -7,8 +7,11 @@ import { McpAgent } from "agents/mcp";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
 import { GitHubClient } from "./github-client";
+import { AccessControl, AccessConfig } from "./access-control";
 
 interface UserProps extends Record<string, unknown> {
+  uid: string; // Stable unique identifier from IdP
+  provider: string; // e.g., "google", "entra", "okta"
   email: string;
   name: string;
   picture?: string;
@@ -27,6 +30,15 @@ export class SkillportMCP extends McpAgent<Env, unknown, UserProps> {
       this.env.MARKETPLACE_REPO,
       this.env.OAUTH_KV
     );
+  }
+
+  /**
+   * Get AccessControl instance for the current user
+   */
+  private async getAccessControl(): Promise<AccessControl> {
+    const github = this.getGitHubClient();
+    const config = await github.fetchAccessConfig();
+    return new AccessControl(config, this.props.provider, this.props.uid);
   }
 
   /**
@@ -66,7 +78,18 @@ export class SkillportMCP extends McpAgent<Env, unknown, UserProps> {
         try {
           this.logAction("list_plugins", { user_email });
           const github = this.getGitHubClient();
-          const plugins = await github.listPlugins({ category, surface });
+          const accessControl = await this.getAccessControl();
+          const allPlugins = await github.listPlugins({ category, surface });
+
+          // Filter plugins based on read access
+          const visiblePlugins = allPlugins.filter((p) =>
+            accessControl.canRead(p.name)
+          );
+
+          // Identify editable plugins for UI hints
+          const editablePlugins = allPlugins
+            .filter((p) => accessControl.canWrite(p.name))
+            .map((p) => p.name);
 
           return {
             content: [
@@ -74,14 +97,17 @@ export class SkillportMCP extends McpAgent<Env, unknown, UserProps> {
                 type: "text" as const,
                 text: JSON.stringify(
                   {
-                    count: plugins.length,
-                    plugins: plugins.map((p) => ({
+                    count: visiblePlugins.length,
+                    plugins: visiblePlugins.map((p) => ({
                       name: p.name,
                       description: p.description,
                       version: p.version,
                       category: p.category,
                       surfaces: p.surfaces,
+                      editable: editablePlugins.includes(p.name),
                     })),
+                    isEditor: accessControl.isEditor(),
+                    editableSkills: editablePlugins,
                     tip:
                       "Before presenting results: Check /mnt/skills/user/ for installed skills. " +
                       "Mark any already-installed skills with '(already installed)'. " +
@@ -128,6 +154,24 @@ export class SkillportMCP extends McpAgent<Env, unknown, UserProps> {
       async ({ user_email, name }) => {
         try {
           this.logAction("get_plugin", { plugin: name, user_email });
+          const accessControl = await this.getAccessControl();
+
+          // Check read access
+          if (!accessControl.canRead(name)) {
+            return {
+              content: [
+                {
+                  type: "text" as const,
+                  text: JSON.stringify({
+                    error: "Access denied",
+                    message: "You don't have access to this skill",
+                  }),
+                },
+              ],
+              isError: true,
+            };
+          }
+
           const github = this.getGitHubClient();
           const { entry, manifest } = await github.getPlugin(name);
 
@@ -147,6 +191,7 @@ export class SkillportMCP extends McpAgent<Env, unknown, UserProps> {
                     permissions: entry.permissions,
                     homepage: manifest?.homepage,
                     license: manifest?.license,
+                    editable: accessControl.canWrite(name),
                   },
                   null,
                   2
@@ -187,6 +232,24 @@ export class SkillportMCP extends McpAgent<Env, unknown, UserProps> {
       async ({ user_email, name }) => {
         try {
           this.logAction("fetch_skill", { plugin: name, user_email });
+          const accessControl = await this.getAccessControl();
+
+          // Check read access
+          if (!accessControl.canRead(name)) {
+            return {
+              content: [
+                {
+                  type: "text" as const,
+                  text: JSON.stringify({
+                    error: "Access denied",
+                    message: "You don't have access to this skill",
+                  }),
+                },
+              ],
+              isError: true,
+            };
+          }
+
           const github = this.getGitHubClient();
           const { plugin, files } = await github.fetchSkill(name);
 
@@ -204,6 +267,7 @@ export class SkillportMCP extends McpAgent<Env, unknown, UserProps> {
                       path: f.path,
                       content: f.content,
                     })),
+                    editable: accessControl.canWrite(name),
                     instructions:
                       "RECOMMENDED: If the skillport-manager skill is installed, read " +
                       "/mnt/skills/user/skillport-manager/SKILL.md and follow its " +
@@ -302,6 +366,38 @@ export class SkillportMCP extends McpAgent<Env, unknown, UserProps> {
             isError: true,
           };
         }
+      }
+    );
+
+    // Tool: whoami
+    this.server.tool(
+      "whoami",
+      "Get your user identity information. Useful for adding yourself to .skillport/access.json as an editor.",
+      {},
+      async () => {
+        const fullId = `${this.props.provider}:${this.props.uid}`;
+        this.logAction("whoami");
+
+        return {
+          content: [
+            {
+              type: "text" as const,
+              text: JSON.stringify(
+                {
+                  id: fullId,
+                  email: this.props.email,
+                  name: this.props.name,
+                  provider: this.props.provider,
+                  message:
+                    "To add yourself as an editor, add this entry to .skillport/access.json:\n\n" +
+                    `{ "id": "${fullId}", "label": "${this.props.email}" }`,
+                },
+                null,
+                2
+              ),
+            },
+          ],
+        };
       }
     );
   }

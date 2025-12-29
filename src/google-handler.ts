@@ -200,7 +200,9 @@ app.get("/callback", async (c) => {
     },
     scope: oauthReqInfo.scope,
     props: {
-      email: user.email,
+      uid: user.id, // Stable unique identifier from IdP
+      provider: "google", // For constructing full id
+      email: user.email, // For display only
       name: user.name,
       picture: user.picture,
       domain: user.hd,

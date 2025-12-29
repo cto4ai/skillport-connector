@@ -3,6 +3,8 @@
  * Fetches Plugin Marketplace data from configured repository
  */
 
+import { AccessConfig, DEFAULT_ACCESS_CONFIG } from "./access-control";
+
 export interface Marketplace {
   name: string;
   owner: { name: string; email: string };
@@ -248,6 +250,26 @@ export class GitHubClient {
     });
 
     return data;
+  }
+
+  /**
+   * Fetch access control configuration from .skillport/access.json
+   * Returns default config (everyone reads, no one writes) if file doesn't exist
+   */
+  async fetchAccessConfig(): Promise<AccessConfig> {
+    return this.fetchWithCache(
+      `access-config:${this.repo}`,
+      300, // 5 minutes
+      async () => {
+        try {
+          const content = await this.fetchFile(".skillport/access.json");
+          return JSON.parse(content) as AccessConfig;
+        } catch {
+          // No access.json = everyone can read, no one can write
+          return DEFAULT_ACCESS_CONFIG;
+        }
+      }
+    );
   }
 
   /**
