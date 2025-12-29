@@ -434,6 +434,24 @@ export class GitHubClient {
     }
   }
 
+  /**
+   * Check if a file exists at the given path
+   */
+  async fileExists(path: string): Promise<boolean> {
+    const response = await fetch(
+      `${GITHUB_API}/repos/${this.repo}/contents/${path}`,
+      {
+        method: "HEAD",
+        headers: {
+          Authorization: `Bearer ${this.token}`,
+          Accept: "application/vnd.github.v3+json",
+          "User-Agent": "Skillport-Connector/1.0",
+        },
+      }
+    );
+    return response.ok;
+  }
+
   // ============================================================
   // Write Operations (require GITHUB_WRITE_TOKEN)
   // ============================================================
@@ -519,6 +537,110 @@ export class GitHubClient {
       const errorText = await response.text();
       throw new Error(`Failed to create file: ${response.status} - ${errorText}`);
     }
+  }
+
+  /**
+   * Upsert a file (create if doesn't exist, update if exists)
+   * Returns whether the file was created (true) or updated (false)
+   */
+  async upsertFile(path: string, content: string, message: string): Promise<{ created: boolean }> {
+    let sha: string | undefined;
+
+    // Try to get existing file SHA
+    try {
+      const meta = await this.getFileMeta(path);
+      sha = meta.sha;
+    } catch (error) {
+      // File doesn't exist, will create
+      if (!(error instanceof Error && error.message.includes("File not found"))) {
+        throw error;
+      }
+    }
+
+    const response = await fetch(
+      `${GITHUB_API}/repos/${this.repo}/contents/${path}`,
+      {
+        method: "PUT",
+        headers: {
+          Authorization: `Bearer ${this.token}`,
+          Accept: "application/vnd.github.v3+json",
+          "User-Agent": "Skillport-Connector/1.0",
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          message,
+          content: btoa(unescape(encodeURIComponent(content))), // Handle UTF-8
+          ...(sha ? { sha } : {}),
+        }),
+      }
+    );
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      throw new Error(`Failed to upsert file: ${response.status} - ${errorText}`);
+    }
+
+    return { created: !sha };
+  }
+
+  /**
+   * Add a new plugin to marketplace.json
+   */
+  async addToMarketplace(
+    plugin: {
+      name: string;
+      description: string;
+      version?: string;
+      category?: string;
+      surfaces?: string[];
+    },
+    userEmail?: string
+  ): Promise<void> {
+    const marketplacePath = ".claude-plugin/marketplace.json";
+    const content = await this.fetchFile(marketplacePath);
+    const marketplace = JSON.parse(content) as Marketplace;
+
+    // Check if plugin already exists
+    if (marketplace.plugins.some((p) => p.name === plugin.name)) {
+      throw new Error(`Plugin already exists in marketplace: ${plugin.name}`);
+    }
+
+    // Try to read version from plugin.json if not provided
+    let version = plugin.version;
+    if (!version) {
+      try {
+        const pluginJsonContent = await this.fetchFile(`plugins/${plugin.name}/plugin.json`);
+        const pluginJson = JSON.parse(pluginJsonContent) as PluginManifest;
+        version = pluginJson.version;
+      } catch {
+        version = "1.0.0";
+      }
+    }
+
+    // Add the new plugin entry
+    const newEntry: PluginEntry = {
+      name: plugin.name,
+      source: `./plugins/${plugin.name}`,
+      description: plugin.description,
+      version,
+      ...(plugin.category ? { category: plugin.category } : {}),
+      ...(plugin.surfaces ? { surfaces: plugin.surfaces } : {}),
+    };
+
+    marketplace.plugins.push(newEntry);
+
+    const commitMessage = userEmail
+      ? `Add ${plugin.name} to marketplace\n\nRequested by: ${userEmail}`
+      : `Add ${plugin.name} to marketplace`;
+
+    await this.updateFile(
+      marketplacePath,
+      JSON.stringify(marketplace, null, 2),
+      commitMessage
+    );
+
+    // Clear marketplace cache
+    await this.clearCache();
   }
 
   /**

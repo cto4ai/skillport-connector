@@ -63,6 +63,53 @@ export class SkillportMCP extends McpAgent<Env, unknown, UserProps> {
     console.log(`[AUDIT] ${timestamp} user=${email} action=${action}${pluginInfo}`);
   }
 
+  /**
+   * Validate plugin name to prevent path injection.
+   * Plugin names must be lowercase alphanumeric with hyphens only.
+   */
+  private validatePluginName(name: string): boolean {
+    return /^[a-z0-9-]+$/.test(name);
+  }
+
+  /**
+   * Validate and sanitize a file path to prevent path traversal attacks.
+   * Returns the sanitized path or null if the path is invalid.
+   */
+  private validateFilePath(filePath: string): string | null {
+    // Reject empty paths
+    if (!filePath || filePath.trim() === "") {
+      return null;
+    }
+
+    // Reject absolute paths
+    if (filePath.startsWith("/")) {
+      return null;
+    }
+
+    // Normalize the path by resolving . and .. segments
+    const segments = filePath.split("/");
+    const normalized: string[] = [];
+
+    for (const segment of segments) {
+      if (segment === "" || segment === ".") {
+        // Skip empty segments and current directory references
+        continue;
+      }
+      if (segment === "..") {
+        // Reject any path that tries to go up (path traversal)
+        return null;
+      }
+      normalized.push(segment);
+    }
+
+    // Reject if the path is now empty
+    if (normalized.length === 0) {
+      return null;
+    }
+
+    return normalized.join("/");
+  }
+
   async init() {
     // Tool: list_plugins
     this.server.tool(
@@ -396,10 +443,10 @@ export class SkillportMCP extends McpAgent<Env, unknown, UserProps> {
     // Editor Tools (require write access)
     // ============================================================
 
-    // Tool: update_skill
+    // Tool: update_skill (DEPRECATED - use save_skill instead)
     this.server.tool(
       "update_skill",
-      "Update the SKILL.md content for a plugin. Requires write access to the skill.",
+      "[DEPRECATED: Use save_skill instead] Update the SKILL.md content for a plugin. Requires write access to the skill.",
       {
         name: z.string().describe("Plugin name"),
         content: z.string().describe("New SKILL.md content"),
@@ -468,6 +515,169 @@ export class SkillportMCP extends McpAgent<Env, unknown, UserProps> {
                 type: "text" as const,
                 text: JSON.stringify({
                   error: "Failed to update skill",
+                  message:
+                    error instanceof Error ? error.message : String(error),
+                }),
+              },
+            ],
+            isError: true,
+          };
+        }
+      }
+    );
+
+    // Tool: save_skill (upsert multiple files)
+    this.server.tool(
+      "save_skill",
+      "Create or update skill files for a plugin. Handles multiple files in one call. " +
+        "Use this for multi-file skills or when creating a new skill from scratch.",
+      {
+        name: z.string().describe("Plugin name"),
+        files: z
+          .array(
+            z.object({
+              path: z.string().describe("Relative path within skill directory (e.g., 'SKILL.md', 'templates/pitch.md')"),
+              content: z.string().describe("File content"),
+            })
+          )
+          .describe("Array of files to create/update"),
+        commitMessage: z
+          .string()
+          .optional()
+          .describe("Custom commit message (optional)"),
+      },
+      async ({ name, files, commitMessage }) => {
+        try {
+          // Validate plugin name to prevent path injection
+          if (!this.validatePluginName(name)) {
+            return {
+              content: [
+                {
+                  type: "text" as const,
+                  text: JSON.stringify({
+                    error: "Invalid plugin name",
+                    message: "Plugin name must be lowercase alphanumeric with hyphens only (e.g., 'my-skill')",
+                  }),
+                },
+              ],
+              isError: true,
+            };
+          }
+
+          const accessControl = await this.getAccessControl();
+
+          if (!accessControl.canWrite(name)) {
+            return {
+              content: [
+                {
+                  type: "text" as const,
+                  text: JSON.stringify({
+                    error: "Access denied",
+                    message: "You don't have write access to this skill",
+                  }),
+                },
+              ],
+              isError: true,
+            };
+          }
+
+          this.logAction("save_skill", { plugin: name });
+
+          const github = this.getGitHubClient();
+          const writeClient = this.getWriteGitHubClient();
+
+          // Get plugin info to determine base path
+          let basePath: string;
+          let isNewPlugin = false;
+          try {
+            const { entry } = await github.getPlugin(name);
+            basePath = entry.source.replace("./", "");
+            // Derive skill directory from skillPath
+            const skillPath = entry.skillPath || "skills/SKILL.md";
+            const skillDir = skillPath.includes("/")
+              ? skillPath.substring(0, skillPath.lastIndexOf("/"))
+              : "";
+            basePath = skillDir ? `${basePath}/${skillDir}` : basePath;
+          } catch {
+            // Plugin doesn't exist yet, use default path
+            basePath = `plugins/${name}/skills`;
+            isNewPlugin = true;
+          }
+
+          const results: Array<{ path: string; created: boolean }> = [];
+          const baseMessage = commitMessage || `Update ${name} skill files`;
+
+          // Validate all file paths before processing any files
+          const validatedFiles: Array<{ path: string; content: string; sanitizedPath: string }> = [];
+          for (const file of files) {
+            const sanitizedPath = this.validateFilePath(file.path);
+            if (!sanitizedPath) {
+              return {
+                content: [
+                  {
+                    type: "text" as const,
+                    text: JSON.stringify({
+                      error: "Invalid file path",
+                      message: `Path "${file.path}" is invalid. Paths must be relative and cannot contain ".." segments.`,
+                    }),
+                  },
+                ],
+                isError: true,
+              };
+            }
+            validatedFiles.push({ path: file.path, content: file.content, sanitizedPath });
+          }
+
+          // Process each validated file
+          for (const file of validatedFiles) {
+            const fullPath = `${basePath}/${file.sanitizedPath}`;
+            const fileMessage = `${baseMessage}\n\nFile: ${file.sanitizedPath}\nRequested by: ${this.props.email}`;
+
+            const { created } = await writeClient.upsertFile(
+              fullPath,
+              file.content,
+              fileMessage
+            );
+            results.push({ path: fullPath, created });
+          }
+
+          // Clear cache for this plugin
+          await github.clearCache(name);
+
+          const created = results.filter((r) => r.created).length;
+          const updated = results.filter((r) => !r.created).length;
+
+          return {
+            content: [
+              {
+                type: "text" as const,
+                text: JSON.stringify(
+                  {
+                    success: true,
+                    plugin: name,
+                    isNewPlugin,
+                    files: results,
+                    summary: `${created} file(s) created, ${updated} file(s) updated`,
+                    nextSteps: isNewPlugin
+                      ? [
+                          "Create plugin.json if not included",
+                          "Use publish_plugin to add to marketplace",
+                        ]
+                      : ["Use bump_version to release the update"],
+                  },
+                  null,
+                  2
+                ),
+              },
+            ],
+          };
+        } catch (error) {
+          return {
+            content: [
+              {
+                type: "text" as const,
+                text: JSON.stringify({
+                  error: "Failed to save skill files",
                   message:
                     error instanceof Error ? error.message : String(error),
                 }),
@@ -693,6 +903,118 @@ description: ${description}
                 type: "text" as const,
                 text: JSON.stringify({
                   error: "Failed to create plugin",
+                  message:
+                    error instanceof Error ? error.message : String(error),
+                }),
+              },
+            ],
+            isError: true,
+          };
+        }
+      }
+    );
+
+    // Tool: publish_plugin
+    this.server.tool(
+      "publish_plugin",
+      "Add a plugin to the marketplace (makes it discoverable). " +
+        "Use after save_skill to make the plugin publicly available.",
+      {
+        name: z
+          .string()
+          .regex(/^[a-z0-9-]+$/, "Plugin name must be lowercase alphanumeric with hyphens")
+          .describe("Plugin name"),
+        description: z.string().describe("Short description for marketplace listing"),
+        category: z
+          .string()
+          .optional()
+          .describe("Plugin category (e.g., 'productivity', 'development')"),
+        surfaces: z
+          .array(z.string())
+          .optional()
+          .describe("Target surfaces (e.g., ['claude-ai', 'claude-desktop', 'claude-code'])"),
+      },
+      async ({ name, description, category, surfaces }) => {
+        try {
+          const accessControl = await this.getAccessControl();
+
+          // Only global editors can publish plugins
+          if (!accessControl.isEditor()) {
+            return {
+              content: [
+                {
+                  type: "text" as const,
+                  text: JSON.stringify({
+                    error: "Access denied",
+                    message: "Only editors can publish plugins to the marketplace",
+                  }),
+                },
+              ],
+              isError: true,
+            };
+          }
+
+          this.logAction("publish_plugin", { plugin: name });
+
+          const writeClient = this.getWriteGitHubClient();
+
+          // Verify plugin files exist
+          const github = this.getGitHubClient();
+          const skillExists = await github.fileExists(`plugins/${name}/skills/SKILL.md`);
+          if (!skillExists) {
+            return {
+              content: [
+                {
+                  type: "text" as const,
+                  text: JSON.stringify({
+                    error: "Plugin files not found",
+                    message: `No skill files found at plugins/${name}/skills/SKILL.md. Use save_skill first to create the skill files.`,
+                  }),
+                },
+              ],
+              isError: true,
+            };
+          }
+
+          // Add to marketplace
+          await writeClient.addToMarketplace(
+            {
+              name,
+              description,
+              category,
+              surfaces,
+            },
+            this.props.email
+          );
+
+          return {
+            content: [
+              {
+                type: "text" as const,
+                text: JSON.stringify(
+                  {
+                    success: true,
+                    name,
+                    message: `Successfully published ${name} to the marketplace`,
+                    nextSteps: [
+                      "Plugin is now visible in list_plugins",
+                      "Users can install it via fetch_skill",
+                      "Use bump_version to release updates",
+                    ],
+                  },
+                  null,
+                  2
+                ),
+              },
+            ],
+          };
+        } catch (error) {
+          return {
+            content: [
+              {
+                type: "text" as const,
+                text: JSON.stringify({
+                  error: "Failed to publish plugin",
                   message:
                     error instanceof Error ? error.message : String(error),
                 }),
