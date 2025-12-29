@@ -4,12 +4,27 @@
 
 Add skill editing capabilities to Skillport Connector using:
 - Existing IdP OAuth (Google now, Entra/Okta later)
-- `.skillport/access.json` for email-based access control
+- `.skillport/access.json` for ID-based access control
 - Two GitHub PATs (read + write) for defense in depth
 
 ---
 
-## Phase 1: Access Control Foundation
+## Implementation Status
+
+| Phase | Description | Status |
+|-------|-------------|--------|
+| 1 | Access Control Foundation | ✅ COMPLETE |
+| 2 | Permission-Filtered Tools | ✅ COMPLETE |
+| 3 | Editor Tools (SKILL.md only) | ✅ COMPLETE |
+| 4 | GitHub Client Write Operations | ✅ COMPLETE |
+| 5 | Multi-File Skill Editing | 🔜 NEXT |
+
+**Branch:** `feat/editor-support`
+**Deployed:** Yes (production)
+
+---
+
+## Phase 1: Access Control Foundation (COMPLETE)
 
 ### 1.1 Add WRITE PAT Secret
 
@@ -131,7 +146,7 @@ async fetchAccessConfig(): Promise<AccessConfig | null> {
 
 ---
 
-## Phase 2: Permission-Filtered Tools
+## Phase 2: Permission-Filtered Tools (COMPLETE)
 
 ### 2.1 Update list_plugins
 
@@ -170,7 +185,7 @@ return {
 
 ---
 
-## Phase 3: Editor Tools
+## Phase 3: Editor Tools (COMPLETE)
 
 ### 3.1 PAT Selection Logic
 
@@ -318,7 +333,7 @@ description: ${description}
 
 ---
 
-## Phase 4: GitHub Client Write Operations
+## Phase 4: GitHub Client Write Operations (COMPLETE)
 
 ### 4.1 Add Write Methods to GitHubClient
 
@@ -374,21 +389,114 @@ private async getFileMeta(path: string): Promise<{ sha: string }> {
 
 ---
 
-## Testing Checklist
+## Testing Checklist (Phase 1-4)
 
-- [ ] Non-editor cannot see restricted skills
-- [ ] Non-editor gets "Access denied" on write tools
-- [ ] Editor can update SKILL.md
-- [ ] Editor can bump version (updates both files)
-- [ ] Editor can create new plugin
-- [ ] Commits include user email in message
-- [ ] Missing access.json defaults to read-only
+- [x] Non-editor cannot see restricted skills
+- [x] Non-editor gets "Access denied" on write tools
+- [x] Editor can update SKILL.md
+- [x] Editor can bump version (updates both files)
+- [x] Editor can create new plugin
+- [x] Commits include user email in message
+- [x] Missing access.json defaults to read-only
 
 ---
 
-## Rollout
+## Phase 5: Multi-File Skill Editing (NEXT)
 
-1. Deploy with editor tools disabled (feature flag)
-2. Test with single editor email
-3. Enable for broader editor list
-4. Document for customers
+### Problem
+
+Skills can be directories with multiple files:
+```
+plugins/my-skill/skills/
+├── SKILL.md
+├── templates/response-template.md
+├── examples/example1.json
+└── config.yaml
+```
+
+Current `update_skill` only handles SKILL.md.
+
+### Design Decision: Claude-as-Assembler
+
+Editors use Claude.ai/Desktop. Claude:
+1. Reads current skill files via `fetch_skill`
+2. Makes edits in context
+3. Calls editor tool with all modified files
+
+This mirrors Anthropic's skill-creator workflow.
+
+### Tool Changes
+
+| Tool | Purpose | Status |
+|------|---------|--------|
+| `save_skill` | Create/update skill files (upsert) | **NEW** |
+| `publish_plugin` | Add new plugin to marketplace.json | **RENAME** from `create_plugin` |
+| `bump_version` | Increment version | KEEP |
+| `whoami` | Show user ID | KEEP |
+| `update_skill` | SKILL.md only | **DEPRECATE** |
+
+### 5.1 `save_skill` - Upsert Tool
+
+```typescript
+save_skill({
+  name: "sales-pitch",
+  files: [
+    { path: "SKILL.md", content: "..." },
+    { path: "templates/pitch.md", content: "..." },
+    { path: "examples/demo.json", content: "..." }
+  ],
+  commitMessage: "Add new pitch template"  // optional
+})
+```
+
+**Behavior:**
+- For each file: check if exists → update (with SHA) or create (no SHA)
+- Handles mixed scenarios (some files exist, some new)
+- One commit per file (GitHub Contents API limitation, acceptable)
+- Clears cache after all files written
+
+**Why upsert:**
+- One tool for Claude to learn
+- Works for both new skills and updates
+- Mirrors how Claude thinks: "here are the files, save them"
+
+### 5.2 `publish_plugin` - Marketplace Entry
+
+```typescript
+publish_plugin({
+  name: "new-skill",
+  description: "Short description",
+  category: "productivity",  // optional
+  surfaces: ["claude-ai", "claude-desktop"]  // optional
+})
+```
+
+**Behavior:**
+- Adds entry to `.claude-plugin/marketplace.json`
+- Requires plugin files to already exist (via `save_skill`)
+- Reads version from `plugin.json` if present
+
+**Why separate from `save_skill`:**
+- Separates "save files" from "publish to marketplace"
+- Allows draft skills (saved but not published)
+- Mirrors git workflow: commit (save) vs release (publish)
+
+### Workflows
+
+**Create New Skill:**
+1. `save_skill({ name, files })` - creates all files including plugin.json
+2. `publish_plugin({ name, description })` - adds to marketplace.json
+
+**Update Existing Skill:**
+1. `fetch_skill({ name })` - get current files
+2. Claude edits files in context
+3. `save_skill({ name, files })` - update changed files
+4. `bump_version({ name, type })` - optional
+
+---
+
+## Rollout History
+
+1. ✅ Phase 1-4 deployed to production
+2. ✅ Tested with single editor (jack@craftycto.com)
+3. 🔜 Phase 5 implementation on separate branch

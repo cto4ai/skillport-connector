@@ -433,4 +433,120 @@ export class GitHubClient {
       await this.kv.delete(`marketplace:${this.repo}`);
     }
   }
+
+  // ============================================================
+  // Write Operations (require GITHUB_WRITE_TOKEN)
+  // ============================================================
+
+  /**
+   * Get file metadata including SHA (needed for updates)
+   */
+  private async getFileMeta(path: string): Promise<{ sha: string; content?: string }> {
+    const response = await fetch(
+      `${GITHUB_API}/repos/${this.repo}/contents/${path}`,
+      {
+        headers: {
+          Authorization: `Bearer ${this.token}`,
+          Accept: "application/vnd.github.v3+json",
+          "User-Agent": "Skillport-Connector/1.0",
+        },
+      }
+    );
+
+    if (!response.ok) {
+      if (response.status === 404) {
+        throw new Error(`File not found: ${path}`);
+      }
+      throw new Error(`GitHub API error: ${response.status}`);
+    }
+
+    const data = (await response.json()) as { sha: string; content?: string };
+    return { sha: data.sha, content: data.content };
+  }
+
+  /**
+   * Update an existing file in the repository
+   */
+  async updateFile(path: string, content: string, message: string): Promise<void> {
+    const { sha } = await this.getFileMeta(path);
+
+    const response = await fetch(
+      `${GITHUB_API}/repos/${this.repo}/contents/${path}`,
+      {
+        method: "PUT",
+        headers: {
+          Authorization: `Bearer ${this.token}`,
+          Accept: "application/vnd.github.v3+json",
+          "User-Agent": "Skillport-Connector/1.0",
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          message,
+          content: btoa(unescape(encodeURIComponent(content))), // Handle UTF-8
+          sha,
+        }),
+      }
+    );
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      throw new Error(`Failed to update file: ${response.status} - ${errorText}`);
+    }
+  }
+
+  /**
+   * Create a new file in the repository
+   */
+  async createFile(path: string, content: string, message: string): Promise<void> {
+    const response = await fetch(
+      `${GITHUB_API}/repos/${this.repo}/contents/${path}`,
+      {
+        method: "PUT",
+        headers: {
+          Authorization: `Bearer ${this.token}`,
+          Accept: "application/vnd.github.v3+json",
+          "User-Agent": "Skillport-Connector/1.0",
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          message,
+          content: btoa(unescape(encodeURIComponent(content))), // Handle UTF-8
+        }),
+      }
+    );
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      throw new Error(`Failed to create file: ${response.status} - ${errorText}`);
+    }
+  }
+
+  /**
+   * Update marketplace.json with new plugin version
+   */
+  async updateMarketplaceVersion(pluginName: string, newVersion: string, userEmail?: string): Promise<void> {
+    const marketplacePath = ".claude-plugin/marketplace.json";
+    const content = await this.fetchFile(marketplacePath);
+    const marketplace = JSON.parse(content) as Marketplace;
+
+    const plugin = marketplace.plugins.find((p) => p.name === pluginName);
+    if (!plugin) {
+      throw new Error(`Plugin not found in marketplace: ${pluginName}`);
+    }
+
+    plugin.version = newVersion;
+
+    const commitMessage = userEmail
+      ? `Bump ${pluginName} version to ${newVersion}\n\nRequested by: ${userEmail}`
+      : `Bump ${pluginName} version to ${newVersion}`;
+
+    await this.updateFile(
+      marketplacePath,
+      JSON.stringify(marketplace, null, 2),
+      commitMessage
+    );
+
+    // Clear marketplace cache so new version is visible immediately
+    await this.clearCache();
+  }
 }

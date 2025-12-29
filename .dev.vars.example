@@ -2,10 +2,15 @@
 GOOGLE_CLIENT_ID=your-client-id.apps.googleusercontent.com
 GOOGLE_CLIENT_SECRET=your-client-secret
 
-# GitHub Personal Access Token (for API access to marketplace repo)
+# GitHub Personal Access Token for READ operations
 # Create at: https://github.com/settings/tokens
 # Scopes needed: repo (for private) or public_repo (for public)
-GITHUB_SERVICE_TOKEN=ghp_your_token_here
+GITHUB_SERVICE_TOKEN=ghp_your_read_token_here
+
+# GitHub Personal Access Token for WRITE operations (optional)
+# Only needed if you want to use editor tools (update_skill, bump_version, create_plugin)
+# Scopes needed: repo (or contents:write for fine-grained tokens)
+GITHUB_WRITE_TOKEN=ghp_your_write_token_here
 
 # Session encryption key (generate 32+ random characters)
 # Example: openssl rand -hex 32
