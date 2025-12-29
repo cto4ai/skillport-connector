@@ -89,11 +89,14 @@ Commit: feat: Migrate to official Anthropic marketplace structure
 
 ## Next Steps (When Resuming)
 
-1. Wait for Codex review on template PR #7
-2. Merge template PR after approval
-3. Create and merge connector PR
-4. Deploy connector: `node node_modules/wrangler/bin/wrangler.js deploy`
-5. Test end-to-end with new structure
+1. Merge template PR #7 (after Codex review)
+2. Test connector locally against migrated template
+3. Create connector PR for `feat/marketplace-compliance` branch
+4. Merge connector PR after review
+5. Deploy connector: `node node_modules/wrangler/bin/wrangler.js deploy`
+6. Test end-to-end with new structure
+
+**Note:** PR #10 (save_skill scope expansion) was already merged to main. The marketplace-compliance changes (Phases 1-3) are still on `feat/marketplace-compliance` branch with 5 commits pending.
 
 ---
 
