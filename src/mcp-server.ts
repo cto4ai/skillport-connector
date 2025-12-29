@@ -7,8 +7,11 @@ import { McpAgent } from "agents/mcp";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
 import { GitHubClient } from "./github-client";
+import { AccessControl, AccessConfig } from "./access-control";
 
 interface UserProps extends Record<string, unknown> {
+  uid: string; // Stable unique identifier from IdP
+  provider: string; // e.g., "google", "entra", "okta"
   email: string;
   name: string;
   picture?: string;
@@ -21,6 +24,9 @@ export class SkillportMCP extends McpAgent<Env, unknown, UserProps> {
     version: "1.0.0",
   });
 
+  /**
+   * Get GitHub client for read operations (uses read-only token)
+   */
   private getGitHubClient(): GitHubClient {
     return new GitHubClient(
       this.env.GITHUB_SERVICE_TOKEN,
@@ -30,11 +36,28 @@ export class SkillportMCP extends McpAgent<Env, unknown, UserProps> {
   }
 
   /**
-   * Log user action for audit trail
-   * Priority: OAuth session email > user_email param (authless) > "unknown"
+   * Get GitHub client for write operations (uses write token if available)
+   * Falls back to read token if write token not configured
    */
-  private logAction(action: string, opts?: { plugin?: string; user_email?: string }): void {
-    const email = this.props?.email || opts?.user_email || "unknown";
+  private getWriteGitHubClient(): GitHubClient {
+    const token = this.env.GITHUB_WRITE_TOKEN || this.env.GITHUB_SERVICE_TOKEN;
+    return new GitHubClient(token, this.env.MARKETPLACE_REPO, this.env.OAUTH_KV);
+  }
+
+  /**
+   * Get AccessControl instance for the current user
+   */
+  private async getAccessControl(): Promise<AccessControl> {
+    const github = this.getGitHubClient();
+    const config = await github.fetchAccessConfig();
+    return new AccessControl(config, this.props.provider, this.props.uid);
+  }
+
+  /**
+   * Log user action for audit trail
+   */
+  private logAction(action: string, opts?: { plugin?: string }): void {
+    const email = this.props?.email || "unknown";
     const timestamp = new Date().toISOString();
     const pluginInfo = opts?.plugin ? ` plugin=${opts.plugin}` : "";
     console.log(`[AUDIT] ${timestamp} user=${email} action=${action}${pluginInfo}`);
@@ -46,11 +69,6 @@ export class SkillportMCP extends McpAgent<Env, unknown, UserProps> {
       "list_plugins",
       "List all plugins available in the marketplace. Optionally filter by category or target surface.",
       {
-        user_email: z
-          .string()
-          .email()
-          .optional()
-          .describe("User email for audit logging (provided by Skillport Skill)"),
         category: z
           .string()
           .optional()
@@ -62,11 +80,22 @@ export class SkillportMCP extends McpAgent<Env, unknown, UserProps> {
             "Filter by surface: 'claude-code', 'claude-desktop', or 'claude-ai'"
           ),
       },
-      async ({ user_email, category, surface }) => {
+      async ({ category, surface }) => {
         try {
-          this.logAction("list_plugins", { user_email });
+          this.logAction("list_plugins");
           const github = this.getGitHubClient();
-          const plugins = await github.listPlugins({ category, surface });
+          const accessControl = await this.getAccessControl();
+          const allPlugins = await github.listPlugins({ category, surface });
+
+          // Filter plugins based on read access
+          const visiblePlugins = allPlugins.filter((p) =>
+            accessControl.canRead(p.name)
+          );
+
+          // Identify editable plugins for UI hints
+          const editablePlugins = allPlugins
+            .filter((p) => accessControl.canWrite(p.name))
+            .map((p) => p.name);
 
           return {
             content: [
@@ -74,14 +103,17 @@ export class SkillportMCP extends McpAgent<Env, unknown, UserProps> {
                 type: "text" as const,
                 text: JSON.stringify(
                   {
-                    count: plugins.length,
-                    plugins: plugins.map((p) => ({
+                    count: visiblePlugins.length,
+                    plugins: visiblePlugins.map((p) => ({
                       name: p.name,
                       description: p.description,
                       version: p.version,
                       category: p.category,
                       surfaces: p.surfaces,
+                      editable: editablePlugins.includes(p.name),
                     })),
+                    isEditor: accessControl.isEditor(),
+                    editableSkills: editablePlugins,
                     tip:
                       "Before presenting results: Check /mnt/skills/user/ for installed skills. " +
                       "Mark any already-installed skills with '(already installed)'. " +
@@ -118,16 +150,29 @@ export class SkillportMCP extends McpAgent<Env, unknown, UserProps> {
       "get_plugin",
       "Get detailed information about a specific plugin including its manifest and metadata.",
       {
-        user_email: z
-          .string()
-          .email()
-          .optional()
-          .describe("User email for audit logging (provided by Skillport Skill)"),
         name: z.string().describe("Plugin name (e.g., 'sales-pitch')"),
       },
-      async ({ user_email, name }) => {
+      async ({ name }) => {
         try {
-          this.logAction("get_plugin", { plugin: name, user_email });
+          this.logAction("get_plugin", { plugin: name });
+          const accessControl = await this.getAccessControl();
+
+          // Check read access
+          if (!accessControl.canRead(name)) {
+            return {
+              content: [
+                {
+                  type: "text" as const,
+                  text: JSON.stringify({
+                    error: "Access denied",
+                    message: "You don't have access to this skill",
+                  }),
+                },
+              ],
+              isError: true,
+            };
+          }
+
           const github = this.getGitHubClient();
           const { entry, manifest } = await github.getPlugin(name);
 
@@ -147,6 +192,7 @@ export class SkillportMCP extends McpAgent<Env, unknown, UserProps> {
                     permissions: entry.permissions,
                     homepage: manifest?.homepage,
                     license: manifest?.license,
+                    editable: accessControl.canWrite(name),
                   },
                   null,
                   2
@@ -177,16 +223,29 @@ export class SkillportMCP extends McpAgent<Env, unknown, UserProps> {
       "fetch_skill",
       "Fetch the skill files (SKILL.md and related resources) for installation on Claude.ai or Claude Desktop.",
       {
-        user_email: z
-          .string()
-          .email()
-          .optional()
-          .describe("User email for audit logging (provided by Skillport Skill)"),
         name: z.string().describe("Plugin name containing the skill"),
       },
-      async ({ user_email, name }) => {
+      async ({ name }) => {
         try {
-          this.logAction("fetch_skill", { plugin: name, user_email });
+          this.logAction("fetch_skill", { plugin: name });
+          const accessControl = await this.getAccessControl();
+
+          // Check read access
+          if (!accessControl.canRead(name)) {
+            return {
+              content: [
+                {
+                  type: "text" as const,
+                  text: JSON.stringify({
+                    error: "Access denied",
+                    message: "You don't have access to this skill",
+                  }),
+                },
+              ],
+              isError: true,
+            };
+          }
+
           const github = this.getGitHubClient();
           const { plugin, files } = await github.fetchSkill(name);
 
@@ -204,6 +263,7 @@ export class SkillportMCP extends McpAgent<Env, unknown, UserProps> {
                       path: f.path,
                       content: f.content,
                     })),
+                    editable: accessControl.canWrite(name),
                     instructions:
                       "RECOMMENDED: If the skillport-manager skill is installed, read " +
                       "/mnt/skills/user/skillport-manager/SKILL.md and follow its " +
@@ -248,11 +308,6 @@ export class SkillportMCP extends McpAgent<Env, unknown, UserProps> {
       "check_updates",
       "Check if any installed plugins have updates available in the marketplace.",
       {
-        user_email: z
-          .string()
-          .email()
-          .optional()
-          .describe("User email for audit logging (provided by Skillport Skill)"),
         installed: z
           .array(
             z.object({
@@ -262,9 +317,9 @@ export class SkillportMCP extends McpAgent<Env, unknown, UserProps> {
           )
           .describe("List of installed plugins with their versions"),
       },
-      async ({ user_email, installed }) => {
+      async ({ installed }) => {
         try {
-          this.logAction("check_updates", { user_email });
+          this.logAction("check_updates");
           const github = this.getGitHubClient();
           const updates = await github.checkUpdates(installed);
 
@@ -294,6 +349,350 @@ export class SkillportMCP extends McpAgent<Env, unknown, UserProps> {
                 type: "text" as const,
                 text: JSON.stringify({
                   error: "Failed to check updates",
+                  message:
+                    error instanceof Error ? error.message : String(error),
+                }),
+              },
+            ],
+            isError: true,
+          };
+        }
+      }
+    );
+
+    // Tool: whoami
+    this.server.tool(
+      "whoami",
+      "Get your user identity information. Useful for adding yourself to .skillport/access.json as an editor.",
+      {},
+      async () => {
+        const fullId = `${this.props.provider}:${this.props.uid}`;
+        this.logAction("whoami");
+
+        return {
+          content: [
+            {
+              type: "text" as const,
+              text: JSON.stringify(
+                {
+                  id: fullId,
+                  email: this.props.email,
+                  name: this.props.name,
+                  provider: this.props.provider,
+                  message:
+                    "To add yourself as an editor, add this entry to .skillport/access.json:\n\n" +
+                    `{ "id": "${fullId}", "label": "${this.props.email}" }`,
+                },
+                null,
+                2
+              ),
+            },
+          ],
+        };
+      }
+    );
+
+    // ============================================================
+    // Editor Tools (require write access)
+    // ============================================================
+
+    // Tool: update_skill
+    this.server.tool(
+      "update_skill",
+      "Update the SKILL.md content for a plugin. Requires write access to the skill.",
+      {
+        name: z.string().describe("Plugin name"),
+        content: z.string().describe("New SKILL.md content"),
+        commitMessage: z
+          .string()
+          .optional()
+          .describe("Custom commit message (optional)"),
+      },
+      async ({ name, content, commitMessage }) => {
+        try {
+          const accessControl = await this.getAccessControl();
+
+          if (!accessControl.canWrite(name)) {
+            return {
+              content: [
+                {
+                  type: "text" as const,
+                  text: JSON.stringify({
+                    error: "Access denied",
+                    message: "You don't have write access to this skill",
+                  }),
+                },
+              ],
+              isError: true,
+            };
+          }
+
+          this.logAction("update_skill", { plugin: name });
+
+          const github = this.getGitHubClient();
+          const { entry } = await github.getPlugin(name);
+          const basePath = entry.source.replace("./", "");
+          const skillPath = entry.skillPath || "skills/SKILL.md";
+          const fullPath = `${basePath}/${skillPath}`;
+
+          const writeClient = this.getWriteGitHubClient();
+          const message =
+            commitMessage ||
+            `Update ${name} SKILL.md\n\nRequested by: ${this.props.email}`;
+
+          await writeClient.updateFile(fullPath, content, message);
+
+          // Clear cache for this plugin
+          await github.clearCache(name);
+
+          return {
+            content: [
+              {
+                type: "text" as const,
+                text: JSON.stringify(
+                  {
+                    success: true,
+                    path: fullPath,
+                    message: `Successfully updated ${name} SKILL.md`,
+                  },
+                  null,
+                  2
+                ),
+              },
+            ],
+          };
+        } catch (error) {
+          return {
+            content: [
+              {
+                type: "text" as const,
+                text: JSON.stringify({
+                  error: "Failed to update skill",
+                  message:
+                    error instanceof Error ? error.message : String(error),
+                }),
+              },
+            ],
+            isError: true,
+          };
+        }
+      }
+    );
+
+    // Tool: bump_version
+    this.server.tool(
+      "bump_version",
+      "Bump the version of a plugin (updates both plugin.json and marketplace.json). Requires write access.",
+      {
+        name: z.string().describe("Plugin name"),
+        type: z
+          .enum(["major", "minor", "patch"])
+          .describe("Version bump type: major (1.0.0→2.0.0), minor (1.0.0→1.1.0), or patch (1.0.0→1.0.1)"),
+      },
+      async ({ name, type }) => {
+        try {
+          const accessControl = await this.getAccessControl();
+
+          if (!accessControl.canWrite(name)) {
+            return {
+              content: [
+                {
+                  type: "text" as const,
+                  text: JSON.stringify({
+                    error: "Access denied",
+                    message: "You don't have write access to this skill",
+                  }),
+                },
+              ],
+              isError: true,
+            };
+          }
+
+          this.logAction("bump_version", { plugin: name });
+
+          const github = this.getGitHubClient();
+          const { entry, manifest } = await github.getPlugin(name);
+
+          const currentVersion = manifest?.version || entry.version || "1.0.0";
+          const [major, minor, patch] = currentVersion.split(".").map(Number);
+
+          const newVersion =
+            type === "major"
+              ? `${major + 1}.0.0`
+              : type === "minor"
+                ? `${major}.${minor + 1}.0`
+                : `${major}.${minor}.${patch + 1}`;
+
+          const writeClient = this.getWriteGitHubClient();
+          const basePath = entry.source.replace("./", "");
+
+          // Update plugin.json if it exists
+          if (manifest) {
+            const manifestPath = `${basePath}/plugin.json`;
+            const updatedManifest = { ...manifest, version: newVersion };
+            await writeClient.updateFile(
+              manifestPath,
+              JSON.stringify(updatedManifest, null, 2),
+              `Bump ${name} version to ${newVersion}\n\nRequested by: ${this.props.email}`
+            );
+          }
+
+          // Update marketplace.json
+          await writeClient.updateMarketplaceVersion(name, newVersion, this.props.email);
+
+          // Clear caches
+          await github.clearCache(name);
+          await github.clearCache();
+
+          return {
+            content: [
+              {
+                type: "text" as const,
+                text: JSON.stringify(
+                  {
+                    success: true,
+                    oldVersion: currentVersion,
+                    newVersion,
+                    message: `Successfully bumped ${name} from ${currentVersion} to ${newVersion}`,
+                  },
+                  null,
+                  2
+                ),
+              },
+            ],
+          };
+        } catch (error) {
+          return {
+            content: [
+              {
+                type: "text" as const,
+                text: JSON.stringify({
+                  error: "Failed to bump version",
+                  message:
+                    error instanceof Error ? error.message : String(error),
+                }),
+              },
+            ],
+            isError: true,
+          };
+        }
+      }
+    );
+
+    // Tool: create_plugin
+    this.server.tool(
+      "create_plugin",
+      "Create a new plugin with SKILL.md template. Requires editor access (global editors only).",
+      {
+        name: z
+          .string()
+          .regex(/^[a-z0-9-]+$/, "Plugin name must be lowercase alphanumeric with hyphens")
+          .describe("Plugin name (lowercase, alphanumeric, hyphens only)"),
+        description: z.string().describe("Short description of the plugin"),
+        category: z
+          .string()
+          .optional()
+          .describe("Plugin category (e.g., 'productivity', 'development')"),
+      },
+      async ({ name, description, category }) => {
+        try {
+          const accessControl = await this.getAccessControl();
+
+          // Only global editors can create new plugins
+          if (!accessControl.isEditor()) {
+            return {
+              content: [
+                {
+                  type: "text" as const,
+                  text: JSON.stringify({
+                    error: "Access denied",
+                    message: "Only editors can create new plugins",
+                  }),
+                },
+              ],
+              isError: true,
+            };
+          }
+
+          this.logAction("create_plugin", { plugin: name });
+
+          const writeClient = this.getWriteGitHubClient();
+          const pluginPath = `plugins/${name}`;
+
+          // Create plugin.json
+          const manifest = {
+            name,
+            version: "1.0.0",
+            description,
+            author: {
+              name: this.props.name,
+              email: this.props.email,
+            },
+            license: "MIT",
+            keywords: [],
+          };
+
+          await writeClient.createFile(
+            `${pluginPath}/plugin.json`,
+            JSON.stringify(manifest, null, 2),
+            `Create ${name} plugin\n\nRequested by: ${this.props.email}`
+          );
+
+          // Create SKILL.md template
+          const skillTemplate = `---
+name: ${name}
+description: ${description}
+---
+
+# ${name}
+
+## When to Use This Skill
+
+[Describe when Claude should use this skill]
+
+## Instructions
+
+[Step-by-step instructions for Claude]
+`;
+
+          await writeClient.createFile(
+            `${pluginPath}/skills/SKILL.md`,
+            skillTemplate,
+            `Add ${name} SKILL.md\n\nRequested by: ${this.props.email}`
+          );
+
+          // Note: marketplace.json needs to be updated manually or via separate tool
+          // This is intentional to allow review before publishing
+
+          return {
+            content: [
+              {
+                type: "text" as const,
+                text: JSON.stringify(
+                  {
+                    success: true,
+                    name,
+                    path: pluginPath,
+                    message: `Successfully created plugin ${name}. Note: You'll need to add it to marketplace.json to publish it.`,
+                    nextSteps: [
+                      "Edit the SKILL.md with your skill content",
+                      "Add the plugin to .claude-plugin/marketplace.json",
+                      "Use bump_version to release updates",
+                    ],
+                  },
+                  null,
+                  2
+                ),
+              },
+            ],
+          };
+        } catch (error) {
+          return {
+            content: [
+              {
+                type: "text" as const,
+                text: JSON.stringify({
+                  error: "Failed to create plugin",
                   message:
                     error instanceof Error ? error.message : String(error),
                 }),

@@ -9,8 +9,11 @@ interface Env {
   GOOGLE_CLIENT_ID: string;
   GOOGLE_CLIENT_SECRET: string;
 
-  // GitHub service token for API access
+  // GitHub service token for API access (read-only)
   GITHUB_SERVICE_TOKEN: string;
+
+  // GitHub write token for editor operations (optional)
+  GITHUB_WRITE_TOKEN?: string;
 
   // Marketplace repository (e.g., "cto4ai/skillport-template")
   MARKETPLACE_REPO: string;
