@@ -696,14 +696,8 @@ export class SkillportMCP extends McpAgent<Env, unknown, UserProps> {
           const github = this.getGitHubClient();
           const writeClient = this.getWriteGitHubClient();
 
-          // Check if skill group already exists
-          let groupExists = false;
-          try {
-            await github.getPlugin(groupName);
-            groupExists = true;
-          } catch {
-            // Group doesn't exist yet
-          }
+          // Check if skill group already exists (by checking for plugin.json file, not marketplace)
+          const groupExists = await github.fileExists(`${groupPath}/.claude-plugin/plugin.json`);
 
           // If creating a new group, create the plugin.json
           if (!groupExists) {
