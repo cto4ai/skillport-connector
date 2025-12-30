@@ -472,8 +472,15 @@ export class SkillportMCP extends McpAgent<Env, unknown, UserProps> {
           const writeClient = this.getWriteGitHubClient();
 
           // Get the base path for the skill group
-          const { entry } = await github.getPlugin(groupName);
-          const basePath = entry.source.replace("./", "");
+          // For unpublished groups, construct path directly (getPlugin looks in marketplace.json)
+          let basePath: string;
+          try {
+            const { entry } = await github.getPlugin(groupName);
+            basePath = entry.source.replace("./", "");
+          } catch {
+            // Group exists but isn't published yet - construct path directly
+            basePath = `plugins/${groupName}`;
+          }
 
           const results: Array<{ path: string; created: boolean }> = [];
           const baseMessage = commitMessage || `Update ${skillName} skill files`;
