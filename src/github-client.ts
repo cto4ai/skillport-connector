@@ -462,9 +462,10 @@ export class GitHubClient {
     const fullSkillDir = `${basePath}/skills/${skill.dirName}`;
 
     // Fetch all files in skill directory with caching
+    // Include plugin name in cache key to avoid collisions when different plugins have same skill dirName
     const version = entry.version || "unknown";
     const files = await this.fetchWithCache(
-      `skill-dir:${this.repo}:${skill.dirName}:${version}`,
+      `skill-dir:${this.repo}:${skill.plugin}:${skill.dirName}:${version}`,
       21600, // 6 hours
       async () => this.fetchDirectoryRecursive(fullSkillDir, fullSkillDir)
     );
