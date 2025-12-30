@@ -163,11 +163,9 @@ export class SkillportMCP extends McpAgent<Env, unknown, UserProps> {
                     isEditor: accessControl.isEditor(),
                     editableSkills: editablePlugins,
                     tip:
-                      "Before presenting results: Check /mnt/skills/user/ for installed skills. " +
-                      "Mark any already-installed skills with '(already installed)'. " +
-                      "If skillport-manager is NOT installed, recommend installing it first " +
-                      "to enable one-click installation. If skillport-manager IS installed, " +
-                      "omit it from the list (it's infrastructure, not a feature skill).",
+                      "Plugins are containers for skills. For browsing and installing skills, " +
+                      "use list_skills instead. Plugin-level tools (list_plugins, get_plugin, " +
+                      "create_plugin) are for marketplace editors who manage plugin structure.",
                   },
                   null,
                   2
@@ -330,7 +328,7 @@ export class SkillportMCP extends McpAgent<Env, unknown, UserProps> {
       "fetch_skill",
       "Fetch the skill files (SKILL.md and related resources) for installation on Claude.ai or Claude Desktop.",
       {
-        name: z.string().describe("Plugin name containing the skill"),
+        name: z.string().describe("Skill name (from list_skills)"),
       },
       async ({ name }) => {
         try {
