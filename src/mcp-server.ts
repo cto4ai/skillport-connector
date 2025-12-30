@@ -356,17 +356,26 @@ export class SkillportMCP extends McpAgent<Env, unknown, UserProps> {
     // Editor Tools (require write access)
     // ============================================================
 
-    // Tool: save_skill (upsert multiple files)
+    // Tool: save_skill (create or update skill files)
     this.server.tool(
       "save_skill",
-      "Update files for a skill. Paths are relative to the skill group root. " +
-        "Example paths: 'skills/{skill}/SKILL.md', 'skills/{skill}/templates/example.md', '.claude-plugin/plugin.json'",
+      "Create or update files for a skill. For new skills, provide skill_group (defaults to skill name for standalone). " +
+        "Paths are relative to the skill directory itself. " +
+        "Example: 'SKILL.md', 'templates/example.md', 'scripts/helper.py'",
       {
-        skill: z.string().describe("Skill name (from list_skills or create_skill)"),
+        skill: z
+          .string()
+          .regex(/^[a-z0-9-]+$/, "Skill name must be lowercase alphanumeric with hyphens")
+          .describe("Skill name"),
+        skill_group: z
+          .string()
+          .regex(/^[a-z0-9-]+$/, "Skill group must be lowercase alphanumeric with hyphens")
+          .optional()
+          .describe("Skill group (required for new skills, defaults to skill name; ignored for existing skills)"),
         files: z
           .array(
             z.object({
-              path: z.string().describe("Relative path within skill group (e.g., 'skills/my-skill/SKILL.md', 'skills/my-skill/templates/example.md')"),
+              path: z.string().describe("Relative path within the skill directory (e.g., 'SKILL.md', 'templates/example.md')"),
               content: z.string().describe("File content"),
             })
           )
@@ -376,30 +385,73 @@ export class SkillportMCP extends McpAgent<Env, unknown, UserProps> {
           .optional()
           .describe("Custom commit message (optional)"),
       },
-      async ({ skill: skillName, files, commitMessage }) => {
+      async ({ skill: skillName, skill_group, files, commitMessage }) => {
         try {
           const github = this.getGitHubClient();
-
-          // Look up skill to find its group
-          const skill = await github.getSkill(skillName);
-          if (!skill) {
-            return {
-              content: [
-                {
-                  type: "text" as const,
-                  text: JSON.stringify({
-                    error: "Skill not found",
-                    message: `Skill "${skillName}" not found. Use list_skills to see available skills, or create_skill to create a new one.`,
-                  }),
-                },
-              ],
-              isError: true,
-            };
-          }
-
-          const groupName = skill.plugin;
           const accessControl = await this.getAccessControl();
 
+          // Look up skill to find its group
+          const existingSkill = await github.getSkill(skillName);
+
+          let groupName: string;
+          let isNewSkill = false;
+          let isNewGroup = false;
+
+          if (existingSkill) {
+            // Existing skill - use its group (ignore skill_group param)
+            groupName = existingSkill.plugin;
+          } else {
+            // New skill - need to determine/create group
+            isNewSkill = true;
+
+            // Only editors can create new skills
+            if (!accessControl.isEditor()) {
+              return {
+                content: [
+                  {
+                    type: "text" as const,
+                    text: JSON.stringify({
+                      error: "Access denied",
+                      message: "Only editors can create new skills. Use list_skills to see existing skills.",
+                    }),
+                  },
+                ],
+                isError: true,
+              };
+            }
+
+            // Determine group name (defaults to skill name for standalone skills)
+            groupName = skill_group || skillName;
+
+            // Check if group exists
+            const groupPath = `plugins/${groupName}`;
+            const groupExists = await github.fileExists(`${groupPath}/.claude-plugin/plugin.json`);
+
+            if (!groupExists) {
+              isNewGroup = true;
+              // Create the plugin.json for new group
+              const writeClient = this.getWriteGitHubClient();
+              const manifest = {
+                name: groupName,
+                version: "1.0.0",
+                description: skill_group ? `Skill group: ${groupName}` : `Skill: ${skillName}`,
+                author: {
+                  name: this.props.name,
+                  email: this.props.email,
+                },
+                license: "MIT",
+                keywords: [],
+              };
+
+              await writeClient.createFile(
+                `${groupPath}/.claude-plugin/plugin.json`,
+                JSON.stringify(manifest, null, 2),
+                `Create ${groupName} skill group\n\nRequested by: ${this.props.email}`
+              );
+            }
+          }
+
+          // Check write access
           if (!accessControl.canWrite(groupName)) {
             return {
               content: [
@@ -427,7 +479,9 @@ export class SkillportMCP extends McpAgent<Env, unknown, UserProps> {
           const baseMessage = commitMessage || `Update ${skillName} skill files`;
 
           // Validate all file paths before processing any files
-          const validatedFiles: Array<{ path: string; content: string; sanitizedPath: string }> = [];
+          // Paths are relative to the skill directory, we auto-prefix with skills/{skill}/
+          const skillPrefix = `skills/${skillName}/`;
+          const validatedFiles: Array<{ path: string; content: string; fullPath: string }> = [];
           for (const file of files) {
             const sanitizedPath = this.validateFilePath(file.path);
             if (!sanitizedPath) {
@@ -445,39 +499,22 @@ export class SkillportMCP extends McpAgent<Env, unknown, UserProps> {
               };
             }
 
-            // Reject bare skill file paths that should be under skills/{skill}/ directory
-            const bareSkillPaths = ["SKILL.md", "templates", "scripts", "references", "examples"];
-            const pathStart = sanitizedPath.split("/")[0];
-            if (bareSkillPaths.includes(pathStart)) {
-              return {
-                content: [
-                  {
-                    type: "text" as const,
-                    text: JSON.stringify({
-                      error: "Invalid file path",
-                      message: `Path "${file.path}" appears to be a skill file but is missing the "skills/${skill.dirName}/" prefix. ` +
-                        `Use "skills/${skill.dirName}/${file.path}" instead.`,
-                    }),
-                  },
-                ],
-                isError: true,
-              };
-            }
-
-            validatedFiles.push({ path: file.path, content: file.content, sanitizedPath });
+            // Auto-prefix with skills/{skill}/ to get the full path within the group
+            const fullPath = `${skillPrefix}${sanitizedPath}`;
+            validatedFiles.push({ path: file.path, content: file.content, fullPath });
           }
 
           // Process each validated file
           for (const file of validatedFiles) {
-            const fullPath = `${basePath}/${file.sanitizedPath}`;
-            const fileMessage = `${baseMessage}\n\nFile: ${file.sanitizedPath}\nRequested by: ${this.props.email}`;
+            const absolutePath = `${basePath}/${file.fullPath}`;
+            const fileMessage = `${baseMessage}\n\nFile: ${file.fullPath}\nRequested by: ${this.props.email}`;
 
             const { created } = await writeClient.upsertFile(
-              fullPath,
+              absolutePath,
               file.content,
               fileMessage
             );
-            results.push({ path: fullPath, created });
+            results.push({ path: absolutePath, created });
           }
 
           // Clear cache for this skill group
@@ -485,6 +522,13 @@ export class SkillportMCP extends McpAgent<Env, unknown, UserProps> {
 
           const created = results.filter((r) => r.created).length;
           const updated = results.filter((r) => !r.created).length;
+
+          // Build response with appropriate next steps
+          const nextSteps: string[] = [];
+          if (isNewSkill && isNewGroup) {
+            nextSteps.push("Use publish_skill to make it discoverable in the marketplace");
+          }
+          nextSteps.push("Use bump_version to release updates");
 
           return {
             content: [
@@ -495,9 +539,16 @@ export class SkillportMCP extends McpAgent<Env, unknown, UserProps> {
                     success: true,
                     skill: skillName,
                     skill_group: groupName,
+                    isNewSkill,
+                    isNewGroup,
                     files: results,
                     summary: `${created} file(s) created, ${updated} file(s) updated`,
-                    nextSteps: ["Use bump_version to release the update"],
+                    message: isNewSkill
+                      ? isNewGroup
+                        ? `Created new skill "${skillName}" with new group "${groupName}"`
+                        : `Created new skill "${skillName}" in existing group "${groupName}"`
+                      : `Updated skill "${skillName}" in group "${groupName}"`,
+                    nextSteps,
                   },
                   null,
                   2
@@ -645,152 +696,13 @@ export class SkillportMCP extends McpAgent<Env, unknown, UserProps> {
       }
     );
 
-    // Tool: create_skill
-    this.server.tool(
-      "create_skill",
-      "Create a new skill. By default creates a standalone skill (new skill group). " +
-        "Use skill_group to add this skill to an existing group of related skills. " +
-        "Requires editor access.",
-      {
-        name: z
-          .string()
-          .regex(/^[a-z0-9-]+$/, "Skill name must be lowercase alphanumeric with hyphens")
-          .describe("Skill name (lowercase, alphanumeric, hyphens only)"),
-        description: z.string().describe("Short description of the skill"),
-        skill_group: z
-          .string()
-          .regex(/^[a-z0-9-]+$/, "Skill group must be lowercase alphanumeric with hyphens")
-          .optional()
-          .describe("Skill group to add to (optional, defaults to skill name for standalone skill)"),
-        category: z
-          .string()
-          .optional()
-          .describe("Category for marketplace filtering (e.g., 'productivity', 'development')"),
-      },
-      async ({ name, description, skill_group }) => {
-        try {
-          const accessControl = await this.getAccessControl();
-
-          // Only global editors can create new skills
-          if (!accessControl.isEditor()) {
-            return {
-              content: [
-                {
-                  type: "text" as const,
-                  text: JSON.stringify({
-                    error: "Access denied",
-                    message: "Only editors can create new skills",
-                  }),
-                },
-              ],
-              isError: true,
-            };
-          }
-
-          // Determine the skill group (defaults to skill name for standalone skills)
-          const groupName = skill_group || name;
-          const groupPath = `plugins/${groupName}`;
-
-          this.logAction("create_skill", { skill: name, skill_group: groupName });
-
-          const github = this.getGitHubClient();
-          const writeClient = this.getWriteGitHubClient();
-
-          // Check if skill group already exists (by checking for plugin.json file, not marketplace)
-          const groupExists = await github.fileExists(`${groupPath}/.claude-plugin/plugin.json`);
-
-          // If creating a new group, create the plugin.json
-          if (!groupExists) {
-            const manifest = {
-              name: groupName,
-              version: "1.0.0",
-              description: skill_group ? `Skill group: ${groupName}` : description,
-              author: {
-                name: this.props.name,
-                email: this.props.email,
-              },
-              license: "MIT",
-              keywords: [],
-            };
-
-            await writeClient.createFile(
-              `${groupPath}/.claude-plugin/plugin.json`,
-              JSON.stringify(manifest, null, 2),
-              `Create ${groupName} skill group\n\nRequested by: ${this.props.email}`
-            );
-          }
-
-          // Create SKILL.md in the correct nested structure: skills/{name}/SKILL.md
-          const skillTemplate = `---
-name: ${name}
-description: ${description}
----
-
-# ${name}
-
-## When to Use This Skill
-
-[Describe when Claude should use this skill]
-
-## Instructions
-
-[Step-by-step instructions for Claude]
-`;
-
-          await writeClient.createFile(
-            `${groupPath}/skills/${name}/SKILL.md`,
-            skillTemplate,
-            `Add ${name} skill\n\nRequested by: ${this.props.email}`
-          );
-
-          const response: Record<string, unknown> = {
-            success: true,
-            skill: name,
-            skill_group: groupName,
-            path: `${groupPath}/skills/${name}`,
-            message: groupExists
-              ? `Successfully added skill "${name}" to existing group "${groupName}".`
-              : `Successfully created skill "${name}" with new group "${groupName}".`,
-            nextSteps: [
-              `Edit skills/${name}/SKILL.md with your skill content using save_skill`,
-              groupExists ? null : "Use publish_skill to make it discoverable in the marketplace",
-              "Use bump_version to release updates",
-            ].filter(Boolean),
-          };
-
-          return {
-            content: [
-              {
-                type: "text" as const,
-                text: JSON.stringify(response, null, 2),
-              },
-            ],
-          };
-        } catch (error) {
-          return {
-            content: [
-              {
-                type: "text" as const,
-                text: JSON.stringify({
-                  error: "Failed to create skill",
-                  message:
-                    error instanceof Error ? error.message : String(error),
-                }),
-              },
-            ],
-            isError: true,
-          };
-        }
-      }
-    );
-
     // Tool: publish_skill
     this.server.tool(
       "publish_skill",
       "Make a skill discoverable in the marketplace. " +
         "Call this after creating/updating the skill to make it visible to users.",
       {
-        skill: z.string().describe("Skill name (from create_skill)"),
+        skill: z.string().describe("Skill name (from save_skill or list_skills)"),
         description: z.string().describe("Short description for marketplace listing"),
         category: z
           .string()
@@ -832,7 +744,7 @@ description: ${description}
                   type: "text" as const,
                   text: JSON.stringify({
                     error: "Skill not found",
-                    message: `Skill "${skillName}" not found. Use create_skill first to create the skill.`,
+                    message: `Skill "${skillName}" not found. Use save_skill first to create the skill.`,
                   }),
                 },
               ],
