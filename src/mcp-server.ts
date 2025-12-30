@@ -633,7 +633,26 @@ export class SkillportMCP extends McpAgent<Env, unknown, UserProps> {
 
           this.logAction("bump_version", { skill: skillName, skill_group: groupName });
 
-          const { entry, manifest } = await github.getPlugin(groupName);
+          // Get plugin info - requires skill to be published
+          let entry, manifest;
+          try {
+            const result = await github.getPlugin(groupName);
+            entry = result.entry;
+            manifest = result.manifest;
+          } catch {
+            return {
+              content: [
+                {
+                  type: "text" as const,
+                  text: JSON.stringify({
+                    error: "Skill not published",
+                    message: `Skill "${skillName}" is not published yet. Use publish_skill first.`,
+                  }),
+                },
+              ],
+              isError: true,
+            };
+          }
 
           const currentVersion = manifest?.version || entry.version || "1.0.0";
           const [major, minor, patch] = currentVersion.split(".").map(Number);
