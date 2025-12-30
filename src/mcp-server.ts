@@ -56,11 +56,12 @@ export class SkillportMCP extends McpAgent<Env, unknown, UserProps> {
   /**
    * Log user action for audit trail
    */
-  private logAction(action: string, opts?: { plugin?: string }): void {
+  private logAction(action: string, opts?: { plugin?: string; skill?: string }): void {
     const email = this.props?.email || "unknown";
     const timestamp = new Date().toISOString();
     const pluginInfo = opts?.plugin ? ` plugin=${opts.plugin}` : "";
-    console.log(`[AUDIT] ${timestamp} user=${email} action=${action}${pluginInfo}`);
+    const skillInfo = opts?.skill ? ` skill=${opts.skill}` : "";
+    console.log(`[AUDIT] ${timestamp} user=${email} action=${action}${pluginInfo}${skillInfo}`);
   }
 
   /**
@@ -192,6 +193,66 @@ export class SkillportMCP extends McpAgent<Env, unknown, UserProps> {
       }
     );
 
+    // Tool: list_skills
+    this.server.tool(
+      "list_skills",
+      "List all skills available across all plugins. Skills are discovered from plugins/*/skills/*/SKILL.md.",
+      {},
+      async () => {
+        try {
+          this.logAction("list_skills");
+          const github = this.getGitHubClient();
+          const accessControl = await this.getAccessControl();
+          const allSkills = await github.listSkills();
+
+          // Filter skills based on read access (check parent plugin)
+          const visibleSkills = allSkills.filter((s) =>
+            accessControl.canRead(s.plugin)
+          );
+
+          return {
+            content: [
+              {
+                type: "text" as const,
+                text: JSON.stringify(
+                  {
+                    count: visibleSkills.length,
+                    skills: visibleSkills.map((s) => ({
+                      name: s.name,
+                      plugin: s.plugin,
+                      description: s.description,
+                      version: s.version,
+                      author: s.author,
+                      editable: accessControl.canWrite(s.plugin),
+                    })),
+                    tip:
+                      "Skills are the installable units. Each skill belongs to a plugin. " +
+                      "Use fetch_skill with the skill name to get its files for installation.",
+                  },
+                  null,
+                  2
+                ),
+              },
+            ],
+          };
+        } catch (error) {
+          return {
+            content: [
+              {
+                type: "text" as const,
+                text: JSON.stringify({
+                  error: "Failed to list skills",
+                  message:
+                    error instanceof Error ? error.message : String(error),
+                }),
+              },
+            ],
+            isError: true,
+          };
+        }
+      }
+    );
+
     // Tool: get_plugin
     this.server.tool(
       "get_plugin",
@@ -236,7 +297,6 @@ export class SkillportMCP extends McpAgent<Env, unknown, UserProps> {
                     category: entry.category,
                     tags: entry.tags,
                     surfaces: entry.surfaces,
-                    permissions: entry.permissions,
                     homepage: manifest?.homepage,
                     license: manifest?.license,
                     editable: accessControl.canWrite(name),
@@ -294,7 +354,7 @@ export class SkillportMCP extends McpAgent<Env, unknown, UserProps> {
           }
 
           const github = this.getGitHubClient();
-          const { plugin, files } = await github.fetchSkill(name);
+          const { skill, plugin, files } = await github.fetchSkill(name);
 
           return {
             content: [
@@ -302,6 +362,11 @@ export class SkillportMCP extends McpAgent<Env, unknown, UserProps> {
                 type: "text" as const,
                 text: JSON.stringify(
                   {
+                    skill: {
+                      name: skill.name,
+                      plugin: skill.plugin,
+                      version: skill.version,
+                    },
                     plugin: {
                       name: plugin.name,
                       version: plugin.version,
@@ -310,7 +375,7 @@ export class SkillportMCP extends McpAgent<Env, unknown, UserProps> {
                       path: f.path,
                       content: f.content,
                     })),
-                    editable: accessControl.canWrite(name),
+                    editable: accessControl.canWrite(skill.plugin),
                     instructions:
                       "RECOMMENDED: If the skillport-manager skill is installed, read " +
                       "/mnt/skills/user/skillport-manager/SKILL.md and follow its " +
@@ -474,13 +539,20 @@ export class SkillportMCP extends McpAgent<Env, unknown, UserProps> {
             };
           }
 
-          this.logAction("update_skill", { plugin: name });
+          this.logAction("update_skill", { skill: name });
 
           const github = this.getGitHubClient();
-          const { entry } = await github.getPlugin(name);
+
+          // Look up skill to find its parent plugin
+          const skill = await github.getSkill(name);
+          if (!skill) {
+            throw new Error(`Skill not found: ${name}`);
+          }
+
+          const { entry } = await github.getPlugin(skill.plugin);
           const basePath = entry.source.replace("./", "");
-          const skillPath = entry.skillPath || "skills/SKILL.md";
-          const fullPath = `${basePath}/${skillPath}`;
+          // Convention: skills/{skill-name}/SKILL.md
+          const fullPath = `${basePath}/skills/${name}/SKILL.md`;
 
           const writeClient = this.getWriteGitHubClient();
           const message =

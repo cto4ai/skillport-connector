@@ -19,11 +19,10 @@ export interface PluginEntry {
   description?: string;
   version?: string;
   author?: { name: string; email?: string };
+  // Skillport extensions (not in official spec)
   category?: string;
   tags?: string[];
   surfaces?: string[];
-  skillPath?: string;
-  permissions?: string[];
 }
 
 export interface PluginManifest {
@@ -40,6 +39,42 @@ export interface SkillFile {
   path: string;
   content: string;
   encoding?: "base64";
+}
+
+export interface SkillEntry {
+  name: string;
+  plugin: string;
+  description: string;
+  version: string;
+  author?: { name: string; email?: string };
+}
+
+/**
+ * Parse SKILL.md frontmatter to extract name and description
+ */
+function parseSkillFrontmatter(content: string): { name?: string; description?: string } {
+  const match = content.match(/^---\n([\s\S]*?)\n---/);
+  if (!match) return {};
+
+  const frontmatter = match[1];
+  const result: { name?: string; description?: string } = {};
+
+  const nameMatch = frontmatter.match(/^name:\s*(.+)$/m);
+  if (nameMatch) {
+    result.name = nameMatch[1].trim();
+  }
+
+  const descMatch = frontmatter.match(/^description:\s*>?\s*\n?([\s\S]*?)(?=\n[a-z]+:|$)/im);
+  if (descMatch) {
+    result.description = descMatch[1].trim().replace(/\n\s*/g, ' ');
+  } else {
+    const singleDescMatch = frontmatter.match(/^description:\s*(.+)$/m);
+    if (singleDescMatch) {
+      result.description = singleDescMatch[1].trim();
+    }
+  }
+
+  return result;
 }
 
 interface GitHubContentItem {
@@ -312,6 +347,61 @@ export class GitHubClient {
   }
 
   /**
+   * Discover all skills from all plugins
+   */
+  async listSkills(): Promise<SkillEntry[]> {
+    return this.fetchWithCache<SkillEntry[]>(
+      `skills:${this.repo}`,
+      300,
+      async () => {
+        const marketplace = await this.getMarketplace();
+        const result: SkillEntry[] = [];
+
+        for (const plugin of marketplace.plugins) {
+          const basePath = plugin.source.replace("./", "");
+          const skillsDirPath = `${basePath}/skills`;
+
+          try {
+            const skillDirs = await this.listDirectory(skillsDirPath);
+
+            for (const dir of skillDirs) {
+              if (dir.type !== "dir") continue;
+
+              try {
+                const skillMdPath = `${skillsDirPath}/${dir.name}/SKILL.md`;
+                const skillMdContent = await this.fetchFile(skillMdPath);
+                const frontmatter = parseSkillFrontmatter(skillMdContent);
+
+                result.push({
+                  name: frontmatter.name || dir.name,
+                  plugin: plugin.name,
+                  description: frontmatter.description || plugin.description || "",
+                  version: plugin.version || "0.0.0",
+                  author: plugin.author,
+                });
+              } catch {
+                // Skip if SKILL.md is missing or invalid
+              }
+            }
+          } catch {
+            // Plugin has no skills directory
+          }
+        }
+
+        return result;
+      }
+    );
+  }
+
+  /**
+   * Get skill by name
+   */
+  async getSkill(skillName: string): Promise<SkillEntry | null> {
+    const allSkills = await this.listSkills();
+    return allSkills.find(s => s.name === skillName) || null;
+  }
+
+  /**
    * Get detailed plugin information
    */
   async getPlugin(name: string): Promise<{
@@ -348,30 +438,30 @@ export class GitHubClient {
 
   /**
    * Fetch all skill files for installation
-   * Returns entire skill directory contents plus plugin.json for versioning
+   * Returns skill directory contents plus plugin.json for versioning
+   * Looks up skill by name to find parent plugin
    */
-  async fetchSkill(name: string): Promise<{
+  async fetchSkill(skillName: string): Promise<{
+    skill: SkillEntry;
     plugin: PluginEntry;
     files: SkillFile[];
   }> {
-    const { entry, manifest } = await this.getPlugin(name);
+    // Find the skill and its parent plugin
+    const skill = await this.getSkill(skillName);
+    if (!skill) {
+      throw new Error(`Skill not found: ${skillName}`);
+    }
+
+    const { entry, manifest } = await this.getPlugin(skill.plugin);
     const basePath = entry.source.replace("./", "");
-    const skillPath = entry.skillPath || "skills/SKILL.md";
 
-    // Derive skill directory from skillPath
-    // "skills/SKILL.md" → "skills"
-    // "SKILL.md" → "" (skill is at plugin root)
-    const skillDir = skillPath.includes("/")
-      ? skillPath.substring(0, skillPath.lastIndexOf("/"))
-      : "";
-
-    const fullSkillDir = skillDir ? `${basePath}/${skillDir}` : basePath;
+    // Skill directory: plugins/{plugin}/skills/{skill}/
+    const fullSkillDir = `${basePath}/skills/${skillName}`;
 
     // Fetch all files in skill directory with caching
-    // Include version in cache key so updates invalidate cache
     const version = entry.version || "unknown";
     const files = await this.fetchWithCache(
-      `skill-dir:${this.repo}:${name}:${version}`,
+      `skill-dir:${this.repo}:${skillName}:${version}`,
       21600, // 6 hours
       async () => this.fetchDirectoryRecursive(fullSkillDir, fullSkillDir)
     );
@@ -384,7 +474,7 @@ export class GitHubClient {
       });
     }
 
-    return { plugin: entry, files };
+    return { skill, plugin: entry, files };
   }
 
   /**
