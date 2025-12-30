@@ -501,8 +501,37 @@ export class GitHubClient {
       throw new Error(`Skill not found: ${skillName}`);
     }
 
-    const { entry, manifest } = await this.getPlugin(skill.plugin);
-    const basePath = entry.source.replace("./", "");
+    // Try to get plugin from marketplace, fall back to direct path for unpublished groups
+    let entry: PluginEntry;
+    let manifest: PluginManifest | null = null;
+    let basePath: string;
+
+    try {
+      const result = await this.getPlugin(skill.plugin);
+      entry = result.entry;
+      manifest = result.manifest;
+      basePath = entry.source.replace("./", "");
+    } catch {
+      // Plugin not in marketplace - construct path directly for unpublished groups
+      basePath = `plugins/${skill.plugin}`;
+
+      // Try to read plugin.json directly
+      try {
+        const manifestContent = await this.fetchFile(`${basePath}/.claude-plugin/plugin.json`);
+        manifest = JSON.parse(manifestContent) as PluginManifest;
+      } catch {
+        // No manifest, that's okay
+      }
+
+      // Create a synthetic entry for unpublished plugins
+      entry = {
+        name: skill.plugin,
+        source: `./${basePath}`,
+        version: manifest?.version || skill.version,
+        description: manifest?.description,
+        author: manifest?.author,
+      };
+    }
 
     // Skill directory: plugins/{plugin}/skills/{skill}/
     // Use dirName (actual directory) not name (display name from frontmatter)
