@@ -382,15 +382,20 @@ export class GitHubClient {
           const skillsDirPath = `${basePath}/skills`;
 
           // Check if this is a valid plugin (has .claude-plugin/plugin.json)
-          const hasManifest = await this.fileExists(
-            `${basePath}/.claude-plugin/plugin.json`
-          );
-          if (!hasManifest) continue;
+          const manifestPath = `${basePath}/.claude-plugin/plugin.json`;
+          let manifest: PluginManifest;
+          try {
+            const manifestContent = await this.fetchFile(manifestPath);
+            manifest = JSON.parse(manifestContent) as PluginManifest;
+          } catch {
+            // No valid manifest, skip this directory
+            continue;
+          }
 
-          // Get version/author from marketplace if published, otherwise defaults
+          // Get version from plugin.json (authoritative), author from manifest or marketplace
           const publishedInfo = publishedPlugins.get(groupName);
-          const version = publishedInfo?.version || "1.0.0";
-          const author = publishedInfo?.author;
+          const version = manifest.version || publishedInfo?.version || "1.0.0";
+          const author = manifest.author || publishedInfo?.author;
 
           try {
             const skillDirs = await this.listDirectory(skillsDirPath);
