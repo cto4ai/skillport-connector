@@ -11,18 +11,16 @@ This document captures the key architectural decisions made during the design of
 2. Use Claude Code's existing Plugin Marketplace format
 3. Create a new format that could become a standard
 
-**Decision:** Use Claude Code's Plugin Marketplace format with extensions.
+**Decision:** Use Claude Code's Plugin Marketplace format.
 
 **Rationale:**
 - Claude Code already has a working plugin system with marketplace support
 - Using their format means Claude Code works natively (no bridge needed)
 - We only need to bridge for Claude.ai/Desktop
-- "Extend, don't fork" — Claude Code ignores fields it doesn't recognize
 - Future-proof if Anthropic expands the format
 
 **Consequences:**
 - Must stay compatible with Claude Code's schema
-- Extensions are namespaced (e.g., `_skillport`, `surfaces`)
 - One marketplace serves all surfaces
 
 ## Decision 2: MCP Connector as Bridge
@@ -47,7 +45,7 @@ This document captures the key architectural decisions made during the design of
 - Requires OAuth setup for authentication
 - Connector must be deployed and maintained
 
-## Decision 3: GitHub OAuth for Authentication
+## Decision 3: Google OAuth for Authentication
 
 **Context:** Need to authenticate users accessing the connector.
 
@@ -55,22 +53,21 @@ This document captures the key architectural decisions made during the design of
 1. No authentication (public access)
 2. Simple token/API key
 3. GitHub OAuth
-4. Google Workspace OAuth
+4. Google OAuth
 5. Auth0 or other identity provider
 
-**Decision:** GitHub OAuth as default, with architecture supporting alternatives.
+**Decision:** Google OAuth.
 
 **Rationale:**
-- Marketplace repos are on GitHub — natural fit
-- Can verify org membership for access control
-- Users likely have GitHub accounts
+- Provides stable user IDs (`google:{uid}`) for access control
+- Works well with organizational Google accounts
+- Most users already have Google accounts
 - Supports Dynamic Client Registration (DCR) which Claude.ai uses
-- Token auth doesn't provide user identity
 
 **Consequences:**
-- Users authenticate with GitHub when adding connector
+- Users authenticate with Google when adding connector
 - Connector knows user identity for audit/access control
-- Can be swapped for other OAuth providers if needed
+- User IDs are stable across sessions (unlike emails which can change)
 
 ## Decision 4: Cloudflare Workers for Hosting
 
@@ -96,80 +93,72 @@ This document captures the key architectural decisions made during the design of
 - Some Cloudflare-specific patterns in code
 - Free tier sufficient for org use
 
-## Decision 5: Surfaces as Plugin Metadata
+## Decision 5: Skill-Centric User Experience
 
-**Context:** Some plugins work on all surfaces, others only on Claude Code.
-
-**Options Considered:**
-1. Separate marketplaces per surface
-2. Metadata field indicating target surfaces
-3. Directory structure convention
-
-**Decision:** Add `surfaces` array to plugin entries.
-
-**Rationale:**
-- Single marketplace, single source of truth
-- Connector can filter by surface when listing plugins
-- Claude Code ignores the field (doesn't break anything)
-- Explicit is better than implicit
-
-**Example:**
-```json
-{
-  "name": "sales-pitch",
-  "surfaces": ["claude-code", "claude-desktop", "claude-ai"]
-}
-```
-
-**Consequences:**
-- Must document the `surfaces` convention
-- Connector filters plugins by surface
-- Plugins without `surfaces` field assumed to work everywhere
-
-## Decision 6: Skills Live Inside Plugins
-
-**Context:** Where should SKILL.md files live?
+**Context:** Users need to discover and install capabilities.
 
 **Options Considered:**
-1. Separate `/skills` directory at marketplace root
-2. Skills embedded in plugin directories
-3. Skills as standalone marketplace entries
+1. Plugin-centric (users install plugins, get all skills inside)
+2. Skill-centric (users browse/install individual skills)
+3. Both equally
 
-**Decision:** Skills are a component of plugins, located at `plugins/<name>/skills/SKILL.md`.
+**Decision:** Skill-centric as primary model.
 
 **Rationale:**
-- Aligns with Claude Code plugin structure
-- A plugin can have skills AND commands AND agents
-- Single plugin.json manifest covers all components
-- `skillPath` extension tells connector where to find SKILL.md
+- Skills are the actual capability users want
+- Plugins (skill groups) are an implementation detail
+- Easier to discover specific skills than dig through plugins
+- Aligns with how Claude.ai Skills work natively
 
 **Consequences:**
-- Skills aren't first-class marketplace entries
-- Plugin is the unit of installation
-- Connector extracts skills from plugins for Claude.ai/Desktop
+- Primary tools are `list_skills` and `fetch_skill`
+- Plugin tools (`list_plugins`, `get_plugin`) kept for admin/legacy use
+- Skills inherit version from parent plugin (skill group)
 
-## Decision 7: Template Repository Pattern
+## Decision 6: Skills in Named Subdirectories
 
-**Context:** How should organizations create their own marketplaces?
+**Context:** Where should SKILL.md files live within a plugin?
 
 **Options Considered:**
-1. Fork a reference implementation
-2. GitHub Template Repository
-3. CLI scaffolding tool
-4. Documentation only
+1. Single skill per plugin: `plugins/<name>/skills/SKILL.md`
+2. Multiple skills per plugin: `plugins/<group>/skills/<skill>/SKILL.md`
+3. Flat structure: `skills/<name>/SKILL.md` at marketplace root
 
-**Decision:** GitHub Template Repository (`skillport-template`).
+**Decision:** Multiple skills per plugin at `plugins/<group>/skills/<skill>/SKILL.md`.
 
 **Rationale:**
-- GitHub's "Use this template" is one-click
-- No tooling required
-- Easy to keep template updated
-- Organizations own their instance completely
+- Allows grouping related skills together
+- Each skill has its own directory for resources (templates, scripts)
+- Aligns with official Claude Code plugin structure
+- Skill groups share versioning (bump once, all skills update)
 
 **Consequences:**
-- Must maintain template repo
-- Updates don't automatically propagate to instances
-- Documentation must be comprehensive
+- Connector discovers skills via `plugins/*/skills/*/SKILL.md` pattern
+- Skill name comes from directory name, not filename
+- Each skill can have additional files alongside SKILL.md
+
+## Decision 7: Role-Based Access Control
+
+**Context:** Need to control who can read vs write skills.
+
+**Options Considered:**
+1. Public read, authenticated write
+2. GitHub org membership
+3. Custom access control file
+4. No access control
+
+**Decision:** Custom access control via `.skillport/access.json`.
+
+**Rationale:**
+- Flexible per-skill permissions
+- Supports two clear roles: users (read) and editors (write)
+- Uses stable OAuth user IDs, not emails
+- Can restrict specific skills to specific users
+
+**Consequences:**
+- Marketplace maintainers manage `.skillport/access.json`
+- Users need to use `whoami` tool to get their ID
+- Default: everyone reads, only editors write
 
 ## Decision 8: Connector Configured Per-Marketplace
 
@@ -180,7 +169,7 @@ This document captures the key architectural decisions made during the design of
 2. Multi-tenant connector (complex)
 3. Connector discovers marketplace from user's org
 
-**Decision:** One connector deployment per marketplace (initially).
+**Decision:** One connector deployment per marketplace.
 
 **Rationale:**
 - Simpler to implement and understand
@@ -196,9 +185,30 @@ MARKETPLACE_REPO = "your-org/your-marketplace"
 **Consequences:**
 - Each org deploys their own connector
 - Connector URL is org-specific
-- Multi-tenant could be a future enhancement
 
-## Decision 9: Project Name "Skillport"
+## Decision 9: Unified Save Tool
+
+**Context:** Editor workflow for creating and updating skills.
+
+**Options Considered:**
+1. Separate `create_skill` and `update_skill` tools
+2. Unified `save_skill` that handles both
+3. Direct file manipulation tools
+
+**Decision:** Unified `save_skill` tool.
+
+**Rationale:**
+- Simpler mental model (one tool for all edits)
+- Tool auto-detects if skill exists or needs creation
+- Handles skill group creation automatically for new skills
+- Paths are relative to skill directory (user doesn't manage full paths)
+
+**Consequences:**
+- Creating a new skill auto-creates skill group if needed
+- Only editors can create new skills
+- Write access checked against skill group
+
+## Decision 10: Project Name "Skillport"
 
 **Context:** Needed a name for the overall solution.
 
@@ -217,6 +227,5 @@ MARKETPLACE_REPO = "your-org/your-marketplace"
 - Not Claude-specific (future-proof)
 
 **Repo naming:**
-- `skillport-connector` — the MCP bridge
-- `skillport-template` — marketplace template
-- `<org>-skillport` — org marketplace instances
+- `skillport-connector` - the MCP bridge
+- `skillport-template` - marketplace template

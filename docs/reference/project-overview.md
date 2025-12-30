@@ -1,13 +1,13 @@
 # Skillport Project Overview
 
-**Share Skills and plugins across all Claude surfaces.**
+**Share Skills across all Claude surfaces.**
 
 ## The Problem
 
 Claude has three main surfaces:
-- **Claude Code** — CLI for developers
-- **Claude Desktop** — Desktop application  
-- **Claude.ai** — Web interface
+- **Claude Code** - CLI for developers
+- **Claude Desktop** - Desktop application
+- **Claude.ai** - Web interface
 
 Claude Code has a Plugin Marketplace system. Claude Desktop and Claude.ai don't. Organizations want to share Skills across all surfaces without maintaining separate systems.
 
@@ -15,15 +15,14 @@ Claude Code has a Plugin Marketplace system. Claude Desktop and Claude.ai don't.
 
 Skillport bridges this gap:
 
-1. **One marketplace format** — Use Claude Code's Plugin Marketplace format (with extensions)
-2. **Native for Claude Code** — Works directly with `/plugin marketplace add`
-3. **Bridged for others** — Skillport Connector serves Skills to Claude.ai/Desktop via MCP
+1. **One marketplace format** - Use Claude Code's Plugin Marketplace format
+2. **Native for Claude Code** - Works directly with `/plugin marketplace add`
+3. **Bridged for others** - Skillport Connector serves Skills to Claude.ai/Desktop via MCP
 
 ```
 ┌─────────────────────────────────────┐
 │      Plugin Marketplace Repo        │
-│      (Claude Code format +          │
-│       Skillport extensions)         │
+│      (Claude Code format)           │
 └─────────────────────────────────────┘
            │                │
            ▼                ▼
@@ -41,16 +40,34 @@ Skillport bridges this gap:
 
 | Component | Purpose | Repository |
 |-----------|---------|------------|
-| **skillport-connector** | MCP Connector (Cloudflare Worker) | [skillport-connector](https://github.com/your-org/skillport-connector) |
-| **skillport-template** | GitHub template for creating marketplaces | [skillport-template](https://github.com/your-org/skillport-template) |
+| **skillport-connector** | MCP Connector (Cloudflare Worker) | This repo |
+| **skillport-template** | GitHub template for creating marketplaces | Sibling repo |
 
-Organizations create their own marketplace instances from the template (e.g., `acme-skillport`).
+Organizations create their own marketplace instances from the template.
+
+## Skill-Centric Model
+
+**Skills are the primary unit** that users interact with:
+
+- Users browse individual skills via `list_skills`
+- Users install individual skills via `fetch_skill`
+- Skills are discovered from `plugins/*/skills/*/SKILL.md`
+- Skill groups (plugins) are just containers that provide versioning
+
+### Two User Personas
+
+| Persona | Tools | Purpose |
+|---------|-------|---------|
+| **Skill User** | `list_skills`, `fetch_skill`, `check_updates` | Browse and install skills |
+| **Skill Editor** | `save_skill`, `publish_skill`, `bump_version` | Create and maintain skills |
+
+Access is controlled via `.skillport/access.json` in the marketplace repo.
 
 ## How It Works
 
 ### For Claude Code Users
 
-Native experience — Claude Code consumes the marketplace directly:
+Native experience - Claude Code consumes the marketplace directly:
 
 ```bash
 /plugin marketplace add your-org/your-marketplace
@@ -59,28 +76,35 @@ Native experience — Claude Code consumes the marketplace directly:
 
 ### For Claude.ai / Claude Desktop Users
 
-1. Org admin deploys Skillport Connector to Cloudflare
+1. Admin deploys Skillport Connector to Cloudflare
 2. Connector is configured with the marketplace repo URL
 3. Users add connector: Settings > Connectors > Add Custom Connector
-4. Users authenticate via OAuth
+4. Users authenticate via Google OAuth
 5. Users browse and install Skills via MCP tools
 
 ## Key Design Decisions
 
 ### Use Claude Code's Format
 
-Instead of inventing a new format, Skillport extends Claude Code's Plugin Marketplace format. Claude Code ignores extension fields, so one marketplace serves all surfaces.
+Instead of inventing a new format, Skillport uses Claude Code's Plugin Marketplace format. Claude Code works natively; Skillport bridges for other surfaces.
+
+### Skills Inside Skill Groups
+
+Skills live at `plugins/<group>/skills/<skill>/SKILL.md`:
+- A skill group can contain multiple related skills
+- All skills in a group share the same version
+- Groups map to Claude Code plugins
 
 ### MCP for Bridging
 
-MCP (Model Context Protocol) is Anthropic's official protocol for tool integration. Skillport Connector is a "tools connector" that provides callable MCP tools for browsing and fetching Skills.
+MCP (Model Context Protocol) is Anthropic's official protocol for tool integration. Skillport Connector is a "tools connector" that provides callable MCP tools.
 
-### OAuth for Identity
+### Google OAuth for Identity
 
-The connector uses OAuth (GitHub by default) to authenticate users. This provides:
+The connector uses Google OAuth to authenticate users:
+- Stable user IDs for access control
 - User identity for audit logs
-- Access control possibilities
-- Org membership verification
+- Works well with organizational Google accounts
 
 ### Cloudflare for Hosting
 
@@ -90,36 +114,15 @@ Cloudflare Workers provides:
 - Global edge deployment
 - Simple deployment
 
-## Project Context
-
-### Why Build This?
-
-- Learn MCP connector development deeply
-- Solve a real need for sharing Skills across surfaces
-- Create something clients can use
-- Potentially contribute to open source community
-
-### Bitter Lesson Consideration
-
-Anthropic will likely build native skill distribution for Claude.ai/Desktop eventually. Skillport:
-- Uses their official format (compatible, not competing)
-- Solves a real need today
-- Provides deep learning about the systems
-- Can migrate gracefully when native support arrives
-
 ## Getting Started
 
 ### 1. Create Your Marketplace
 
-Use the template — click "Use this template" on GitHub or:
+Use the template - click "Use this template" on GitHub or clone it.
 
-```bash
-git clone https://github.com/your-org/skillport-template my-org-skillport
-```
+### 2. Add Skills
 
-### 2. Add Plugins
-
-Create plugins in `plugins/` directory with Skills, commands, and agents.
+Create skills in `plugins/<group>/skills/<skill>/SKILL.md`.
 
 ### 3. Deploy Connector (for Claude.ai/Desktop access)
 
@@ -145,7 +148,6 @@ npm run deploy
 
 ### Cloudflare Documentation
 - [Build a Remote MCP Server](https://developers.cloudflare.com/agents/guides/remote-mcp-server/)
-- [MCP with GitHub OAuth](https://github.com/cloudflare/ai/tree/main/demos/remote-mcp-github-oauth)
 
 ## License
 

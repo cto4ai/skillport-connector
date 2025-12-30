@@ -147,12 +147,21 @@ Current state: **Production (OAuth + Authless)**
 
 ## Documentation
 
-See `/docs/` for detailed documentation:
-- [project-overview.md](docs/project-overview.md) - High-level project overview
-- [architecture-decisions.md](docs/architecture-decisions.md) - ADRs explaining design choices
-- [implementation-guide.md](docs/implementation-guide.md) - Step-by-step implementation guide
-- [claude-connectors-research.md](docs/claude-connectors-research.md) - Research on Claude.ai connectors
-- [skills-system-research.md](docs/skills-system-research.md) - Research on Claude's Skills system
+Documentation is organized in `/docs/`:
+
+### Reference (permanent docs)
+- [project-overview.md](docs/reference/project-overview.md) - High-level project overview
+- [architecture-decisions.md](docs/reference/architecture-decisions.md) - ADRs explaining design choices
+- [implementation-guide.md](docs/reference/implementation-guide.md) - Step-by-step implementation guide
+- [access-control.md](docs/reference/access-control.md) - User roles and permissions
+
+### Research
+- [claude-connectors-research.md](docs/research/claude-connectors-research.md) - Research on Claude.ai connectors
+- [skills-system-research.md](docs/research/skills-system-research.md) - Research on Claude's Skills system
+
+### Working (checkpoints, in-progress)
+- `docs/working/checkpoints/` - Session checkpoints
+- `docs/working/` - Various working documents and explorations
 
 ## Git Workflow
 
