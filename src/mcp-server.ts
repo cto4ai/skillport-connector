@@ -549,8 +549,8 @@ export class SkillportMCP extends McpAgent<Env, unknown, UserProps> {
 
           const { entry } = await github.getPlugin(skill.plugin);
           const basePath = entry.source.replace("./", "");
-          // Convention: skills/{skill-name}/SKILL.md
-          const fullPath = `${basePath}/skills/${name}/SKILL.md`;
+          // Use dirName (actual directory) not name (display name from frontmatter)
+          const fullPath = `${basePath}/skills/${skill.dirName}/SKILL.md`;
 
           const writeClient = this.getWriteGitHubClient();
           const message =

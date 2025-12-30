@@ -43,6 +43,7 @@ export interface SkillFile {
 
 export interface SkillEntry {
   name: string;
+  dirName: string; // Directory name for path lookups (may differ from display name)
   plugin: string;
   description: string;
   version: string;
@@ -374,6 +375,7 @@ export class GitHubClient {
 
                 result.push({
                   name: frontmatter.name || dir.name,
+                  dirName: dir.name, // Actual directory name for path lookups
                   plugin: plugin.name,
                   description: frontmatter.description || plugin.description || "",
                   version: plugin.version || "0.0.0",
@@ -456,12 +458,13 @@ export class GitHubClient {
     const basePath = entry.source.replace("./", "");
 
     // Skill directory: plugins/{plugin}/skills/{skill}/
-    const fullSkillDir = `${basePath}/skills/${skillName}`;
+    // Use dirName (actual directory) not name (display name from frontmatter)
+    const fullSkillDir = `${basePath}/skills/${skill.dirName}`;
 
     // Fetch all files in skill directory with caching
     const version = entry.version || "unknown";
     const files = await this.fetchWithCache(
-      `skill-dir:${this.repo}:${skillName}:${version}`,
+      `skill-dir:${this.repo}:${skill.dirName}:${version}`,
       21600, // 6 hours
       async () => this.fetchDirectoryRecursive(fullSkillDir, fullSkillDir)
     );
