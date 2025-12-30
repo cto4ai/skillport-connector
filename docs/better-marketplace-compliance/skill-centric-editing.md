@@ -1,7 +1,7 @@
 # Skill-Centric Editor Tools
 
 **Date:** 2025-12-29
-**Status:** Planned
+**Status:** Implemented
 
 ## Problem Summary
 
@@ -34,7 +34,7 @@ Rename tools to be **skill-centric**:
 | `save_skill` | `save_skill` | `skill` (renamed from `name`) | Looks up skill to find group |
 | `update_skill` | *(remove)* | - | Redundant with save_skill |
 | `publish_plugin` | `publish_skill` | `skill` | Looks up skill to find/publish its group |
-| `bump_version` | `bump_version` | `skill_group` (renamed from `name`) | Versions are per-group |
+| `bump_version` | `bump_version` | `skill` (renamed from `name`) | Looks up skill to find group, bumps group version |
 
 ### Examples
 
@@ -54,9 +54,9 @@ save_skill(skill: "my-skill", files: [...])
 publish_skill(skill: "my-skill")
 // → Finds skill's group, publishes it
 
-// VERSION: Operates on group level
-bump_version(skill_group: "document-tools", type: "minor")
-// → Bumps version for entire group
+// VERSION: Just need skill name (looks up group)
+bump_version(skill: "pdf-export", type: "minor")
+// → Finds skill's group, bumps version for entire group
 ```
 
 ## Implementation Plan
@@ -103,11 +103,16 @@ Example paths: 'skills/{skill}/SKILL.md', 'skills/{skill}/templates/example.md'"
 
 ### 4. Update `bump_version`
 
-**Parameter rename:** `name` → `skill_group`
+**Parameter rename:** `name` → `skill`
+
+**Logic change:**
+- Look up skill by name to find its group
+- Bump version for the entire group
 
 **Description update:**
 ```
-"Bump version for a skill group. All skills in the group share the same version."
+"Bump the version of a skill (updates plugin.json and marketplace.json).
+All skills in the same group share the version."
 ```
 
 ### 5. Remove `update_skill`
@@ -133,7 +138,7 @@ Example paths: 'skills/{skill}/SKILL.md', 'skills/{skill}/templates/example.md'"
 **Model:**
 1. `create_skill(name: "json-export", description: "Export to JSON", skill_group: "csv-analyzer")`
 2. `save_skill(skill: "json-export", files: [...])`
-3. `bump_version(skill_group: "csv-analyzer", type: "minor")`
+3. `bump_version(skill: "json-export", type: "minor")`
 
 No "plugins" in the model's reasoning - only skills and skill groups.
 
