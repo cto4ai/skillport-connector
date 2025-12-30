@@ -335,7 +335,7 @@ export class GitHubClient {
         `plugin:${this.repo}:${name}:${version}`,
         3600, // 1 hour
         async () => {
-          const content = await this.fetchFile(`${basePath}/plugin.json`);
+          const content = await this.fetchFile(`${basePath}/.claude-plugin/plugin.json`);
           return JSON.parse(content) as PluginManifest;
         }
       );
@@ -379,7 +379,7 @@ export class GitHubClient {
     // Include plugin.json for versioning (if it exists)
     if (manifest) {
       files.push({
-        path: "plugin.json",
+        path: ".claude-plugin/plugin.json",
         content: JSON.stringify(manifest, null, 2),
       });
     }
@@ -609,7 +609,7 @@ export class GitHubClient {
     let version = plugin.version;
     if (!version) {
       try {
-        const pluginJsonContent = await this.fetchFile(`plugins/${plugin.name}/plugin.json`);
+        const pluginJsonContent = await this.fetchFile(`plugins/${plugin.name}/.claude-plugin/plugin.json`);
         const pluginJson = JSON.parse(pluginJsonContent) as PluginManifest;
         version = pluginJson.version;
       } catch {
