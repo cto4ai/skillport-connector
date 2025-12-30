@@ -348,19 +348,49 @@ export class GitHubClient {
   }
 
   /**
-   * Discover all skills from all plugins
+   * Discover all skills from all plugins (both published and unpublished)
+   * Scans plugins/ directory directly to find all groups with skills
    */
   async listSkills(): Promise<SkillEntry[]> {
     return this.fetchWithCache<SkillEntry[]>(
       `skills:${this.repo}`,
       300,
       async () => {
-        const marketplace = await this.getMarketplace();
         const result: SkillEntry[] = [];
+        const seenSkills = new Set<string>();
 
-        for (const plugin of marketplace.plugins) {
-          const basePath = plugin.source.replace("./", "");
+        // Get marketplace for version/author info on published plugins
+        const marketplace = await this.getMarketplace();
+        const publishedPlugins = new Map(
+          marketplace.plugins.map((p) => [p.name, p])
+        );
+
+        // Scan all directories under plugins/
+        let pluginDirs: GitHubContentItem[] = [];
+        try {
+          pluginDirs = await this.listDirectory("plugins");
+        } catch {
+          // No plugins directory
+          return result;
+        }
+
+        for (const pluginDir of pluginDirs) {
+          if (pluginDir.type !== "dir") continue;
+
+          const groupName = pluginDir.name;
+          const basePath = `plugins/${groupName}`;
           const skillsDirPath = `${basePath}/skills`;
+
+          // Check if this is a valid plugin (has .claude-plugin/plugin.json)
+          const hasManifest = await this.fileExists(
+            `${basePath}/.claude-plugin/plugin.json`
+          );
+          if (!hasManifest) continue;
+
+          // Get version/author from marketplace if published, otherwise defaults
+          const publishedInfo = publishedPlugins.get(groupName);
+          const version = publishedInfo?.version || "1.0.0";
+          const author = publishedInfo?.author;
 
           try {
             const skillDirs = await this.listDirectory(skillsDirPath);
@@ -373,13 +403,25 @@ export class GitHubClient {
                 const skillMdContent = await this.fetchFile(skillMdPath);
                 const frontmatter = parseSkillFrontmatter(skillMdContent);
 
+                const skillName = frontmatter.name || dir.name;
+
+                // Enforce unique skill names - first one wins
+                if (seenSkills.has(skillName)) {
+                  console.warn(
+                    `[WARN] Duplicate skill name "${skillName}" in group "${groupName}" - skipping`
+                  );
+                  continue;
+                }
+                seenSkills.add(skillName);
+
                 result.push({
-                  name: frontmatter.name || dir.name,
-                  dirName: dir.name, // Actual directory name for path lookups
-                  plugin: plugin.name,
-                  description: frontmatter.description || plugin.description || "",
-                  version: plugin.version || "0.0.0",
-                  author: plugin.author,
+                  name: skillName,
+                  dirName: dir.name,
+                  plugin: groupName,
+                  description:
+                    frontmatter.description || publishedInfo?.description || "",
+                  version,
+                  author,
                 });
               } catch {
                 // Skip if SKILL.md is missing or invalid
