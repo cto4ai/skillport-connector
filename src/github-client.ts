@@ -569,8 +569,11 @@ export class GitHubClient {
     if (pluginName) {
       await this.kv.delete(`plugin:${this.repo}:${pluginName}`);
       await this.kv.delete(`skill:${this.repo}:${pluginName}`);
-    } else {
-      // Clear marketplace cache
+    }
+    // Always clear the skills list cache (used by listSkills)
+    await this.kv.delete(`skills:${this.repo}`);
+    // Clear marketplace cache when no specific plugin
+    if (!pluginName) {
       await this.kv.delete(`marketplace:${this.repo}`);
     }
   }
