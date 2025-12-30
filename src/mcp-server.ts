@@ -56,12 +56,13 @@ export class SkillportMCP extends McpAgent<Env, unknown, UserProps> {
   /**
    * Log user action for audit trail
    */
-  private logAction(action: string, opts?: { plugin?: string; skill?: string }): void {
+  private logAction(action: string, opts?: { plugin?: string; skill?: string; skill_group?: string }): void {
     const email = this.props?.email || "unknown";
     const timestamp = new Date().toISOString();
     const pluginInfo = opts?.plugin ? ` plugin=${opts.plugin}` : "";
     const skillInfo = opts?.skill ? ` skill=${opts.skill}` : "";
-    console.log(`[AUDIT] ${timestamp} user=${email} action=${action}${pluginInfo}${skillInfo}`);
+    const groupInfo = opts?.skill_group ? ` skill_group=${opts.skill_group}` : "";
+    console.log(`[AUDIT] ${timestamp} user=${email} action=${action}${pluginInfo}${skillInfo}${groupInfo}`);
   }
 
   /**
@@ -112,85 +113,6 @@ export class SkillportMCP extends McpAgent<Env, unknown, UserProps> {
   }
 
   async init() {
-    // Tool: list_plugins
-    this.server.tool(
-      "list_plugins",
-      "List all plugins available in the marketplace. Optionally filter by category or target surface.",
-      {
-        category: z
-          .string()
-          .optional()
-          .describe("Filter by category (e.g., 'sales', 'development')"),
-        surface: z
-          .string()
-          .optional()
-          .describe(
-            "Filter by surface: 'claude-code', 'claude-desktop', or 'claude-ai'"
-          ),
-      },
-      async ({ category, surface }) => {
-        try {
-          this.logAction("list_plugins");
-          const github = this.getGitHubClient();
-          const accessControl = await this.getAccessControl();
-          const allPlugins = await github.listPlugins({ category, surface });
-
-          // Filter plugins based on read access
-          const visiblePlugins = allPlugins.filter((p) =>
-            accessControl.canRead(p.name)
-          );
-
-          // Identify editable plugins for UI hints
-          const editablePlugins = allPlugins
-            .filter((p) => accessControl.canWrite(p.name))
-            .map((p) => p.name);
-
-          return {
-            content: [
-              {
-                type: "text" as const,
-                text: JSON.stringify(
-                  {
-                    count: visiblePlugins.length,
-                    plugins: visiblePlugins.map((p) => ({
-                      name: p.name,
-                      description: p.description,
-                      version: p.version,
-                      category: p.category,
-                      surfaces: p.surfaces,
-                      editable: editablePlugins.includes(p.name),
-                    })),
-                    isEditor: accessControl.isEditor(),
-                    editableSkills: editablePlugins,
-                    tip:
-                      "Plugins are containers for skills. For browsing and installing skills, " +
-                      "use list_skills instead. Plugin-level tools (list_plugins, get_plugin, " +
-                      "create_plugin) are for marketplace editors who manage plugin structure.",
-                  },
-                  null,
-                  2
-                ),
-              },
-            ],
-          };
-        } catch (error) {
-          return {
-            content: [
-              {
-                type: "text" as const,
-                text: JSON.stringify({
-                  error: "Failed to list plugins",
-                  message:
-                    error instanceof Error ? error.message : String(error),
-                }),
-              },
-            ],
-            isError: true,
-          };
-        }
-      }
-    );
-
     // Tool: list_skills
     this.server.tool(
       "list_skills",
@@ -240,78 +162,6 @@ export class SkillportMCP extends McpAgent<Env, unknown, UserProps> {
                 type: "text" as const,
                 text: JSON.stringify({
                   error: "Failed to list skills",
-                  message:
-                    error instanceof Error ? error.message : String(error),
-                }),
-              },
-            ],
-            isError: true,
-          };
-        }
-      }
-    );
-
-    // Tool: get_plugin
-    this.server.tool(
-      "get_plugin",
-      "Get detailed information about a specific plugin including its manifest and metadata.",
-      {
-        name: z.string().describe("Plugin name (e.g., 'sales-pitch')"),
-      },
-      async ({ name }) => {
-        try {
-          this.logAction("get_plugin", { plugin: name });
-          const accessControl = await this.getAccessControl();
-
-          // Check read access
-          if (!accessControl.canRead(name)) {
-            return {
-              content: [
-                {
-                  type: "text" as const,
-                  text: JSON.stringify({
-                    error: "Access denied",
-                    message: "You don't have access to this skill",
-                  }),
-                },
-              ],
-              isError: true,
-            };
-          }
-
-          const github = this.getGitHubClient();
-          const { entry, manifest } = await github.getPlugin(name);
-
-          return {
-            content: [
-              {
-                type: "text" as const,
-                text: JSON.stringify(
-                  {
-                    name: entry.name,
-                    description: entry.description || manifest?.description,
-                    version: entry.version || manifest?.version,
-                    author: entry.author || manifest?.author,
-                    category: entry.category,
-                    tags: entry.tags,
-                    surfaces: entry.surfaces,
-                    homepage: manifest?.homepage,
-                    license: manifest?.license,
-                    editable: accessControl.canWrite(name),
-                  },
-                  null,
-                  2
-                ),
-              },
-            ],
-          };
-        } catch (error) {
-          return {
-            content: [
-              {
-                type: "text" as const,
-                text: JSON.stringify({
-                  error: "Plugin not found",
                   message:
                     error instanceof Error ? error.message : String(error),
                 }),
@@ -506,107 +356,26 @@ export class SkillportMCP extends McpAgent<Env, unknown, UserProps> {
     // Editor Tools (require write access)
     // ============================================================
 
-    // Tool: update_skill (DEPRECATED - use save_skill instead)
-    this.server.tool(
-      "update_skill",
-      "[DEPRECATED: Use save_skill instead] Update the SKILL.md content for a plugin. Requires write access to the skill.",
-      {
-        name: z.string().describe("Plugin name"),
-        content: z.string().describe("New SKILL.md content"),
-        commitMessage: z
-          .string()
-          .optional()
-          .describe("Custom commit message (optional)"),
-      },
-      async ({ name, content, commitMessage }) => {
-        try {
-          const accessControl = await this.getAccessControl();
-
-          if (!accessControl.canWrite(name)) {
-            return {
-              content: [
-                {
-                  type: "text" as const,
-                  text: JSON.stringify({
-                    error: "Access denied",
-                    message: "You don't have write access to this skill",
-                  }),
-                },
-              ],
-              isError: true,
-            };
-          }
-
-          this.logAction("update_skill", { skill: name });
-
-          const github = this.getGitHubClient();
-
-          // Look up skill to find its parent plugin
-          const skill = await github.getSkill(name);
-          if (!skill) {
-            throw new Error(`Skill not found: ${name}`);
-          }
-
-          const { entry } = await github.getPlugin(skill.plugin);
-          const basePath = entry.source.replace("./", "");
-          // Use dirName (actual directory) not name (display name from frontmatter)
-          const fullPath = `${basePath}/skills/${skill.dirName}/SKILL.md`;
-
-          const writeClient = this.getWriteGitHubClient();
-          const message =
-            commitMessage ||
-            `Update ${name} SKILL.md\n\nRequested by: ${this.props.email}`;
-
-          await writeClient.updateFile(fullPath, content, message);
-
-          // Clear cache for this plugin
-          await github.clearCache(name);
-
-          return {
-            content: [
-              {
-                type: "text" as const,
-                text: JSON.stringify(
-                  {
-                    success: true,
-                    path: fullPath,
-                    message: `Successfully updated ${name} SKILL.md`,
-                  },
-                  null,
-                  2
-                ),
-              },
-            ],
-          };
-        } catch (error) {
-          return {
-            content: [
-              {
-                type: "text" as const,
-                text: JSON.stringify({
-                  error: "Failed to update skill",
-                  message:
-                    error instanceof Error ? error.message : String(error),
-                }),
-              },
-            ],
-            isError: true,
-          };
-        }
-      }
-    );
-
-    // Tool: save_skill (upsert multiple files)
+    // Tool: save_skill (create or update skill files)
     this.server.tool(
       "save_skill",
-      "Create or update skill files for a plugin. Handles multiple files in one call. " +
-        "Use this for multi-file skills or when creating a new skill from scratch.",
+      "Create or update files for a skill. For new skills, provide skill_group (defaults to skill name for standalone). " +
+        "Paths are relative to the skill directory itself. " +
+        "Example: 'SKILL.md', 'templates/example.md', 'scripts/helper.py'",
       {
-        name: z.string().describe("Plugin name"),
+        skill: z
+          .string()
+          .regex(/^[a-z0-9-]+$/, "Skill name must be lowercase alphanumeric with hyphens")
+          .describe("Skill name"),
+        skill_group: z
+          .string()
+          .regex(/^[a-z0-9-]+$/, "Skill group must be lowercase alphanumeric with hyphens")
+          .optional()
+          .describe("Skill group (required for new skills, defaults to skill name; ignored for existing skills)"),
         files: z
           .array(
             z.object({
-              path: z.string().describe("Relative path within plugin directory (e.g., 'plugin.json', 'skills/SKILL.md', 'skills/templates/pitch.md')"),
+              path: z.string().describe("Relative path within the skill directory (e.g., 'SKILL.md', 'templates/example.md')"),
               content: z.string().describe("File content"),
             })
           )
@@ -616,34 +385,81 @@ export class SkillportMCP extends McpAgent<Env, unknown, UserProps> {
           .optional()
           .describe("Custom commit message (optional)"),
       },
-      async ({ name, files, commitMessage }) => {
+      async ({ skill: skillName, skill_group, files, commitMessage }) => {
         try {
-          // Validate plugin name to prevent path injection
-          if (!this.validatePluginName(name)) {
-            return {
-              content: [
-                {
-                  type: "text" as const,
-                  text: JSON.stringify({
-                    error: "Invalid plugin name",
-                    message: "Plugin name must be lowercase alphanumeric with hyphens only (e.g., 'my-skill')",
-                  }),
-                },
-              ],
-              isError: true,
-            };
-          }
-
+          const github = this.getGitHubClient();
           const accessControl = await this.getAccessControl();
 
-          if (!accessControl.canWrite(name)) {
+          // Look up skill to find its group
+          const existingSkill = await github.getSkill(skillName);
+
+          let groupName: string;
+          let isNewSkill = false;
+          let isNewGroup = false;
+
+          if (existingSkill) {
+            // Existing skill - use its group (ignore skill_group param)
+            groupName = existingSkill.plugin;
+          } else {
+            // New skill - need to determine/create group
+            isNewSkill = true;
+
+            // Only editors can create new skills
+            if (!accessControl.isEditor()) {
+              return {
+                content: [
+                  {
+                    type: "text" as const,
+                    text: JSON.stringify({
+                      error: "Access denied",
+                      message: "Only editors can create new skills. Use list_skills to see existing skills.",
+                    }),
+                  },
+                ],
+                isError: true,
+              };
+            }
+
+            // Determine group name (defaults to skill name for standalone skills)
+            groupName = skill_group || skillName;
+
+            // Check if group exists
+            const groupPath = `plugins/${groupName}`;
+            const groupExists = await github.fileExists(`${groupPath}/.claude-plugin/plugin.json`);
+
+            if (!groupExists) {
+              isNewGroup = true;
+              // Create the plugin.json for new group
+              const writeClient = this.getWriteGitHubClient();
+              const manifest = {
+                name: groupName,
+                version: "1.0.0",
+                description: skill_group ? `Skill group: ${groupName}` : `Skill: ${skillName}`,
+                author: {
+                  name: this.props.name,
+                  email: this.props.email,
+                },
+                license: "MIT",
+                keywords: [],
+              };
+
+              await writeClient.createFile(
+                `${groupPath}/.claude-plugin/plugin.json`,
+                JSON.stringify(manifest, null, 2),
+                `Create ${groupName} skill group\n\nRequested by: ${this.props.email}`
+              );
+            }
+          }
+
+          // Check write access
+          if (!accessControl.canWrite(groupName)) {
             return {
               content: [
                 {
                   type: "text" as const,
                   text: JSON.stringify({
                     error: "Access denied",
-                    message: "You don't have write access to this skill",
+                    message: `You don't have write access to skill group "${groupName}"`,
                   }),
                 },
               ],
@@ -651,29 +467,30 @@ export class SkillportMCP extends McpAgent<Env, unknown, UserProps> {
             };
           }
 
-          this.logAction("save_skill", { plugin: name });
+          this.logAction("save_skill", { skill: skillName, skill_group: groupName });
 
-          const github = this.getGitHubClient();
           const writeClient = this.getWriteGitHubClient();
 
-          // Get plugin info to determine base path (plugin root, not skills subdirectory)
+          // Get the base path for the skill group
+          // For unpublished groups, construct path directly (getPlugin looks in marketplace.json)
           let basePath: string;
-          let isNewPlugin = false;
           try {
-            const { entry } = await github.getPlugin(name);
-            // Use plugin root directory (e.g., "plugins/my-skill")
+            const { entry } = await github.getPlugin(groupName);
             basePath = entry.source.replace("./", "");
           } catch {
-            // Plugin doesn't exist yet, use default path
-            basePath = `plugins/${name}`;
-            isNewPlugin = true;
+            // Group exists but isn't published yet - construct path directly
+            basePath = `plugins/${groupName}`;
           }
 
           const results: Array<{ path: string; created: boolean }> = [];
-          const baseMessage = commitMessage || `Update ${name} skill files`;
+          const baseMessage = commitMessage || `Update ${skillName} skill files`;
 
           // Validate all file paths before processing any files
-          const validatedFiles: Array<{ path: string; content: string; sanitizedPath: string }> = [];
+          // Paths are relative to the skill directory, we auto-prefix with skills/{dirName}/
+          // For existing skills, use dirName (actual folder); for new skills, use skillName
+          const skillDirName = existingSkill?.dirName || skillName;
+          const skillPrefix = `skills/${skillDirName}/`;
+          const validatedFiles: Array<{ path: string; content: string; fullPath: string }> = [];
           for (const file of files) {
             const sanitizedPath = this.validateFilePath(file.path);
             if (!sanitizedPath) {
@@ -691,47 +508,36 @@ export class SkillportMCP extends McpAgent<Env, unknown, UserProps> {
               };
             }
 
-            // Reject bare skill file paths that should be under skills/ directory
-            // This prevents accidentally writing SKILL.md to plugin root instead of skills/SKILL.md
-            const bareSkillPaths = ["SKILL.md", "templates", "scripts", "references", "examples"];
-            const pathStart = sanitizedPath.split("/")[0];
-            if (bareSkillPaths.includes(pathStart)) {
-              return {
-                content: [
-                  {
-                    type: "text" as const,
-                    text: JSON.stringify({
-                      error: "Invalid file path",
-                      message: `Path "${file.path}" appears to be a skill file but is missing the "skills/" prefix. ` +
-                        `Use "skills/${file.path}" instead. Plugin root files like "plugin.json" don't need a prefix.`,
-                    }),
-                  },
-                ],
-                isError: true,
-              };
-            }
-
-            validatedFiles.push({ path: file.path, content: file.content, sanitizedPath });
+            // Auto-prefix with skills/{skill}/ to get the full path within the group
+            const fullPath = `${skillPrefix}${sanitizedPath}`;
+            validatedFiles.push({ path: file.path, content: file.content, fullPath });
           }
 
           // Process each validated file
           for (const file of validatedFiles) {
-            const fullPath = `${basePath}/${file.sanitizedPath}`;
-            const fileMessage = `${baseMessage}\n\nFile: ${file.sanitizedPath}\nRequested by: ${this.props.email}`;
+            const absolutePath = `${basePath}/${file.fullPath}`;
+            const fileMessage = `${baseMessage}\n\nFile: ${file.fullPath}\nRequested by: ${this.props.email}`;
 
             const { created } = await writeClient.upsertFile(
-              fullPath,
+              absolutePath,
               file.content,
               fileMessage
             );
-            results.push({ path: fullPath, created });
+            results.push({ path: absolutePath, created });
           }
 
-          // Clear cache for this plugin
-          await github.clearCache(name);
+          // Clear cache for this skill group
+          await github.clearCache(groupName);
 
           const created = results.filter((r) => r.created).length;
           const updated = results.filter((r) => !r.created).length;
+
+          // Build response with appropriate next steps
+          const nextSteps: string[] = [];
+          if (isNewSkill && isNewGroup) {
+            nextSteps.push("Use publish_skill to make it discoverable in the marketplace");
+          }
+          nextSteps.push("Use bump_version to release updates");
 
           return {
             content: [
@@ -740,16 +546,18 @@ export class SkillportMCP extends McpAgent<Env, unknown, UserProps> {
                 text: JSON.stringify(
                   {
                     success: true,
-                    plugin: name,
-                    isNewPlugin,
+                    skill: skillName,
+                    skill_group: groupName,
+                    isNewSkill,
+                    isNewGroup,
                     files: results,
                     summary: `${created} file(s) created, ${updated} file(s) updated`,
-                    nextSteps: isNewPlugin
-                      ? [
-                          "Ensure plugin.json was included in files (required for bump_version)",
-                          "Use publish_plugin to add to marketplace",
-                        ]
-                      : ["Use bump_version to release the update"],
+                    message: isNewSkill
+                      ? isNewGroup
+                        ? `Created new skill "${skillName}" with new group "${groupName}"`
+                        : `Created new skill "${skillName}" in existing group "${groupName}"`
+                      : `Updated skill "${skillName}" in group "${groupName}"`,
+                    nextSteps,
                   },
                   null,
                   2
@@ -778,25 +586,28 @@ export class SkillportMCP extends McpAgent<Env, unknown, UserProps> {
     // Tool: bump_version
     this.server.tool(
       "bump_version",
-      "Bump the version of a plugin (updates both plugin.json and marketplace.json). Requires write access.",
+      "Bump the version of a skill (updates plugin.json and marketplace.json). " +
+        "All skills in the same group share the version.",
       {
-        name: z.string().describe("Plugin name"),
+        skill: z.string().describe("Skill name (from list_skills)"),
         type: z
           .enum(["major", "minor", "patch"])
           .describe("Version bump type: major (1.0.0→2.0.0), minor (1.0.0→1.1.0), or patch (1.0.0→1.0.1)"),
       },
-      async ({ name, type }) => {
+      async ({ skill: skillName, type }) => {
         try {
-          const accessControl = await this.getAccessControl();
+          const github = this.getGitHubClient();
 
-          if (!accessControl.canWrite(name)) {
+          // Look up skill to find its group
+          const skill = await github.getSkill(skillName);
+          if (!skill) {
             return {
               content: [
                 {
                   type: "text" as const,
                   text: JSON.stringify({
-                    error: "Access denied",
-                    message: "You don't have write access to this skill",
+                    error: "Skill not found",
+                    message: `Skill "${skillName}" not found. Use list_skills to see available skills.`,
                   }),
                 },
               ],
@@ -804,10 +615,46 @@ export class SkillportMCP extends McpAgent<Env, unknown, UserProps> {
             };
           }
 
-          this.logAction("bump_version", { plugin: name });
+          const groupName = skill.plugin;
+          const accessControl = await this.getAccessControl();
 
-          const github = this.getGitHubClient();
-          const { entry, manifest } = await github.getPlugin(name);
+          if (!accessControl.canWrite(groupName)) {
+            return {
+              content: [
+                {
+                  type: "text" as const,
+                  text: JSON.stringify({
+                    error: "Access denied",
+                    message: `You don't have write access to skill group "${groupName}"`,
+                  }),
+                },
+              ],
+              isError: true,
+            };
+          }
+
+          this.logAction("bump_version", { skill: skillName, skill_group: groupName });
+
+          // Get plugin info - requires skill to be published
+          let entry, manifest;
+          try {
+            const result = await github.getPlugin(groupName);
+            entry = result.entry;
+            manifest = result.manifest;
+          } catch {
+            return {
+              content: [
+                {
+                  type: "text" as const,
+                  text: JSON.stringify({
+                    error: "Skill not published",
+                    message: `Skill "${skillName}" is not published yet. Use publish_skill first.`,
+                  }),
+                },
+              ],
+              isError: true,
+            };
+          }
 
           const currentVersion = manifest?.version || entry.version || "1.0.0";
           const [major, minor, patch] = currentVersion.split(".").map(Number);
@@ -822,22 +669,22 @@ export class SkillportMCP extends McpAgent<Env, unknown, UserProps> {
           const writeClient = this.getWriteGitHubClient();
           const basePath = entry.source.replace("./", "");
 
-          // Update plugin.json if it exists
+          // Update plugin.json if it exists (at .claude-plugin/plugin.json)
           if (manifest) {
-            const manifestPath = `${basePath}/plugin.json`;
+            const manifestPath = `${basePath}/.claude-plugin/plugin.json`;
             const updatedManifest = { ...manifest, version: newVersion };
             await writeClient.updateFile(
               manifestPath,
               JSON.stringify(updatedManifest, null, 2),
-              `Bump ${name} version to ${newVersion}\n\nRequested by: ${this.props.email}`
+              `Bump ${groupName} version to ${newVersion}\n\nRequested by: ${this.props.email}`
             );
           }
 
           // Update marketplace.json
-          await writeClient.updateMarketplaceVersion(name, newVersion, this.props.email);
+          await writeClient.updateMarketplaceVersion(groupName, newVersion, this.props.email);
 
           // Clear caches
-          await github.clearCache(name);
+          await github.clearCache(groupName);
           await github.clearCache();
 
           return {
@@ -847,9 +694,11 @@ export class SkillportMCP extends McpAgent<Env, unknown, UserProps> {
                 text: JSON.stringify(
                   {
                     success: true,
+                    skill: skillName,
+                    skill_group: groupName,
                     oldVersion: currentVersion,
                     newVersion,
-                    message: `Successfully bumped ${name} from ${currentVersion} to ${newVersion}`,
+                    message: `Successfully bumped "${skillName}" (group: ${groupName}) from ${currentVersion} to ${newVersion}`,
                   },
                   null,
                   2
@@ -875,156 +724,28 @@ export class SkillportMCP extends McpAgent<Env, unknown, UserProps> {
       }
     );
 
-    // Tool: create_plugin
+    // Tool: publish_skill
     this.server.tool(
-      "create_plugin",
-      "Create a new plugin with SKILL.md template. Requires editor access (global editors only).",
+      "publish_skill",
+      "Make a skill discoverable in the marketplace. " +
+        "Call this after creating/updating the skill to make it visible to users.",
       {
-        name: z
-          .string()
-          .regex(/^[a-z0-9-]+$/, "Plugin name must be lowercase alphanumeric with hyphens")
-          .describe("Plugin name (lowercase, alphanumeric, hyphens only)"),
-        description: z.string().describe("Short description of the plugin"),
-        category: z
-          .string()
-          .optional()
-          .describe("Plugin category (e.g., 'productivity', 'development')"),
-      },
-      async ({ name, description, category }) => {
-        try {
-          const accessControl = await this.getAccessControl();
-
-          // Only global editors can create new plugins
-          if (!accessControl.isEditor()) {
-            return {
-              content: [
-                {
-                  type: "text" as const,
-                  text: JSON.stringify({
-                    error: "Access denied",
-                    message: "Only editors can create new plugins",
-                  }),
-                },
-              ],
-              isError: true,
-            };
-          }
-
-          this.logAction("create_plugin", { plugin: name });
-
-          const writeClient = this.getWriteGitHubClient();
-          const pluginPath = `plugins/${name}`;
-
-          // Create plugin.json
-          const manifest = {
-            name,
-            version: "1.0.0",
-            description,
-            author: {
-              name: this.props.name,
-              email: this.props.email,
-            },
-            license: "MIT",
-            keywords: [],
-          };
-
-          await writeClient.createFile(
-            `${pluginPath}/plugin.json`,
-            JSON.stringify(manifest, null, 2),
-            `Create ${name} plugin\n\nRequested by: ${this.props.email}`
-          );
-
-          // Create SKILL.md template
-          const skillTemplate = `---
-name: ${name}
-description: ${description}
----
-
-# ${name}
-
-## When to Use This Skill
-
-[Describe when Claude should use this skill]
-
-## Instructions
-
-[Step-by-step instructions for Claude]
-`;
-
-          await writeClient.createFile(
-            `${pluginPath}/skills/SKILL.md`,
-            skillTemplate,
-            `Add ${name} SKILL.md\n\nRequested by: ${this.props.email}`
-          );
-
-          // Note: marketplace.json needs to be updated manually or via separate tool
-          // This is intentional to allow review before publishing
-
-          return {
-            content: [
-              {
-                type: "text" as const,
-                text: JSON.stringify(
-                  {
-                    success: true,
-                    name,
-                    path: pluginPath,
-                    message: `Successfully created plugin ${name}. Note: You'll need to add it to marketplace.json to publish it.`,
-                    nextSteps: [
-                      "Edit the SKILL.md with your skill content",
-                      "Add the plugin to .claude-plugin/marketplace.json",
-                      "Use bump_version to release updates",
-                    ],
-                  },
-                  null,
-                  2
-                ),
-              },
-            ],
-          };
-        } catch (error) {
-          return {
-            content: [
-              {
-                type: "text" as const,
-                text: JSON.stringify({
-                  error: "Failed to create plugin",
-                  message:
-                    error instanceof Error ? error.message : String(error),
-                }),
-              },
-            ],
-            isError: true,
-          };
-        }
-      }
-    );
-
-    // Tool: publish_plugin
-    this.server.tool(
-      "publish_plugin",
-      "Add a plugin to the marketplace (makes it discoverable). " +
-        "Use after save_skill to make the plugin publicly available.",
-      {
-        name: z
-          .string()
-          .regex(/^[a-z0-9-]+$/, "Plugin name must be lowercase alphanumeric with hyphens")
-          .describe("Plugin name"),
+        skill: z.string().describe("Skill name (from save_skill or list_skills)"),
         description: z.string().describe("Short description for marketplace listing"),
         category: z
           .string()
           .optional()
-          .describe("Plugin category (e.g., 'productivity', 'development')"),
+          .describe("Category (e.g., 'productivity', 'development')"),
         surfaces: z
           .array(z.string())
           .optional()
           .describe("Target surfaces (e.g., ['claude-ai', 'claude-desktop', 'claude-code'])"),
       },
-      async ({ name, description, category, surfaces }) => {
+      async ({ skill: skillName, description, category, surfaces }) => {
         try {
           const accessControl = await this.getAccessControl();
 
-          // Only global editors can publish plugins
+          // Only global editors can publish skills
           if (!accessControl.isEditor()) {
             return {
               content: [
@@ -1032,7 +753,7 @@ description: ${description}
                   type: "text" as const,
                   text: JSON.stringify({
                     error: "Access denied",
-                    message: "Only editors can publish plugins to the marketplace",
+                    message: "Only editors can publish skills to the marketplace",
                   }),
                 },
               ],
@@ -1040,21 +761,41 @@ description: ${description}
             };
           }
 
-          this.logAction("publish_plugin", { plugin: name });
+          const github = this.getGitHubClient();
+
+          // Look up skill to find its group
+          const skill = await github.getSkill(skillName);
+          if (!skill) {
+            return {
+              content: [
+                {
+                  type: "text" as const,
+                  text: JSON.stringify({
+                    error: "Skill not found",
+                    message: `Skill "${skillName}" not found. Use save_skill first to create the skill.`,
+                  }),
+                },
+              ],
+              isError: true,
+            };
+          }
+
+          const groupName = skill.plugin;
+          this.logAction("publish_skill", { skill: skillName, skill_group: groupName });
 
           const writeClient = this.getWriteGitHubClient();
 
-          // Verify plugin files exist
-          const github = this.getGitHubClient();
-          const skillExists = await github.fileExists(`plugins/${name}/skills/SKILL.md`);
+          // Verify skill file exists at correct path
+          const skillPath = `plugins/${groupName}/skills/${skill.dirName}/SKILL.md`;
+          const skillExists = await github.fileExists(skillPath);
           if (!skillExists) {
             return {
               content: [
                 {
                   type: "text" as const,
                   text: JSON.stringify({
-                    error: "Plugin files not found",
-                    message: `No skill files found at plugins/${name}/skills/SKILL.md. Use save_skill first to create the skill files.`,
+                    error: "Skill files not found",
+                    message: `Skill file not found at ${skillPath}. Use save_skill to create the skill files.`,
                   }),
                 },
               ],
@@ -1062,10 +803,10 @@ description: ${description}
             };
           }
 
-          // Add to marketplace
+          // Add skill group to marketplace
           await writeClient.addToMarketplace(
             {
-              name,
+              name: groupName,
               description,
               category,
               surfaces,
@@ -1080,10 +821,11 @@ description: ${description}
                 text: JSON.stringify(
                   {
                     success: true,
-                    name,
-                    message: `Successfully published ${name} to the marketplace`,
+                    skill: skillName,
+                    skill_group: groupName,
+                    message: `Successfully published skill "${skillName}" (group: ${groupName}) to the marketplace`,
                     nextSteps: [
-                      "Plugin is now visible in list_plugins",
+                      "Skill is now visible in list_skills",
                       "Users can install it via fetch_skill",
                       "Use bump_version to release updates",
                     ],
@@ -1100,7 +842,7 @@ description: ${description}
               {
                 type: "text" as const,
                 text: JSON.stringify({
-                  error: "Failed to publish plugin",
+                  error: "Failed to publish skill",
                   message:
                     error instanceof Error ? error.message : String(error),
                 }),

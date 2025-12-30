@@ -348,19 +348,54 @@ export class GitHubClient {
   }
 
   /**
-   * Discover all skills from all plugins
+   * Discover all skills from all plugins (both published and unpublished)
+   * Scans plugins/ directory directly to find all groups with skills
    */
   async listSkills(): Promise<SkillEntry[]> {
     return this.fetchWithCache<SkillEntry[]>(
       `skills:${this.repo}`,
       300,
       async () => {
-        const marketplace = await this.getMarketplace();
         const result: SkillEntry[] = [];
+        const seenSkills = new Set<string>();
 
-        for (const plugin of marketplace.plugins) {
-          const basePath = plugin.source.replace("./", "");
+        // Get marketplace for version/author info on published plugins
+        const marketplace = await this.getMarketplace();
+        const publishedPlugins = new Map(
+          marketplace.plugins.map((p) => [p.name, p])
+        );
+
+        // Scan all directories under plugins/
+        let pluginDirs: GitHubContentItem[] = [];
+        try {
+          pluginDirs = await this.listDirectory("plugins");
+        } catch {
+          // No plugins directory
+          return result;
+        }
+
+        for (const pluginDir of pluginDirs) {
+          if (pluginDir.type !== "dir") continue;
+
+          const groupName = pluginDir.name;
+          const basePath = `plugins/${groupName}`;
           const skillsDirPath = `${basePath}/skills`;
+
+          // Check if this is a valid plugin (has .claude-plugin/plugin.json)
+          const manifestPath = `${basePath}/.claude-plugin/plugin.json`;
+          let manifest: PluginManifest;
+          try {
+            const manifestContent = await this.fetchFile(manifestPath);
+            manifest = JSON.parse(manifestContent) as PluginManifest;
+          } catch {
+            // No valid manifest, skip this directory
+            continue;
+          }
+
+          // Get version from plugin.json (authoritative), author from manifest or marketplace
+          const publishedInfo = publishedPlugins.get(groupName);
+          const version = manifest.version || publishedInfo?.version || "1.0.0";
+          const author = manifest.author || publishedInfo?.author;
 
           try {
             const skillDirs = await this.listDirectory(skillsDirPath);
@@ -373,13 +408,25 @@ export class GitHubClient {
                 const skillMdContent = await this.fetchFile(skillMdPath);
                 const frontmatter = parseSkillFrontmatter(skillMdContent);
 
+                const skillName = frontmatter.name || dir.name;
+
+                // Enforce unique skill names - first one wins
+                if (seenSkills.has(skillName)) {
+                  console.warn(
+                    `[WARN] Duplicate skill name "${skillName}" in group "${groupName}" - skipping`
+                  );
+                  continue;
+                }
+                seenSkills.add(skillName);
+
                 result.push({
-                  name: frontmatter.name || dir.name,
-                  dirName: dir.name, // Actual directory name for path lookups
-                  plugin: plugin.name,
-                  description: frontmatter.description || plugin.description || "",
-                  version: plugin.version || "0.0.0",
-                  author: plugin.author,
+                  name: skillName,
+                  dirName: dir.name,
+                  plugin: groupName,
+                  description:
+                    frontmatter.description || publishedInfo?.description || "",
+                  version,
+                  author,
                 });
               } catch {
                 // Skip if SKILL.md is missing or invalid
@@ -454,8 +501,37 @@ export class GitHubClient {
       throw new Error(`Skill not found: ${skillName}`);
     }
 
-    const { entry, manifest } = await this.getPlugin(skill.plugin);
-    const basePath = entry.source.replace("./", "");
+    // Try to get plugin from marketplace, fall back to direct path for unpublished groups
+    let entry: PluginEntry;
+    let manifest: PluginManifest | null = null;
+    let basePath: string;
+
+    try {
+      const result = await this.getPlugin(skill.plugin);
+      entry = result.entry;
+      manifest = result.manifest;
+      basePath = entry.source.replace("./", "");
+    } catch {
+      // Plugin not in marketplace - construct path directly for unpublished groups
+      basePath = `plugins/${skill.plugin}`;
+
+      // Try to read plugin.json directly
+      try {
+        const manifestContent = await this.fetchFile(`${basePath}/.claude-plugin/plugin.json`);
+        manifest = JSON.parse(manifestContent) as PluginManifest;
+      } catch {
+        // No manifest, that's okay
+      }
+
+      // Create a synthetic entry for unpublished plugins
+      entry = {
+        name: skill.plugin,
+        source: `./${basePath}`,
+        version: manifest?.version || skill.version,
+        description: manifest?.description,
+        author: manifest?.author,
+      };
+    }
 
     // Skill directory: plugins/{plugin}/skills/{skill}/
     // Use dirName (actual directory) not name (display name from frontmatter)
@@ -522,8 +598,11 @@ export class GitHubClient {
     if (pluginName) {
       await this.kv.delete(`plugin:${this.repo}:${pluginName}`);
       await this.kv.delete(`skill:${this.repo}:${pluginName}`);
-    } else {
-      // Clear marketplace cache
+    }
+    // Always clear the skills list cache (used by listSkills)
+    await this.kv.delete(`skills:${this.repo}`);
+    // Clear marketplace cache when no specific plugin
+    if (!pluginName) {
       await this.kv.delete(`marketplace:${this.repo}`);
     }
   }

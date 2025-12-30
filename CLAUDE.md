@@ -50,12 +50,29 @@ Plugin Marketplace Repo → Claude Code (native)
 
 The connector exposes these MCP tools:
 
+### User Tools
 | Tool | Purpose |
 |------|---------|
 | `list_plugins` | List all plugins (with optional category/surface filters) |
+| `list_skills` | List all skills across all plugins (published + unpublished) |
 | `get_plugin` | Get details about a specific plugin |
 | `fetch_skill` | Fetch SKILL.md and related files for installation |
 | `check_updates` | Check if installed plugins have updates |
+
+### Editor Tools (require write access)
+| Tool | Purpose |
+|------|---------|
+| `save_skill` | Create or update skill files (unified create/edit) |
+| `publish_skill` | Make a skill discoverable in the marketplace |
+| `bump_version` | Bump version for a skill's group |
+
+## Testing
+
+**Important:** Cannot test MCP tools directly from Claude Code due to OAuth requirements. Use one of these methods:
+
+1. **Claude.ai with connector enabled** - Add the connector in Settings, test tools in conversation
+2. **MCP Inspector** - `npx @anthropic-ai/mcp-inspector` with the SSE URL
+3. **Wrangler tail for logs** - `node node_modules/wrangler/bin/wrangler.js tail` to see audit logs
 
 ## Development
 
