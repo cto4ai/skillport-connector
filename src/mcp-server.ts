@@ -486,8 +486,10 @@ export class SkillportMCP extends McpAgent<Env, unknown, UserProps> {
           const baseMessage = commitMessage || `Update ${skillName} skill files`;
 
           // Validate all file paths before processing any files
-          // Paths are relative to the skill directory, we auto-prefix with skills/{skill}/
-          const skillPrefix = `skills/${skillName}/`;
+          // Paths are relative to the skill directory, we auto-prefix with skills/{dirName}/
+          // For existing skills, use dirName (actual folder); for new skills, use skillName
+          const skillDirName = existingSkill?.dirName || skillName;
+          const skillPrefix = `skills/${skillDirName}/`;
           const validatedFiles: Array<{ path: string; content: string; fullPath: string }> = [];
           for (const file of files) {
             const sanitizedPath = this.validateFilePath(file.path);
