@@ -31,7 +31,7 @@ The Skillport Connector uses a single GitHub service token to access the marketp
 2. Token name: `Skillport Marketplace Access`
 3. Expiration: Set as needed
 4. Repository access: **Only select repositories**
-   - Select your marketplace repo (e.g., `cto4ai/skillport-template`)
+   - Select your marketplace repo (e.g., `cto4ai/skillport-marketplace-template`)
 5. Permissions:
    - Contents: **Read-only**
 6. Click **Generate token**
@@ -55,7 +55,7 @@ Test that the token works:
 
 ```bash
 curl -H "Authorization: token YOUR_TOKEN_HERE" \
-  https://api.github.com/repos/cto4ai/skillport-template/contents/.claude-plugin/marketplace.json
+  https://api.github.com/repos/cto4ai/skillport-marketplace-template/contents/.claude-plugin/marketplace.json
 ```
 
 You should see the marketplace.json content (or a 404 if it doesn't exist yet).

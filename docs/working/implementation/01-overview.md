@@ -35,7 +35,7 @@ Build an MCP connector on Cloudflare Workers that:
                                 ▼
 ┌─────────────────────────────────────────────────────────────────┐
 │                    Plugin Marketplace Repo                       │
-│                    (e.g., cto4ai/skillport-template)            │
+│                    (e.g., cto4ai/skillport-marketplace-template)            │
 └─────────────────────────────────────────────────────────────────┘
 ```
 
@@ -69,7 +69,7 @@ Build an MCP connector on Cloudflare Workers that:
 ## Environment Variables
 
 ### Public (wrangler.toml)
-- `MARKETPLACE_REPO` - GitHub repo path (e.g., `cto4ai/skillport-template`)
+- `MARKETPLACE_REPO` - GitHub repo path (e.g., `cto4ai/skillport-marketplace-template`)
 - `GOOGLE_CLIENT_ID` - Google OAuth client ID
 
 ### Secrets (wrangler secret put)

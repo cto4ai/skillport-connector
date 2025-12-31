@@ -48,7 +48,7 @@ instructions:
 
 ---
 
-### 2. skillport-template: `plugins/skillport-manager/skills/SKILL.md`
+### 2. skillport-marketplace-template: `plugins/skillport-manager/skills/SKILL.md`
 
 In step 5 (Present), update the user message to include the new conversation requirement.
 
@@ -67,7 +67,7 @@ In step 5 (Present), update the user message to include the new conversation req
 ## After Changes
 
 1. Deploy updated connector: `cd skillport-connector && wrangler deploy`
-2. Commit and push skillport-template changes
+2. Commit and push skillport-marketplace-template changes
 3. Optionally re-test the bootstrapping flow to confirm messaging appears
 
 ## Test Results Reference

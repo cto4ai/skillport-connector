@@ -160,7 +160,7 @@ Users add the connector URL once in Claude.ai Settings → Connectors, authentic
 
 ### 5. The Manager Skill
 
-The [Skillport Marketplace template](https://github.com/craftycto/skillport-marketplace) includes **skillport-manager**, a meta-skill that gives users a conversational interface:
+The [Skillport Marketplace template](https://github.com/craftycto/skillport-marketplace-template) includes **skillport-manager**, a meta-skill that gives users a conversational interface:
 
 - Browse and search available Skills
 - One-click installation (packages Skills as `.skill` files)
@@ -225,7 +225,7 @@ wrangler secret put COOKIE_ENCRYPTION_KEY
 
 ### Create Your Skills Repository
 
-Use the [Skillport Marketplace template](https://github.com/craftycto/skillport-marketplace) to create your marketplace:
+Use the [Skillport Marketplace template](https://github.com/craftycto/skillport-marketplace-template) to create your marketplace:
 
 1. Click "Use this template" on GitHub
 2. Add your Skills in `plugins/your-group/skills/`
@@ -418,7 +418,7 @@ See "Getting Help" below.
 
 | Project                                                                                | Description                                          |
 | -------------------------------------------------------------------------------------- | ---------------------------------------------------- |
-| [skillport-marketplace](https://github.com/craftycto/skillport-marketplace)            | GitHub template for creating your Skills marketplace |
+| [skillport-marketplace-template](https://github.com/craftycto/skillport-marketplace-template) | GitHub template for creating your Skillport Marketplace |
 | [Claude Code Plugin Marketplaces](https://code.claude.com/docs/en/plugin-marketplaces) | Native Plugin system for Claude Code                 |
 
 ---

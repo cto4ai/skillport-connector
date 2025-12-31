@@ -327,7 +327,7 @@ try {
 
 ```typescript
 // Test file fetch
-const github = new GitHubClient(token, "cto4ai/skillport-template", kv);
+const github = new GitHubClient(token, "cto4ai/skillport-marketplace-template", kv);
 
 // Should return marketplace data
 const marketplace = await github.getMarketplace();

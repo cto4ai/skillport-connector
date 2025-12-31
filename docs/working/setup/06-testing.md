@@ -26,7 +26,7 @@ Your worker has access to the following bindings:
 - KV Namespaces:
   - OAUTH_KV: ... [simulated locally]
 - Vars:
-  - MARKETPLACE_REPO: "cto4ai/skillport-template"
+  - MARKETPLACE_REPO: "cto4ai/skillport-marketplace-template"
 ⎔ Starting local server...
 Ready on http://localhost:8787
 ```

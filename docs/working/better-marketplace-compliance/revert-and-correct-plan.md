@@ -49,7 +49,7 @@ enterprise-plugin/
 - **Main branch:** Has PR #10 merged (expand save_skill scope) - needs evaluation
 - **feat/marketplace-compliance branch:** 6 commits with wrong changes - selective salvage
 
-### Template (skillport-template)
+### Template (skillport-marketplace-template)
 - **Main branch:** Still correct (PR #7 not merged)
 - **PR #7:** Open, contains wrong migration - CLOSE without merging
 - **feat/official-marketplace-compliance branch:** Wrong changes - ABANDON
@@ -87,7 +87,7 @@ enterprise-plugin/
 
 ### Step 1: Close Template PR #7
 ```bash
-cd /Users/jackivers/Projects/skillport/skillport-template
+cd /Users/jackivers/Projects/skillport/skillport-marketplace-template
 gh pr close 7 --comment "Closing: Based on incorrect research. Official plugin structure has skills in skills/ subdirectory, not at plugin root."
 ```
 
@@ -130,7 +130,7 @@ PR #10 expanded `save_skill` to write to plugin root (not just skills/).
 
 ### Current Structure (on main)
 ```
-skillport-template/
+skillport-marketplace-template/
 ├── .claude-plugin/
 │   └── marketplace.json
 └── plugins/
@@ -142,7 +142,7 @@ skillport-template/
 
 ### Target Structure (official)
 ```
-skillport-template/
+skillport-marketplace-template/
 ├── .claude-plugin/
 │   └── marketplace.json
 └── plugins/

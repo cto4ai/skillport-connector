@@ -7,7 +7,7 @@ compatibility_date = "2024-12-01"
 compatibility_flags = ["nodejs_compat"]
 
 [vars]
-MARKETPLACE_REPO = "cto4ai/skillport-template"
+MARKETPLACE_REPO = "cto4ai/skillport-marketplace-template"
 
 [[kv_namespaces]]
 binding = "OAUTH_KV"

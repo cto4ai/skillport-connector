@@ -49,4 +49,4 @@ Replace our custom `surfaces` extension with the official spec fields (`category
 3. New: docs/working/future-features.md
 
 ## Migration Note
-The `word-pair-swap` plugin in skillport-template has `surfaces` in marketplace.json - that will need to be cleaned up separately in that repo.
+The `word-pair-swap` plugin in skillport-marketplace-template has `surfaces` in marketplace.json - that will need to be cleaned up separately in that repo.

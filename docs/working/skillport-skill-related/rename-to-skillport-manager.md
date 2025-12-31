@@ -8,7 +8,7 @@ The new name "skillport-manager" better reflects the full lifecycle: browse, ins
 
 ## Changes Required
 
-### 1. skillport-template repo
+### 1. skillport-marketplace-template repo
 
 **Rename folder:**
 ```
@@ -71,7 +71,7 @@ Change all references from `skillport-browser` to `skillport-manager` in the tip
 
 ### 3. Deploy
 
-1. Commit and push skillport-template changes
+1. Commit and push skillport-marketplace-template changes
 2. Commit and push skillport-connector changes  
 3. Deploy connector: `wrangler deploy`
 

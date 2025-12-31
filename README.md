@@ -204,7 +204,7 @@ This connector runs comfortably on Cloudflare's free tier:
 | Project | Purpose |
 |---------|---------|
 | `skillport-connector` | This project - the MCP bridge |
-| `skillport-template` | GitHub template for creating marketplaces |
+| `skillport-marketplace-template` | GitHub template for creating marketplaces |
 
 ## Reference Links
 
