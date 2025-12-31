@@ -16,7 +16,21 @@ Claude's Skills system is powerful but, for non-developers, isolated. Users crea
 
 ## The Solution
 
-Skillport extends Claude Code's Plugin Marketplace concept to reach all your users:
+Skillport is two components that work together:
+
+### Skillport Template
+
+A GitHub template repository that follows the **Claude Code Plugin Marketplace standard** - the same format developers already use to share plugins in Claude Code. But with extensions that bring those capabilities to Claude's user-facing surfaces:
+
+- **skillport-manager skill**: A meta-skill that orchestrates browsing, installation, and updates through natural conversation
+- **Surface targeting**: Mark skills for `claude-ai`, `claude-desktop`, or both
+- **Access control**: Define who can edit vs. who can use
+
+Your Skills live in version-controlled Markdown. Pull requests, code review, change history - your existing workflow.
+
+### Skillport Connector
+
+A **Claude Connector** that bridges your GitHub repository to Claude.ai and Claude Desktop:
 
 ```
                                                     ┌─────────────────┐
@@ -24,15 +38,27 @@ Skillport extends Claude Code's Plugin Marketplace concept to reach all your use
                                                     │     (web)       │
                                                     └─────────────────┘
                                                               ▲
-Your GitHub Repo       →    Skillport Connector    →──────────┤
-(Skills + Access Control)   (Claude Connector)                │
+Your GitHub Repo       →    Skillport Connector    →──────────┼──────────┐
+(Skillport Template)        (Claude Connector)                │          │
+                                                              ▼          ▼
+                                                    ┌──────────────────────┐
+                                                    │   Claude Desktop     │
+                                                    │   (Mac / Windows)    │
+                                                    └──────────────────────┘
+                                                              │
                                                               ▼
-                                                    ┌─────────────────┐
-                                                    │ Claude Desktop  │
-                                                    └─────────────────┘
+                                                    ┌──────────────────────┐
+                                                    │   Claude Mobile      │
+                                                    │   (iOS / Android)    │
+                                                    │   Skills sync here   │
+                                                    └──────────────────────┘
 ```
 
-**One repository. All your Claude users. Managed access.**
+Users add one URL in Settings → Connectors, authenticate with their corporate identity, and Skills from your repository become available.
+
+**Mobile access included.** Skills installed via Claude.ai or Claude Desktop automatically sync to the Claude mobile apps (iOS/Android). You can't install Skills directly on mobile yet, but once installed elsewhere, they work on the go.
+
+**One repository. All Claude surfaces. Managed access.**
 
 ---
 
@@ -44,6 +70,7 @@ Skillport is built as a **Claude Connector** - not a local MCP server. This matt
 | -------------------------- | :--------------------------: | :--------------------: |
 | Works with Claude.ai (web) |              ✅              |           ❌           |
 | Works with Claude Desktop  |              ✅              |           ✅           |
+| Skills sync to mobile apps |              ✅              |           ❌           |
 | End-user installation      |    One-click in Settings     | Edit JSON config files |
 | Authentication             |        Built-in OAuth        |      DIY or none       |
 | Updates                    |          Automatic           |    Manual reinstall    |
@@ -241,15 +268,17 @@ Use the [Skillport Template](https://github.com/craftycto/skillport-template) to
 │  • Exposes tools to Claude                                  │
 └─────────────────────────────────────────────────────────────┘
                            │
-               ┌───────────┴───────────┐
-               ▼                       ▼
-       ┌──────────────┐        ┌──────────────┐
-       │  Claude.ai   │        │    Claude    │
-       │    (web)     │        │   Desktop    │
-       └──────────────┘        └──────────────┘
+           ┌───────────────┼───────────────┐
+           ▼               ▼               ▼
+   ┌──────────────┐ ┌──────────────┐ ┌──────────────┐
+   │  Claude.ai   │ │    Claude    │ │    Claude    │
+   │    (web)     │ │   Desktop    │ │    Mobile    │
+   └──────────────┘ └──────────────┘ └──────────────┘
+                                       (Skills sync
+                                        from web/desktop)
 ```
 
-**Note:** Claude Code users can access Skills directly via Plugin Marketplaces - they don't need the connector. Skillport brings that same capability to Claude.ai and Desktop users.
+**Note:** Claude Code users can access Skills directly via Plugin Marketplaces - they don't need the connector. Skillport brings that same capability to Claude.ai, Desktop, and Mobile users.
 
 ---
 
@@ -374,6 +403,10 @@ Microsoft Entra support is on the roadmap. In the meantime, if you have a hybrid
 **What about Claude Code users?**
 
 Claude Code has native Plugin Marketplace support. Claude Code users can access your Skills directly from the GitHub repo without the connector. Skillport's value is bringing that same capability to Claude.ai and Desktop users.
+
+**Do Skills work on mobile?**
+
+Yes! Skills installed via Claude.ai or Claude Desktop automatically sync to the Claude mobile apps (iOS and Android). You can't install Skills directly on mobile yet, but once installed on web or desktop, they're available on your phone. Great for on-the-go access to your team's Skills.
 
 **What if I need help setting this up?**
 
