@@ -1,13 +1,15 @@
-# Claude Code Plugins and Skillport Integration
+# Skillport Installation Optimization Across Surfaces
 
-**Research Date:** December 2024  
-**Status:** Current as of Claude Code latest version
+**Research Date:** December 2024 (updated December 31, 2025)  
+**Status:** Active research
 
 ---
 
 ## Executive Summary
 
 Claude Code supports remote MCP servers (announced June 2025), enabling Skillport Connector to work with Claude Code users. However, Claude Code's native Plugin Marketplace system does **not** support authentication to private repositories, which is an open feature request. This creates an opportunity for Skillport to solve the enterprise private repo problem across all Claude surfaces.
+
+**Key Discovery:** All Claude surfaces (Claude.ai, Claude Desktop, Claude Code) use computer tools for skill installation via the `skillport-manager` skill. This means token-based installation optimization benefits **all surfaces**, not just Claude Code. See Finding 8 for details.
 
 ---
 
@@ -737,15 +739,18 @@ For most users, installing skills is infrequent. The token cost may be acceptabl
 
 ---
 
-## Proposed Solution: Token-Based Installation
+## Proposed Solution: Token-Based Installation (All Surfaces)
 
 **Status:** Proposed  
 **Complexity:** Medium  
-**Token Savings:** ~11k → ~100 tokens
+**Token Savings:** ~11k → ~100 tokens  
+**Scope:** All Claude surfaces (Claude.ai, Desktop, Code)
 
 ### The Insight
 
 Instead of returning all skill content via MCP (expensive), return a short-lived install token that a script can redeem for the full content.
+
+**Why this works for all surfaces:** All Claude surfaces have computer tools (bash, file creation). The `skillport-manager` skill uses these tools to write files and run scripts. See Finding 8 for the current installation flow.
 
 ### How It Works
 
@@ -1030,30 +1035,37 @@ This is the **recommended approach** for Phase 2:
 
 ## Revised Recommendation
 
-### For Claude Code Users
+### For All Claude Surfaces (Claude.ai, Desktop, Code)
 
 **Current (works today):**
 ```
 > install [skill] from skillport
 ```
-Claude Code handles it via MCP. Token-heavy but functional.
+Claude handles via MCP + computer tools. Token-heavy (~11k) and slow (2-5 min) but functional.
 
-**Future (with installer skill):**
+**Future (with token-based installation):**
 ```
 > install [skill] from skillport
 ```
-Claude Code runs install script. Token-efficient.
+Claude runs install script with short-lived token. Token-efficient (~100) and fast (5-10 sec).
 
-### For Claude.ai / Desktop Users
+### Surface Differences
 
-Continue using Skillport Connector via Settings → Connectors. The `fetch_skill` response includes installation instructions for the native Skills UI.
+| Surface | Final Output | User Action |
+|---------|-------------|-------------|
+| Claude.ai | `.skill` zip file | Click "Copy to your skills" |
+| Claude Desktop | `.skill` zip file | Click "Copy to your skills" |
+| Claude Code | Files in `~/.claude/skills/` | Restart Claude Code |
 
 ### Priority Order
 
 1. ✅ **Done:** Verify MCP + user-level skills work
 2. ✅ **Done:** Test soil-data-analyzer runs in new session (SUCCESS!)
-3. 📋 **Future:** Build skillport-installer skill with script
-4. 📋 **Future:** Add REST API endpoint to connector for script access
+3. ✅ **Done:** Document actual skillport-manager flow (Finding 8)
+4. 📋 **Next:** Add `get_install_token` MCP tool to connector
+5. 📋 **Next:** Add `/api/install/:token` REST endpoint to connector
+6. 📋 **Next:** Update skillport-manager to use token-based flow
+7. 📋 **Future:** Optimize GitHub API calls (batching, caching)
 
 ---
 
@@ -1110,6 +1122,100 @@ The script shebang uses `#!/usr/bin/env python` but macOS only has `python3`. Cl
 ```
 
 **Fix:** Update skill scripts to use `#!/usr/bin/env python3`
+
+---
+
+## Finding 8: Current skillport-manager Installation Flow
+
+**Documented:** 2025-12-31
+
+### How Installation Actually Works Today
+
+The `skillport-manager` skill (installed via Skillport itself) handles skill installation on **all Claude surfaces** using the same flow:
+
+```
+1. User: "install data-analyzer from skillport"
+2. Claude calls MCP: fetch_skill("data-analyzer") → ~11k tokens
+3. Claude writes files to <output-directory>/<skill-name>/ using computer tools
+4. Claude runs: python scripts/package_skill.py <skill-directory>
+5. Script creates <skill-name>.skill (zip archive)
+6. Claude calls present_files with the .skill path
+7. User clicks "Copy to your skills" in Claude UI
+8. User starts new conversation to use the skill
+```
+
+### Key Insight: All Surfaces Use Computer Tools
+
+| Surface | Has Computer Tools | Installation Method |
+|---------|-------------------|---------------------|
+| Claude.ai | ✅ Yes (bash, file creation) | skillport-manager skill |
+| Claude Desktop | ✅ Yes (bash, file creation) | skillport-manager skill |
+| Claude Code | ✅ Yes (Bash, Write) | skillport-manager skill |
+
+**This means the token-based optimization helps ALL surfaces, not just Claude Code.**
+
+### Why Current Flow Is Slow
+
+1. **MCP response:** ~11k tokens of file contents
+2. **Multiple Write calls:** One per file (N round-trips)
+3. **Script execution:** package_skill.py
+4. **present_files:** Another tool call
+
+Each tool call includes Claude thinking time between steps. A 5-file skill means 5+ round-trips plus processing.
+
+### How Token-Based Optimization Helps All Surfaces
+
+| Step | Current | Optimized |
+|------|---------|----------|
+| 1. Get skill info | `fetch_skill` (~11k tokens) | `get_install_token` (~100 tokens) |
+| 2. Get files | Already in context | Bash script curls API |
+| 3. Write files | N × Write() calls | Script writes directly |
+| 4. Package | package_skill.py | Script handles (or skip for Claude Code) |
+| 5. Present | present_files | Same |
+
+**Token savings:** ~11k → ~100 (99% reduction)  
+**Time savings:** 2-5 min → 5-10 sec (estimated)
+
+### Surface-Specific Considerations
+
+**Claude.ai / Desktop:**
+- Still need `.skill` zip file for "Copy to your skills" UI
+- Script should run `package_skill.py` after writing files
+- Or: Script creates the zip directly
+
+**Claude Code:**
+- Can write directly to `~/.claude/skills/` (no zip needed)
+- User restarts Claude Code to load skill
+- Simpler flow, no packaging step
+
+### Updated Architecture
+
+```
+                  Claude.ai / Desktop                    Claude Code
+                  ──────────────────                    ───────────
+User request:     "install X from skillport"           "install X from skillport"
+                           │                                    │
+MCP call:         get_install_token("X")              get_install_token("X")
+                           │                                    │
+Response:         { token, skill, version }            { token, skill, version }
+                           │                                    │
+Bash call:        install.sh <token> --package         install.sh <token>
+                           │                                    │
+Script does:      curl → write files → zip             curl → write files
+                           │                                    │
+Output:           X.skill file                         ~/.claude/skills/X/
+                           │                                    │
+Present:          present_files(X.skill)               "Restart Claude Code"
+                           │
+User action:      Click "Copy to your skills"
+```
+
+### Required Changes
+
+1. **Connector:** Add `get_install_token` MCP tool
+2. **Connector:** Add `/api/install/:token` REST endpoint
+3. **skillport-manager:** Update SKILL.md to use token-based flow
+4. **Install script:** Support `--package` flag for Claude.ai/Desktop
 
 ---
 
