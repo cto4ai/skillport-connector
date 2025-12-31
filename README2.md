@@ -1,29 +1,22 @@
----
-output: pdf_document
----
-
 # Skillport
 
 **Distribute Claude Skills to your team on Claude.ai and Claude Desktop.**
 
-Skillport lets organizations share custom Claude Skills from a single GitHub repository. Your experts author Skills once; everyone in the org can use them - no technical setup required for end users.
+Skillport lets organizations share custom Claude Skills from a single GitHub repository. Your experts author Skills once; everyone in the org can install and use them, across all Claude surfaces: on the web at Claude.ai, in the Claude Desktop app on Mac and Windows, in Claude Code, and on the iOS and Android mobile apps. No technical setup required for end users.
 
 ---
 
 ## The Problem
 
-Claude's Skills system is powerful but isolated. Users create personal Skills in Claude.ai, but there's no native way to:
+Claude's Skills system is powerful but, for non-developers, isolated. Users create personal Skills in Claude.ai, but there's no native way to:
 
-- Share Skills across a team or organization
+- Share Skills across a team or organization (other than manually sharing .skill archives)
 - Version and update Skills centrally
-- Control who can edit vs. who can use
-- Distribute Skills to Claude Desktop users
-
-Claude Code has Plugin Marketplaces for sharing, but that doesn't help your Claude.ai and Claude Desktop users.
+- Control who can edit vs. who can install and use Skills
 
 ## The Solution
 
-Skillport extends Claude Code's Plugin Marketplace format to reach all your users:
+Skillport extends Claude Code's Plugin Marketplace concept to reach all your users:
 
 ```
                                                     ┌─────────────────┐
@@ -55,7 +48,7 @@ Skillport is built as a **Claude Connector** - not a local MCP server. This matt
 | Authentication             |        Built-in OAuth        |      DIY or none       |
 | Updates                    |          Automatic           |    Manual reinstall    |
 
-Local MCP servers require each user to install software, edit configuration files, and restart Claude Desktop. They don't work with Claude.ai at all.
+Local MCP servers only work with Claude Desktop, not Claude.ai on the web, and require each user to install software, edit configuration files, and restart Claude Desktop. They don't work with Claude.ai at all.
 
 Claude Connectors are URLs. Users add them in Settings → Connectors, authenticate once, and they're done.
 
