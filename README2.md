@@ -8,7 +8,7 @@ Skillport lets organizations share custom Claude Skills from a single GitHub rep
 
 ## The Problem
 
-Claude's Skills system is powerful but, for non-developers, isolated. Users create personal Skills in Claude.ai, but there's no native way to:
+Claude's Skills system is powerful but, for non-developers, somewhat limiting. Users can create personal Skills in Claude.ai and Claude Desktop, but there's no native way to:
 
 - Share Skills across a team or organization (other than manually sharing .skill archives)
 - Version and update Skills centrally
@@ -20,10 +20,10 @@ Skillport is two components that work together:
 
 ### Skillport Marketplace
 
-A GitHub repository that follows the **Claude Code Plugin Marketplace standard** - the same format developers already use to share plugins in Claude Code. But with extensions that bring those capabilities to Claude's user-facing surfaces:
+A GitHub repository that follows the **Claude Code Plugin Marketplace standard** - the same format developers already use to share Skills and other plugins in Claude Code. But with extensions that bring those capabilities to Claude's user-facing surfaces:
 
-- **skillport-manager skill**: A meta-skill that orchestrates browsing, installation, and updates through natural conversation
-- **Surface targeting**: Mark skills for `claude-ai`, `claude-desktop`, or both
+- **skillport-manager Skill**: A meta-skill that orchestrates browsing, installation, and updates through natural conversation
+- **Version tracking**: Skills are versioned with your repository; users can check for and install updates
 - **Access control**: Define who can edit vs. who can use Skills
 
 Your Skills live in version-controlled Markdown. Pull requests, code review, change history - your existing workflow.
@@ -54,7 +54,7 @@ Your GitHub Repo       →    Skillport Connector    →────────
                                                     └──────────────────────┘
 ```
 
-Users add one URL in Settings → Connectors, authenticate with their corporate identity, and Skills from your repository become available.
+Users add one URL in Settings → Connectors, authenticate with their corporate identity, and Skills from your repository become available, across all Claude surfaces: Claude.ai on the web, Claude Desktop, and in Claude's mobile app.
 
 **Mobile access included.** Skills installed via Claude.ai or Claude Desktop automatically sync to the Claude mobile apps (iOS/Android). You can't install Skills directly on mobile yet, but once installed elsewhere, they work on the go.
 
@@ -174,7 +174,7 @@ Users never interact with tools directly - they just talk to Claude.
 
 Once connected, users interact with Skills through natural conversation (via the skillport-manager skill):
 
-> "What skills are available?"
+> "What Skills are available?"
 
 Claude lists Skills from your marketplace with descriptions.
 
@@ -182,7 +182,7 @@ Claude lists Skills from your marketplace with descriptions.
 
 Claude fetches the Skill, packages it as a `.skill` file, and presents a one-click install button. User clicks "Copy to your skills" - done.
 
-> "Check for skill updates"
+> "Check for Skill updates"
 
 Claude compares installed versions against the marketplace and offers to update any that have changed.
 
@@ -262,7 +262,7 @@ Use the [Skillport Marketplace template](https://github.com/craftycto/skillport-
 │              SKILLPORT CONNECTOR                            │
 │              (Claude Connector on Cloudflare Workers)       │
 │                                                             │
-│  • Reads skills from GitHub                                 │
+│  • Reads Skills from GitHub                                 │
 │  • Authenticates users via OAuth                            │
 │  • Enforces access control                                  │
 │  • Exposes tools to Claude                                  │
@@ -416,10 +416,10 @@ See "Getting Help" below.
 
 ## Related Projects
 
-| Project                                                                                | Description                                          |
-| -------------------------------------------------------------------------------------- | ---------------------------------------------------- |
+| Project                                                                                       | Description                                             |
+| --------------------------------------------------------------------------------------------- | ------------------------------------------------------- |
 | [skillport-marketplace-template](https://github.com/craftycto/skillport-marketplace-template) | GitHub template for creating your Skillport Marketplace |
-| [Claude Code Plugin Marketplaces](https://code.claude.com/docs/en/plugin-marketplaces) | Native Plugin system for Claude Code                 |
+| [Claude Code Plugin Marketplaces](https://code.claude.com/docs/en/plugin-marketplaces)        | Native Plugin system for Claude Code                    |
 
 ---
 
