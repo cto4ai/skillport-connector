@@ -19,10 +19,10 @@ export interface PluginEntry {
   description?: string;
   version?: string;
   author?: { name: string; email?: string };
-  // Skillport extensions (not in official spec)
+  // Official plugin metadata fields
   category?: string;
   tags?: string[];
-  surfaces?: string[];
+  keywords?: string[];
 }
 
 export interface PluginManifest {
@@ -48,6 +48,10 @@ export interface SkillEntry {
   description: string;
   version: string;
   author?: { name: string; email?: string };
+  // Inherited from parent plugin
+  category?: string;
+  tags?: string[];
+  keywords?: string[];
 }
 
 /**
@@ -326,18 +330,10 @@ export class GitHubClient {
    * List plugins with optional filtering
    */
   async listPlugins(options?: {
-    surface?: string;
     category?: string;
   }): Promise<PluginEntry[]> {
     const marketplace = await this.getMarketplace();
     let plugins = marketplace.plugins;
-
-    // Filter by surface
-    if (options?.surface) {
-      plugins = plugins.filter(
-        (p) => !p.surfaces || p.surfaces.includes(options.surface!)
-      );
-    }
 
     // Filter by category
     if (options?.category) {
@@ -427,6 +423,10 @@ export class GitHubClient {
                     frontmatter.description || publishedInfo?.description || "",
                   version,
                   author,
+                  // Metadata inherited from parent plugin
+                  category: publishedInfo?.category,
+                  tags: publishedInfo?.tags,
+                  keywords: publishedInfo?.keywords,
                 });
               } catch {
                 // Skip if SKILL.md is missing or invalid
@@ -765,7 +765,8 @@ export class GitHubClient {
       description: string;
       version?: string;
       category?: string;
-      surfaces?: string[];
+      tags?: string[];
+      keywords?: string[];
     },
     userEmail?: string
   ): Promise<void> {
@@ -797,7 +798,8 @@ export class GitHubClient {
       description: plugin.description,
       version,
       ...(plugin.category ? { category: plugin.category } : {}),
-      ...(plugin.surfaces ? { surfaces: plugin.surfaces } : {}),
+      ...(plugin.tags ? { tags: plugin.tags } : {}),
+      ...(plugin.keywords ? { keywords: plugin.keywords } : {}),
     };
 
     marketplace.plugins.push(newEntry);

@@ -46,11 +46,11 @@ git for-each-ref --sort=-committerdate refs/heads/ --format='%(refname:short) (%
 
 echo ""
 echo "=== LATEST CHECKPOINT ==="
-CHECKPOINT=$(ls -t docs/checkpoints/*.md 2>/dev/null | head -1)
+CHECKPOINT=$(ls -t docs/working/checkpoints/*.md 2>/dev/null | head -1)
 if [ -n "$CHECKPOINT" ]; then
     echo "File: $CHECKPOINT"
     echo "---"
     cat "$CHECKPOINT"
 else
-    echo "(no checkpoints found in docs/checkpoints/)"
+    echo "(no checkpoints found in docs/working/checkpoints/)"
 fi
