@@ -165,5 +165,7 @@ Documentation is organized in `/docs/`:
 ## Git Workflow
 
 - Use conventional commits
-- Push to main after user approval
+- All code changes (unless specifically requested otherwise by user) happen in a branch using a PR process
+- Testing will often take place before a PR is issued for the branch
+- Updates direct to main for documentation changes are ok
 - "save our work" means add, commit, push

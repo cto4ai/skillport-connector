@@ -18,13 +18,13 @@ Claude's Skills system is powerful but, for non-developers, isolated. Users crea
 
 Skillport is two components that work together:
 
-### Skillport Template
+### Skillport Marketplace
 
-A GitHub template repository that follows the **Claude Code Plugin Marketplace standard** - the same format developers already use to share plugins in Claude Code. But with extensions that bring those capabilities to Claude's user-facing surfaces:
+A GitHub repository that follows the **Claude Code Plugin Marketplace standard** - the same format developers already use to share plugins in Claude Code. But with extensions that bring those capabilities to Claude's user-facing surfaces:
 
 - **skillport-manager skill**: A meta-skill that orchestrates browsing, installation, and updates through natural conversation
 - **Surface targeting**: Mark skills for `claude-ai`, `claude-desktop`, or both
-- **Access control**: Define who can edit vs. who can use
+- **Access control**: Define who can edit vs. who can use Skills
 
 Your Skills live in version-controlled Markdown. Pull requests, code review, change history - your existing workflow.
 
@@ -39,7 +39,7 @@ A **Claude Connector** that bridges your GitHub repository to Claude.ai and Clau
                                                     └─────────────────┘
                                                               ▲
 Your GitHub Repo       →    Skillport Connector    →──────────┼──────────┐
-(Skillport Template)        (Claude Connector)                │          │
+(Skillport Marketplace)     (Claude Connector)                │          │
                                                               ▼          ▼
                                                     ┌──────────────────────┐
                                                     │   Claude Desktop     │
@@ -160,7 +160,7 @@ Users add the connector URL once in Claude.ai Settings → Connectors, authentic
 
 ### 5. The Manager Skill
 
-The [skillport-template](https://github.com/craftycto/skillport-template) includes **skillport-manager**, a meta-skill that gives users a conversational interface:
+The [Skillport Marketplace template](https://github.com/craftycto/skillport-marketplace) includes **skillport-manager**, a meta-skill that gives users a conversational interface:
 
 - Browse and search available Skills
 - One-click installation (packages Skills as `.skill` files)
@@ -225,7 +225,7 @@ wrangler secret put COOKIE_ENCRYPTION_KEY
 
 ### Create Your Skills Repository
 
-Use the [Skillport Template](https://github.com/craftycto/skillport-template) to create your marketplace:
+Use the [Skillport Marketplace template](https://github.com/craftycto/skillport-marketplace) to create your marketplace:
 
 1. Click "Use this template" on GitHub
 2. Add your Skills in `plugins/your-group/skills/`
@@ -418,7 +418,7 @@ See "Getting Help" below.
 
 | Project                                                                                | Description                                          |
 | -------------------------------------------------------------------------------------- | ---------------------------------------------------- |
-| [skillport-template](https://github.com/craftycto/skillport-template)                  | GitHub template for creating your Skills marketplace |
+| [skillport-marketplace](https://github.com/craftycto/skillport-marketplace)            | GitHub template for creating your Skills marketplace |
 | [Claude Code Plugin Marketplaces](https://code.claude.com/docs/en/plugin-marketplaces) | Native Plugin system for Claude Code                 |
 
 ---

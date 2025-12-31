@@ -143,6 +143,9 @@ export class SkillportMCP extends McpAgent<Env, unknown, UserProps> {
                       description: s.description,
                       version: s.version,
                       author: s.author,
+                      category: s.category,
+                      tags: s.tags,
+                      keywords: s.keywords,
                       editable: accessControl.canWrite(s.plugin),
                     })),
                     tip:
@@ -214,6 +217,9 @@ export class SkillportMCP extends McpAgent<Env, unknown, UserProps> {
                       name: skill.name,
                       plugin: skill.plugin,
                       version: skill.version,
+                      category: skill.category,
+                      tags: skill.tags,
+                      keywords: skill.keywords,
                     },
                     plugin: {
                       name: plugin.name,
@@ -736,12 +742,16 @@ export class SkillportMCP extends McpAgent<Env, unknown, UserProps> {
           .string()
           .optional()
           .describe("Category (e.g., 'productivity', 'development')"),
-        surfaces: z
+        tags: z
           .array(z.string())
           .optional()
-          .describe("Target surfaces (e.g., ['claude-ai', 'claude-desktop', 'claude-code'])"),
+          .describe("Tags for searchability (e.g., ['data', 'analysis'])"),
+        keywords: z
+          .array(z.string())
+          .optional()
+          .describe("Keywords for discovery (e.g., ['csv', 'json', 'statistics'])"),
       },
-      async ({ skill: skillName, description, category, surfaces }) => {
+      async ({ skill: skillName, description, category, tags, keywords }) => {
         try {
           const accessControl = await this.getAccessControl();
 
@@ -809,7 +819,8 @@ export class SkillportMCP extends McpAgent<Env, unknown, UserProps> {
               name: groupName,
               description,
               category,
-              surfaces,
+              tags,
+              keywords,
             },
             this.props.email
           );
