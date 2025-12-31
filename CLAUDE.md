@@ -53,11 +53,10 @@ The connector exposes these MCP tools:
 ### User Tools
 | Tool | Purpose |
 |------|---------|
-| `list_plugins` | List all plugins (with optional category/surface filters) |
-| `list_skills` | List all skills across all plugins (published + unpublished) |
-| `get_plugin` | Get details about a specific plugin |
+| `list_skills` | List all skills across all plugins |
 | `fetch_skill` | Fetch SKILL.md and related files for installation |
-| `check_updates` | Check if installed plugins have updates |
+| `check_updates` | Check if installed skills have updates |
+| `whoami` | Get your user identity (for access.json setup) |
 
 ### Editor Tools (require write access)
 | Tool | Purpose |
