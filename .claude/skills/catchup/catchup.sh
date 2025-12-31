@@ -37,6 +37,10 @@ echo "=== OPEN PRs ==="
 gh pr list --state open 2>/dev/null || echo "(gh cli not available or no PRs)"
 
 echo ""
+echo "=== RECENTLY MERGED PRs ==="
+gh pr list --state merged --limit 5 2>/dev/null || echo "(none)"
+
+echo ""
 echo "=== CURRENT BRANCH PR ==="
 gh pr view 2>/dev/null || echo "(no PR for current branch)"
 
