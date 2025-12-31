@@ -737,6 +737,297 @@ For most users, installing skills is infrequent. The token cost may be acceptabl
 
 ---
 
+## Proposed Solution: Token-Based Installation
+
+**Status:** Proposed  
+**Complexity:** Medium  
+**Token Savings:** ~11k → ~100 tokens
+
+### The Insight
+
+Instead of returning all skill content via MCP (expensive), return a short-lived install token that a script can redeem for the full content.
+
+### How It Works
+
+```
+1. User: "install data-analyzer from skillport"
+2. Claude calls MCP: get_install_token("data-analyzer")
+3. Connector:
+   - Validates user auth (MCP OAuth session)
+   - Generates short-lived token (5 min, single-use)
+   - Stores in KV: token → { skill, user, expires }
+   - Returns: { token: "sk_abc123", skill: "data-analyzer", version: "1.0.0" }
+4. Claude runs: install.sh sk_abc123
+5. Script calls: curl https://connector/api/install/sk_abc123
+6. Connector validates token, returns full skill JSON
+7. Script writes files, reports success
+```
+
+### Why This Solves the Auth Problem
+
+| Challenge | Solution |
+|-----------|----------|
+| MCP OAuth can't be shared with scripts | Token inherits auth - no separate API key |
+| Security risk of long-lived tokens | Short-lived (5 min) and single-use |
+| Script needs to authenticate | Just passes the token - no OAuth flow |
+
+### MCP Response: ~100 Tokens
+
+**New tool: `get_install_token`**
+```json
+{
+  "install_token": "sk_install_abc123",
+  "skill": "data-analyzer",
+  "version": "1.0.0",
+  "expires_in": 300,
+  "command": "~/.claude/skills/skillport-installer/install.sh sk_install_abc123"
+}
+```
+
+Compare to current `fetch_skill` which returns ~11k tokens of file contents.
+
+### New Connector Components
+
+**1. MCP Tool: `get_install_token`**
+```typescript
+{
+  name: "get_install_token",
+  description: "Get a short-lived token for installing a skill via script. More efficient than fetch_skill for Claude Code users.",
+  parameters: {
+    name: { type: "string", description: "Skill name" }
+  },
+  returns: {
+    install_token: "string - single-use token",
+    skill: "string - skill name",
+    version: "string - skill version", 
+    expires_in: "number - seconds until expiry",
+    command: "string - command to run"
+  }
+}
+```
+
+**2. REST Endpoint: `GET /api/install/:token`**
+
+Lives in the same Cloudflare Worker as the MCP endpoint:
+
+```
+skillport-connector.workers.dev/
+├── /sse                    ← MCP (existing)
+├── /callback               ← OAuth callback (existing)
+└── /api/install/:token     ← REST endpoint (new)
+```
+
+**Why same Worker:**
+
+| Benefit | Why |
+|---------|-----|
+| Shared KV | MCP writes token, REST reads it - same namespace |
+| Shared code | Both use `fetchSkillFromGitHub()` |
+| Single deployment | One `wrangler deploy` |
+| Same infra | CORS, error handling already set up |
+
+**Implementation:**
+
+```typescript
+export default {
+  async fetch(request: Request, env: Env) {
+    const url = new URL(request.url);
+    
+    // Existing routes
+    if (url.pathname === '/sse') {
+      return handleMCP(request, env);
+    }
+    if (url.pathname === '/callback') {
+      return handleOAuthCallback(request, env);
+    }
+    
+    // New REST endpoint
+    if (url.pathname.startsWith('/api/install/')) {
+      const token = url.pathname.split('/')[3];
+      return handleInstallToken(token, env);
+    }
+    
+    return new Response('Not found', { status: 404 });
+  }
+}
+
+async function handleInstallToken(token: string, env: Env) {
+  const tokenData = await env.OAUTH_KV.get(`install_token:${token}`, 'json');
+  
+  if (!tokenData) {
+    return Response.json({ error: 'Token not found or expired' }, { status: 404 });
+  }
+  
+  if (tokenData.used) {
+    return Response.json({ error: 'Token already used' }, { status: 410 });
+  }
+  
+  // Mark as used
+  await env.OAUTH_KV.put(`install_token:${token}`, 
+    JSON.stringify({ ...tokenData, used: true }),
+    { expirationTtl: 60 }
+  );
+  
+  // Fetch and return skill (reuse existing logic)
+  const skillData = await fetchSkillFromGitHub(tokenData.skill, env);
+  return Response.json(skillData);
+}
+```
+
+**3. KV Storage Schema**
+```
+Key: install_token:sk_abc123
+Value: {
+  skill: "data-analyzer",
+  user: "jack@craftycto.com",
+  created: 1735678900,
+  expires: 1735679200,
+  used: false
+}
+TTL: 5 minutes
+```
+
+### Install Script
+
+**~/.claude/skills/skillport-installer/install.sh:**
+```bash
+#!/bin/bash
+set -e
+
+TOKEN=$1
+CONNECTOR_URL="https://skillport-connector.jack-ivers.workers.dev"
+
+if [ -z "$TOKEN" ]; then
+  echo "Usage: install.sh <install-token>"
+  exit 1
+fi
+
+# Fetch skill using install token
+curl -sf "$CONNECTOR_URL/api/install/$TOKEN" | python3 -c "
+import json, sys, os
+
+data = json.load(sys.stdin)
+if 'error' in data:
+    print(f\"Error: {data['error']}\")
+    sys.exit(1)
+
+skill_name = data['skill']['name']
+skill_dir = os.path.expanduser(f'~/.claude/skills/{skill_name}')
+
+# Create directories and write files
+for f in data['files']:
+    path = os.path.join(skill_dir, f['path'])
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+    with open(path, 'w') as out:
+        out.write(f['content'])
+    if path.endswith('.py'):
+        os.chmod(path, 0o755)
+
+print(f'✓ Installed {skill_name} v{data[\"skill\"][\"version\"]} to {skill_dir}')
+print('  Restart Claude Code to use this skill.')
+"
+```
+
+### Skillport-Installer Skill
+
+**~/.claude/skills/skillport-installer/SKILL.md:**
+```markdown
+# Skillport Installer
+
+Efficient skill installation using install tokens.
+
+## When to Use
+
+When user asks to install a skill from Skillport:
+1. Call `get_install_token` with the skill name
+2. Run the install command from the response
+3. Report success and remind user to restart Claude Code
+
+## Example
+
+User: "install data-analyzer from skillport"
+
+1. Call Skillport MCP tool `get_install_token("data-analyzer")`
+2. Run: `~/.claude/skills/skillport-installer/install.sh <token>`
+3. Report: "Installed data-analyzer v1.1.3. Restart Claude Code to use it."
+```
+
+### Token Comparison
+
+| Approach | MCP Response | Total Tokens | Auth |
+|----------|-------------|--------------|------|
+| Current `fetch_skill` | ~11k | ~11k+ | MCP OAuth ✅ |
+| Separate API key | ~100 | ~100 | Needs setup ❌ |
+| **Install token** | ~100 | ~100 | MCP OAuth ✅ |
+
+### Speed Comparison
+
+Beyond token cost, **wall-clock time** is the bigger UX issue. Current installs take minutes.
+
+**Why current approach is slow:**
+```
+1. MCP fetch_skill         → Multiple GitHub API calls (can hit rate limits)
+2. Claude receives ~11k tokens → Processing time to parse response
+3. Claude calls Write() × N  → Each file is a full round-trip
+4. Claude calls chmod()      → Another round-trip  
+5. Claude reports success    → More processing
+```
+
+Each `Write()` is a round-trip: Claude → tool → response → Claude thinks → next action.
+
+For a skill with 5 files: **5+ round-trips plus thinking time between each.**
+
+**Why token-based approach is fast:**
+```
+1. MCP get_install_token   → Tiny response (~100 tokens), instant
+2. Claude runs install.sh  → Single Bash() call
+3. Script runs locally:
+   - curl: one HTTP request (~1 sec)
+   - python: writes all files (~100ms)
+   - chmod: instant
+4. Script returns success  → Done
+```
+
+**One `Bash()` call vs 5+ `Write()` calls.**
+
+| Metric | Current (fetch_skill) | Token-based |
+|--------|----------------------|-------------|
+| Tool calls | 1 MCP + N Write + chmod | 1 MCP + 1 Bash |
+| Round-trips | N + 2 | 2 |
+| Claude thinking cycles | N + 2 | 2 |
+| Estimated time | **2-5 minutes** | **5-10 seconds** |
+
+The script runs at native speed - no waiting for Claude to process each file.
+
+### Security Considerations
+
+| Risk | Mitigation |
+|------|------------|
+| Token interception | HTTPS only, short-lived (5 min) |
+| Token reuse | Single-use, marked as consumed |
+| Token guessing | Cryptographically random (32+ bytes) |
+| Scope creep | Token only valid for specific skill |
+
+### Implementation Priority
+
+This is the **recommended approach** for Phase 2:
+
+1. **Phase 1 (current):** Pure MCP works, accept token cost
+2. **Phase 2 (next):** Implement token-based installation
+   - Add `get_install_token` MCP tool
+   - Add `/api/install/:token` REST endpoint
+   - Create `skillport-installer` skill with script
+3. **Phase 3:** Optimize further if needed (caching, etc.)
+
+### Open Questions
+
+1. **Token format:** UUID v4? Base64? Prefixed (sk_install_...)?
+2. **Token storage:** KV with TTL is simplest. Need cleanup job?
+3. **Error handling:** What if script fails mid-install?
+4. **Rollback:** Should failed installs clean up partial files?
+
+---
+
 ## Revised Recommendation
 
 ### For Claude Code Users
