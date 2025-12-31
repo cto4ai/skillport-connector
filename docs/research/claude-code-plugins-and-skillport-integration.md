@@ -321,11 +321,15 @@ This is a Cloudflare Workers limitation when the connector makes many GitHub API
 ## Finding 5: Manual Plugin Installation via File System (Experimental)
 
 **Test Date:** 2025-12-31
-**Status:** PARTIALLY TESTED - needs new session to verify
+**Status:** ❌ FAILED - marketplace registration required
 
 ### Hypothesis
 
 Can we programmatically install a Skillport skill into Claude Code's plugin cache, bypassing `/plugin install`?
+
+### Result: No - Marketplace Must Be Registered
+
+The manually installed plugin did **not appear** in `/plugin` list. Claude Code only showed the three original plugins from registered marketplaces.
 
 ### What We Did
 
@@ -374,57 +378,447 @@ Can we programmatically install a Skillport skill into Claude Code's plugin cach
 2. Can Claude Code invoke the skill?
 3. Do the Python scripts execute correctly?
 
-### Potential Issues
+### Root Cause: Marketplace Registration Required
 
-1. **Missing marketplace registration:** Native plugins come from registered marketplaces. "skillport" isn't a real marketplace in `known_marketplaces.json`.
+Claude Code validates that plugins come from **registered marketplaces** in `~/.claude/plugins/known_marketplaces.json`.
 
-2. **gitCommitSha field:** We omitted this field. Native installations include it for update tracking.
-
-3. **Session reload required:** Plugins are snapshotted at conversation start. Must test in fresh session.
-
-### If This Works
-
-This would enable a powerful workflow:
-
-```
-User in Claude Code:
-1. "Install the data-analyzer skill from Skillport"
-2. Claude Code calls fetch_skill via MCP
-3. Claude Code writes files to ~/.claude/plugins/cache/skillport/...
-4. Claude Code updates installed_plugins.json
-5. User starts new session - skill is available!
+**Format of known_marketplaces.json:**
+```json
+{
+  "marketplace-name": {
+    "source": {
+      "source": "github",
+      "repo": "owner/repo"
+    },
+    "installLocation": "/Users/.../.claude/plugins/marketplaces/marketplace-name",
+    "lastUpdated": "2025-12-31T..."
+  }
+}
 ```
 
-This would give Skillport feature parity with native plugin installation, while supporting private repos.
+**Why our install failed:** "skillport" isn't in `known_marketplaces.json`, so Claude Code ignored the `data-analyzer@skillport` entry in `installed_plugins.json`.
+
+### Other Potential Issues (Not Yet Tested)
+
+1. **gitCommitSha field:** We omitted this field. Native installations include it for update tracking.
+
+2. **Marketplace clone required:** Each marketplace has an `installLocation` pointing to a cloned repo in `~/.claude/plugins/marketplaces/`. We didn't create this.
+
+### What Would Be Required for This to Work
+
+To make manual installation work, we would need to:
+
+1. **Register a fake marketplace** in `known_marketplaces.json`:
+   ```json
+   "skillport": {
+     "source": { "source": "github", "repo": "craftycto/skillport-marketplace" },
+     "installLocation": "/Users/.../.claude/plugins/marketplaces/skillport",
+     "lastUpdated": "..."
+   }
+   ```
+
+2. **Create the marketplace directory** at `~/.claude/plugins/marketplaces/skillport/` with proper structure
+
+3. **Include gitCommitSha** in the installed_plugins.json entry
+
+This is getting complex - we're essentially recreating Claude Code's native plugin system.
 
 ---
 
 ## Next Steps
 
-### Immediate (verify Finding 5)
+### Option A: Full Marketplace Registration (Complex)
 
-1. Start a new Claude Code session
-2. Check if `data-analyzer@skillport` appears in plugin list
-3. Try using the skill on a CSV file
-4. Document results
+Try registering Skillport as a marketplace:
+1. Add entry to `known_marketplaces.json`
+2. Create fake marketplace directory structure
+3. Add gitCommitSha to installed_plugins.json
+4. Test again
 
-### If Manual Installation Works
+**Downside:** Requires modifying multiple system files, fragile, may break with Claude Code updates.
 
-1. Add an `install_skill` MCP tool to the connector that:
-   - Fetches the skill
-   - Writes files to the cache
-   - Updates installed_plugins.json
-   - Returns success/instructions to restart
+### Option B: Accept MCP-Only for Claude Code (Simple)
 
-2. Consider adding Skillport as a "virtual marketplace" in `known_marketplaces.json`
+Claude Code users use Skillport via MCP tools only:
+1. `list_skills` - Browse available skills
+2. `fetch_skill` - Get skill files + instructions
+3. User manually saves files where they want them
 
-### If Manual Installation Fails
+**Upside:** Works today, no hacking required, consistent with how other MCP tools work.
 
-1. Research what additional metadata/registration is required
-2. Consider alternative approaches:
-   - Hook into Claude Code's plugin system differently
-   - Provide a CLI script that wraps installation
-   - Accept that Claude Code users must manually copy files
+### Option C: CLI Install Script (Middle Ground)
+
+Provide a CLI command that properly installs:
+```bash
+npx skillport-cli install data-analyzer
+```
+
+This script would:
+1. Fetch from Skillport Connector
+2. Register Skillport marketplace (first time only)
+3. Write files to cache
+4. Update installed_plugins.json properly
+
+**Upside:** One-time setup, then works like native plugins.
+
+### Recommendation
+
+**Start with Option B** (MCP-only). It works today and is the simplest path. Claude Code users can still benefit from Skillport's private repo access - they just save the files manually.
+
+Consider Option C later if there's demand for tighter Claude Code integration.
+
+---
+
+## Finding 6: User-Level Skills Work! (Tested ✅)
+
+**Test Date:** 2025-12-31
+**Status:** ✅ SUCCESS
+
+### Discovery
+
+Claude Code supports **user-level skills** at `~/.claude/skills/` that don't require marketplace registration!
+
+### Test Results
+
+1. **Installed skill to `~/.claude/skills/data-analyzer/`** - just the skill files, no plugin.json needed
+2. **Started new Claude Code session**
+3. **Asked "is the data-analyzer skill available?"**
+4. **Response:** "Yes, the data-analyzer skill is available. It's listed as a **user-level skill** in your configuration."
+
+### Even Better: Natural Language Install Works!
+
+Tested: `install soil-data-analyzer from skillport`
+
+Claude Code automatically:
+1. Called `list_skills` via Skillport MCP to find the skill
+2. Called `fetch_skill` to get all files
+3. Created directory at `~/.claude/skills/soil-data-analyzer/`
+4. Wrote all files (SKILL.md, scripts, references)
+5. Made scripts executable with `chmod +x`
+6. Informed user to start new session
+
+**Full interaction log:**
+```
+> install soil-data-analyzer from skillport
+
+⏺ Found it. Let me fetch the skill files:
+⏺ skillport - fetch_skill (MCP)(name: "soil-data-analyzer")
+⏺ I'll install the soil-data-analyzer skill for you...
+⏺ Bash(mkdir -p ~/.claude/skills/soil-data-analyzer/...)
+⏺ Write(~/.claude/skills/soil-data-analyzer/SKILL.md)
+⏺ Write(~/.claude/skills/soil-data-analyzer/references/soil_parameters.md)
+⏺ Write(~/.claude/skills/soil-data-analyzer/references/supported_formats.md)
+⏺ Write(~/.claude/skills/soil-data-analyzer/scripts/analyze_soil_data.py)
+⏺ Write(~/.claude/skills/soil-data-analyzer/scripts/soil_quality_check.py)
+⏺ Bash(chmod +x ~/.claude/skills/soil-data-analyzer/scripts/*.py)
+
+⏺ Installed soil-data-analyzer v1.0.2 to ~/.claude/skills/soil-data-analyzer/
+  Important: Start a new conversation to use this skill.
+```
+
+### Skill Directory Locations
+
+| Location | Scope | Registration Required |
+|----------|-------|----------------------|
+| `~/.claude/plugins/cache/` | User | Yes - marketplace + installed_plugins.json |
+| `~/.claude/skills/<skill>/` | User | **No** - just drop files here ✅ |
+| `.claude/skills/<skill>/` | Project | **No** - just drop files here ✅ |
+
+### Issue: Token-Heavy Interaction
+
+The `fetch_skill` MCP response was **~10.9k tokens**. This is expensive for every install.
+
+**Breakdown:**
+- SKILL.md content
+- Multiple reference files
+- Multiple Python scripts
+- Plugin metadata
+
+### Proposed Solution: Installer Skill with Bash Script
+
+Create a `skillport-installer` skill that uses a local bash script instead of MCP file transfer.
+
+#### Why Bash Instead of NPX?
+
+| Approach | Complexity | Distribution | Platform |
+|----------|------------|--------------|----------|
+| `npx skillport-cli` | High - npm package | npm registry | Cross-platform |
+| Bash script in skill | Low - just files | Via Skillport itself | Mac/Linux |
+
+Bash is simpler and can be distributed as a Skillport skill - no npm package needed.
+
+#### Proposed Structure
+
+**~/.claude/skills/skillport-installer/SKILL.md:**
+```markdown
+# Skillport Installer
+
+When user says "install [skill] from skillport", run:
+\`\`\`bash
+~/.claude/skills/skillport-installer/install.sh <skill-name>
+\`\`\`
+
+This is more token-efficient than using MCP fetch_skill.
+```
+
+**~/.claude/skills/skillport-installer/install.sh:**
+```bash
+#!/bin/bash
+SKILL_NAME=$1
+API_KEY=${SKILLPORT_API_KEY:-""}
+CONNECTOR_URL="https://skillport-connector.jack-ivers.workers.dev"
+
+if [ -z "$API_KEY" ]; then
+  echo "Error: Set SKILLPORT_API_KEY environment variable"
+  echo "Get your API key from: $CONNECTOR_URL/settings"
+  exit 1
+fi
+
+# Fetch skill JSON from connector REST endpoint
+curl -s -H "Authorization: Bearer $API_KEY" \
+  "$CONNECTOR_URL/api/skills/$SKILL_NAME" \
+  | python3 -c "
+import json, sys, os
+
+data = json.load(sys.stdin)
+if 'error' in data:
+    print(f\"Error: {data['error']}\")
+    sys.exit(1)
+
+skill_name = data['skill']['name']
+skill_dir = os.path.expanduser(f'~/.claude/skills/{skill_name}')
+
+# Create directories and write files
+for f in data['files']:
+    path = os.path.join(skill_dir, f['path'])
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+    with open(path, 'w') as out:
+        out.write(f['content'])
+    # Make Python scripts executable
+    if path.endswith('.py'):
+        os.chmod(path, 0o755)
+
+print(f'✓ Installed {skill_name} v{data[\"skill\"][\"version\"]} to {skill_dir}')
+print('  Restart Claude Code to use this skill.')
+"
+```
+
+#### Token Savings
+
+| Approach | Tokens Used | Why |
+|----------|-------------|-----|
+| MCP fetch_skill + Claude writes files | ~11,000+ | Full file contents in conversation |
+| Script-based install | ~100-200 | Just command + output |
+
+#### Authentication Options
+
+| Method | Setup | Security | Recommendation |
+|--------|-------|----------|----------------|
+| API key in `SKILLPORT_API_KEY` env var | Simple | Medium | ✅ Start here |
+| OAuth token in `~/.skillport/auth.json` | Medium | Good | Future enhancement |
+| Browser OAuth flow on first run | Complex | Best | If needed |
+
+**Recommendation:** Start with API key auth. Users set `SKILLPORT_API_KEY` in their shell profile. Simple and works.
+
+#### Required Connector Changes
+
+1. **Add REST endpoint:** `GET /api/skills/:name`
+   - Returns same JSON as MCP `fetch_skill` tool
+   - Accepts `Authorization: Bearer <api_key>` header
+
+2. **Add API key generation:**
+   - New page at `/settings` to generate/revoke API keys
+   - Store in KV, associate with user email
+
+3. **Update CORS:** Allow requests from CLI (not browser-based, so simpler)
+
+#### Dependencies
+
+All available on macOS by default:
+- `bash` ✅
+- `curl` ✅
+- `python3` ✅
+
+No need for `jq` - Python handles JSON parsing.
+
+#### Distribution
+
+The installer skill itself is distributed via Skillport:
+```
+> install skillport-installer from skillport
+```
+
+Bootstrapping problem: First install uses MCP (token-heavy), subsequent installs use the script (token-efficient).
+
+---
+
+### Alternative: Hybrid Skill + Script Approach
+
+Instead of a standalone script with separate API key auth, consider a Claude Code skill that uses scripts for efficiency while staying within the MCP ecosystem.
+
+#### Comparison of Approaches
+
+| Approach | Tokens | Auth | UX |
+|----------|--------|------|-----|
+| **Pure MCP** (current) | ~11k+ | ✅ MCP OAuth | Good - Claude handles everything |
+| **Pure Script** | ~100 | ❌ Needs API key | Basic - just script output |
+| **Hybrid Skill + Script** | Varies | ✅ MCP OAuth | Best - skill guides, script executes |
+
+#### Hybrid Option 3a: Script Handles File Writing Only
+
+```
+1. Claude Code calls MCP fetch_skill (still ~11k tokens)
+2. Claude pipes JSON to script via stdin
+3. Script writes all files (faster than multiple Write calls)
+4. Script returns success message
+5. Claude reports result
+```
+
+**SKILL.md instruction:**
+```markdown
+When installing a skill:
+1. Call fetch_skill to get the skill data
+2. Run: echo '$SKILL_JSON' | ~/.claude/skills/skillport-manager/write-skill.sh
+3. Report the result to the user
+```
+
+**Tradeoff:** Saves time (one script vs many Write calls) but NOT tokens (still fetches full content into context).
+
+#### Hybrid Option 3b: Script with MCP Session Passthrough
+
+```
+1. Claude runs: install.sh data-analyzer --session $MCP_SESSION
+2. Script calls MCP tools using Claude's auth session
+3. Script writes files directly
+4. Script returns success/failure
+```
+
+**Challenge:** Unknown if MCP session can be shared with subprocess. Would require investigation into Claude Code internals.
+
+#### Hybrid Option 3c: Skill Orchestrates, Minimal Context
+
+```
+1. skillport-manager skill loaded, knows how to install
+2. User: "install data-analyzer from skillport"
+3. Skill instructs Claude to run install script
+4. Script calls Skillport REST API (needs API key)
+5. Script writes files, returns success/failure
+6. Claude reports friendly result with next steps
+```
+
+**Tradeoff:** Still needs API key, but skill provides:
+- Better error messages
+- Guidance on next steps
+- Consistent UX
+
+#### The Core Challenge: Auth Isolation
+
+The MCP OAuth session belongs to Claude Code's process. A subprocess script cannot access it because:
+- OAuth tokens are in Claude's memory, not on disk
+- MCP protocol is over the Claude ↔ Connector connection
+- Scripts run as separate processes
+
+**Options to solve this:**
+
+| Solution | Feasibility | Notes |
+|----------|-------------|-------|
+| Share MCP session with script | Unknown | Would need Claude Code support |
+| Script uses separate API key | Works | But requires extra auth setup |
+| Claude streams to file instead of context | Unknown | Would need new MCP tool design |
+| Accept token cost, optimize elsewhere | Works | May be acceptable for infrequent installs |
+
+#### Recommendation: Start Simple, Optimize Later
+
+1. **Phase 1 (now):** Pure MCP approach works. Accept ~11k tokens per install.
+2. **Phase 2:** Add REST API + API key for power users who install frequently.
+3. **Phase 3:** Investigate MCP session sharing if there's demand.
+
+For most users, installing skills is infrequent. The token cost may be acceptable, especially with Claude Max's higher limits.
+
+---
+
+## Revised Recommendation
+
+### For Claude Code Users
+
+**Current (works today):**
+```
+> install [skill] from skillport
+```
+Claude Code handles it via MCP. Token-heavy but functional.
+
+**Future (with installer skill):**
+```
+> install [skill] from skillport
+```
+Claude Code runs install script. Token-efficient.
+
+### For Claude.ai / Desktop Users
+
+Continue using Skillport Connector via Settings → Connectors. The `fetch_skill` response includes installation instructions for the native Skills UI.
+
+### Priority Order
+
+1. ✅ **Done:** Verify MCP + user-level skills work
+2. ✅ **Done:** Test soil-data-analyzer runs in new session (SUCCESS!)
+3. 📋 **Future:** Build skillport-installer skill with script
+4. 📋 **Future:** Add REST API endpoint to connector for script access
+
+---
+
+## Finding 7: Full End-to-End Skill Execution (Tested ✅)
+
+**Test Date:** 2025-12-31
+**Status:** ✅ COMPLETE SUCCESS
+
+### Test: Run Installed Skill on Real Data
+
+```
+> is the soil data analyzer skill installed
+
+⏺ Yes, the soil-data-analyzer skill is installed. It's listed as a user-level skill.
+
+> run the soil data analyzer skill
+
+⏺ /soil-data-analyzer
+⏺ The Soil Data Analyzer skill is ready...
+
+> /Users/jackivers/Downloads/Soil-Results-1501610.csv
+
+⏺ Read(~/Downloads/Soil-Results-1501610.csv)
+⏺ Bash(python3 scripts/analyze_soil_data.py "...")
+  ⎿  ## Soil Data Summary: Soil-Results-1501610.csv
+     - **Samples:** 1
+     - **Parameters:** 59
+     … +226 lines
+
+⏺ [Intelligent analysis of results, noting suspicious data values]
+```
+
+### What Worked
+
+| Step | Result |
+|------|--------|
+| Skill recognition | ✅ Listed as user-level skill |
+| Skill invocation | ✅ `/soil-data-analyzer` worked |
+| File reading | ✅ Read CSV from Downloads |
+| Script discovery | ✅ Found scripts in skill directory |
+| Script execution | ✅ `python3` ran successfully |
+| Output parsing | ✅ 226+ lines of analysis |
+| Intelligent interpretation | ✅ Caught suspicious pH=1.3 values |
+
+### Minor Issue: python vs python3
+
+The script shebang uses `#!/usr/bin/env python` but macOS only has `python3`. Claude Code adapted:
+```
+⏺ Bash(python scripts/analyze_soil_data.py ...)
+  ⎿  Error: command not found: python
+
+⏺ Bash(python3 scripts/analyze_soil_data.py ...)
+  ⎿  [Success]
+```
+
+**Fix:** Update skill scripts to use `#!/usr/bin/env python3`
 
 ---
 
