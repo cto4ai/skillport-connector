@@ -386,7 +386,8 @@ async function handleEditToken(
       env.MARKETPLACE_REPO,
       env.OAUTH_KV
     );
-    const { skill, files } = await github.fetchSkill(tokenData.skill);
+    // Skip cache for editing to ensure fresh files
+    const { skill, files } = await github.fetchSkill(tokenData.skill, { skipCache: true });
 
     return Response.json(
       {
