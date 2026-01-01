@@ -233,10 +233,11 @@ for f in data.get('files', []):
     rel_path = f['path']
     content = f['content']
 
-    # Handle base64-encoded files
-    if f.get('encoding') == 'base64':
+    # Handle base64-encoded files (may be binary)
+    is_binary = f.get('encoding') == 'base64'
+    if is_binary:
         import base64
-        content = base64.b64decode(content).decode('utf-8')
+        content = base64.b64decode(content)
 
     file_path = os.path.join(skill_dir, rel_path)
     dir_path = os.path.dirname(file_path)
@@ -244,9 +245,13 @@ for f in data.get('files', []):
     # Create directory if needed
     os.makedirs(dir_path, exist_ok=True)
 
-    # Write file
-    with open(file_path, 'w') as out:
-        out.write(content)
+    # Write file (binary mode for base64, text mode otherwise)
+    if is_binary:
+        with open(file_path, 'wb') as out:
+            out.write(content)
+    else:
+        with open(file_path, 'w') as out:
+            out.write(content)
 
     # Make scripts executable
     if rel_path.endswith('.py') or rel_path.endswith('.sh'):
