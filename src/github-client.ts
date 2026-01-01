@@ -502,8 +502,9 @@ export class GitHubClient {
    * Fetch all skill files for installation
    * Returns skill directory contents plus plugin.json for versioning
    * Looks up skill by name to find parent plugin
+   * @param skipCache - If true, bypass cache (use for editing to ensure fresh files)
    */
-  async fetchSkill(skillName: string): Promise<{
+  async fetchSkill(skillName: string, options?: { skipCache?: boolean }): Promise<{
     skill: SkillEntry;
     plugin: PluginEntry;
     files: SkillFile[];
@@ -550,14 +551,22 @@ export class GitHubClient {
     // Use dirName (actual directory) not name (display name from frontmatter)
     const fullSkillDir = `${basePath}/skills/${skill.dirName}`;
 
-    // Fetch all files in skill directory with caching
+    // Fetch all files in skill directory
     // Include plugin name in cache key to avoid collisions when different plugins have same skill dirName
     const version = entry.version || "unknown";
-    const files = await this.fetchWithCache(
-      `skill-dir:${this.repo}:${skill.plugin}:${skill.dirName}:${version}`,
-      21600, // 6 hours
-      async () => this.fetchDirectoryRecursive(fullSkillDir, fullSkillDir)
-    );
+    let files: SkillFile[];
+
+    if (options?.skipCache) {
+      // Bypass cache for editing to ensure fresh files
+      files = await this.fetchDirectoryRecursive(fullSkillDir, fullSkillDir);
+    } else {
+      // Use cache for installation (6 hour TTL)
+      files = await this.fetchWithCache(
+        `skill-dir:${this.repo}:${skill.plugin}:${skill.dirName}:${version}`,
+        21600,
+        async () => this.fetchDirectoryRecursive(fullSkillDir, fullSkillDir)
+      );
+    }
 
     // Include plugin.json for versioning (if it exists)
     if (manifest) {
