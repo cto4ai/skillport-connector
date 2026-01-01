@@ -451,6 +451,19 @@ export class GitHubClient {
   }
 
   /**
+   * Fetch only the SKILL.md content for a skill (token-efficient)
+   */
+  async fetchSkillMd(skillName: string): Promise<string> {
+    const skill = await this.getSkill(skillName);
+    if (!skill) {
+      throw new Error(`Skill not found: ${skillName}`);
+    }
+
+    const skillMdPath = `plugins/${skill.plugin}/skills/${skill.dirName}/SKILL.md`;
+    return this.fetchFile(skillMdPath);
+  }
+
+  /**
    * Get detailed plugin information
    */
   async getPlugin(name: string): Promise<{

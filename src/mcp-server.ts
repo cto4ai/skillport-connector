@@ -176,10 +176,220 @@ export class SkillportMCP extends McpAgent<Env, unknown, UserProps> {
       }
     );
 
-    // Tool: fetch_skill
+    // Tool: install_skill (NEW - PTC optimized)
+    this.server.tool(
+      "install_skill",
+      "Install a skill efficiently. Returns a short-lived token and command to run. " +
+        "This is the recommended way to install skills - much faster than fetching all files.",
+      {
+        name: z.string().describe("Skill name to install"),
+      },
+      async ({ name }) => {
+        try {
+          this.logAction("install_skill", { skill: name });
+          const accessControl = await this.getAccessControl();
+
+          // Check read access
+          if (!accessControl.canRead(name)) {
+            return {
+              content: [
+                {
+                  type: "text" as const,
+                  text: JSON.stringify({
+                    error: "Access denied",
+                    message: "You don't have access to this skill",
+                  }),
+                },
+              ],
+              isError: true,
+            };
+          }
+
+          const github = this.getGitHubClient();
+          const skill = await github.getSkill(name);
+
+          if (!skill) {
+            return {
+              content: [
+                {
+                  type: "text" as const,
+                  text: JSON.stringify({
+                    error: "Skill not found",
+                    message: `Skill '${name}' not found. Use list_skills to see available skills.`,
+                  }),
+                },
+              ],
+              isError: true,
+            };
+          }
+
+          // Generate cryptographically random token
+          const tokenBytes = new Uint8Array(24);
+          crypto.getRandomValues(tokenBytes);
+          const token =
+            "sk_install_" +
+            btoa(String.fromCharCode(...tokenBytes))
+              .replace(/\+/g, "-")
+              .replace(/\//g, "_")
+              .replace(/=/g, "");
+
+          // Store token in KV with 5 minute TTL
+          const tokenData = {
+            skill: name,
+            version: skill.version,
+            user: this.props.email,
+            created: Date.now(),
+            used: false,
+          };
+
+          await this.env.OAUTH_KV.put(
+            `install_token:${token}`,
+            JSON.stringify(tokenData),
+            { expirationTtl: 300 }
+          );
+
+          const connectorUrl =
+            this.env.CONNECTOR_URL ||
+            "https://skillport-connector.jack-ivers.workers.dev";
+
+          return {
+            content: [
+              {
+                type: "text" as const,
+                text: JSON.stringify(
+                  {
+                    install_token: token,
+                    skill: name,
+                    version: skill.version,
+                    expires_in: 300,
+                    command: `bash <(curl -sf ${connectorUrl}/install.sh) ${token}`,
+                    instructions:
+                      "Run the command above to install the skill. " +
+                      "For Claude.ai/Desktop, add --package flag to create a .skill file. " +
+                      "After installation, start a new conversation to use the skill.",
+                  },
+                  null,
+                  2
+                ),
+              },
+            ],
+          };
+        } catch (error) {
+          return {
+            content: [
+              {
+                type: "text" as const,
+                text: JSON.stringify({
+                  error: "Failed to create install token",
+                  message:
+                    error instanceof Error ? error.message : String(error),
+                }),
+              },
+            ],
+            isError: true,
+          };
+        }
+      }
+    );
+
+    // Tool: fetch_skill_details (NEW - returns only SKILL.md)
+    this.server.tool(
+      "fetch_skill_details",
+      "Get details about a skill. Returns the SKILL.md content which describes what the skill does, " +
+        "how to use it, and its capabilities. Use install_skill to actually install a skill.",
+      {
+        name: z.string().describe("Skill name"),
+      },
+      async ({ name }) => {
+        try {
+          this.logAction("fetch_skill_details", { skill: name });
+          const accessControl = await this.getAccessControl();
+
+          // Check read access
+          if (!accessControl.canRead(name)) {
+            return {
+              content: [
+                {
+                  type: "text" as const,
+                  text: JSON.stringify({
+                    error: "Access denied",
+                    message: "You don't have access to this skill",
+                  }),
+                },
+              ],
+              isError: true,
+            };
+          }
+
+          const github = this.getGitHubClient();
+          const skill = await github.getSkill(name);
+
+          if (!skill) {
+            return {
+              content: [
+                {
+                  type: "text" as const,
+                  text: JSON.stringify({
+                    error: "Skill not found",
+                    message: `Skill '${name}' not found. Use list_skills to see available skills.`,
+                  }),
+                },
+              ],
+              isError: true,
+            };
+          }
+
+          // Fetch only SKILL.md content
+          const skillMd = await github.fetchSkillMd(name);
+
+          return {
+            content: [
+              {
+                type: "text" as const,
+                text: JSON.stringify(
+                  {
+                    skill: {
+                      name: skill.name,
+                      version: skill.version,
+                      description: skill.description,
+                      plugin: skill.plugin,
+                      category: skill.category,
+                      tags: skill.tags,
+                      keywords: skill.keywords,
+                    },
+                    skill_md: skillMd,
+                    editable: accessControl.canWrite(skill.plugin),
+                    tip: "Use install_skill to install this skill efficiently.",
+                  },
+                  null,
+                  2
+                ),
+              },
+            ],
+          };
+        } catch (error) {
+          return {
+            content: [
+              {
+                type: "text" as const,
+                text: JSON.stringify({
+                  error: "Failed to fetch skill details",
+                  message:
+                    error instanceof Error ? error.message : String(error),
+                }),
+              },
+            ],
+            isError: true,
+          };
+        }
+      }
+    );
+
+    // Tool: fetch_skill (DEPRECATED - kept for backwards compatibility)
     this.server.tool(
       "fetch_skill",
-      "Fetch the skill files (SKILL.md and related resources) for installation on Claude.ai or Claude Desktop.",
+      "[DEPRECATED: Use install_skill for efficient installation, or fetch_skill_details for skill info] " +
+        "Fetch the skill files (SKILL.md and related resources) for installation on Claude.ai or Claude Desktop.",
       {
         name: z.string().describe("Skill name (from list_skills)"),
       },

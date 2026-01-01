@@ -20,4 +20,7 @@ interface Env {
 
   // Cookie encryption key (32+ characters)
   COOKIE_ENCRYPTION_KEY: string;
+
+  // Optional: Override connector URL for install script (defaults to production URL)
+  CONNECTOR_URL?: string;
 }
