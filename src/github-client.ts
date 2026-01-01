@@ -630,6 +630,22 @@ export class GitHubClient {
   }
 
   /**
+   * Clear skill directory cache after edits
+   * The cache key format is: skill-dir:${repo}:${plugin}:${dirName}:${version}
+   * Since we may not know the version, we use KV list to find and delete matching keys
+   */
+  async clearSkillDirCache(pluginName: string, skillDirName: string): Promise<void> {
+    // List all keys matching the skill-dir prefix for this skill
+    const prefix = `skill-dir:${this.repo}:${pluginName}:${skillDirName}:`;
+    const listed = await this.kv.list({ prefix });
+
+    // Delete all matching keys (there should typically be just one)
+    for (const key of listed.keys) {
+      await this.kv.delete(key.name);
+    }
+  }
+
+  /**
    * Check if a file exists at the given path
    */
   async fileExists(path: string): Promise<boolean> {
