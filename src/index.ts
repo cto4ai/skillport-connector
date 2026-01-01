@@ -283,13 +283,8 @@ if [ "$PACKAGE_MODE" = true ]; then
   SKILL_VERSION=$(cat "$OUTPUT_DIR/.skill_version")
   SKILL_DIR="$OUTPUT_DIR/$SKILL_NAME"
 
-  # Determine where to put the .skill file
-  # Use current directory or /tmp if not writable
-  if [ -w "$(pwd)" ]; then
-    PACKAGE_DIR="$(pwd)"
-  else
-    PACKAGE_DIR="/tmp"
-  fi
+  # Always use /tmp for package output (Claude.ai's cwd is / which creates ugly paths)
+  PACKAGE_DIR="/tmp"
 
   SKILL_FILE="$PACKAGE_DIR/$SKILL_NAME.skill"
 
