@@ -770,8 +770,9 @@ export class SkillportMCP extends McpAgent<Env, unknown, UserProps> {
             results.push({ path: absolutePath, created });
           }
 
-          // Clear cache for this skill group
+          // Clear cache for this skill group and skill directory
           await github.clearCache(groupName);
+          await github.clearSkillDirCache(groupName, skillDirName);
 
           const created = results.filter((r) => r.created).length;
           const updated = results.filter((r) => !r.created).length;
