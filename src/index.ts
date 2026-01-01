@@ -191,31 +191,31 @@ export PACKAGE_MODE
 
 echo "Fetching skill..."
 
-RESPONSE=$(curl -sf "$CONNECTOR_URL/api/install/$TOKEN" 2>&1) || {
-  HTTP_CODE=$?
-  echo -e "\${RED}Error: Failed to fetch skill\${NC}"
+# Use -s for silent, but NOT -f so we get the response body on errors
+HTTP_CODE=$(curl -s -w "%{http_code}" -o /tmp/skillport_response.json "$CONNECTOR_URL/api/install/$TOKEN")
 
-  # Try to parse error message
-  if echo "$RESPONSE" | python3 -c "import json,sys; d=json.load(sys.stdin); print(d.get('error','Unknown error'))" 2>/dev/null; then
-    :
-  else
-    echo "HTTP error code: $HTTP_CODE"
-  fi
+if [ "$HTTP_CODE" != "200" ]; then
+  echo -e "\${RED}Error: Failed to fetch skill (HTTP $HTTP_CODE)\${NC}"
+
+  # Try to parse error message from response
+  ERROR_MSG=$(python3 -c "import json; d=json.load(open('/tmp/skillport_response.json')); print(d.get('error','Unknown error'))" 2>/dev/null) || ERROR_MSG="Unknown error"
+  echo "$ERROR_MSG"
+  rm -f /tmp/skillport_response.json
   exit 1
-}
+fi
 
 # ----------------------------------------------------------------------------
 # Parse and write files
 # ----------------------------------------------------------------------------
 
-echo "$RESPONSE" | python3 << 'PYTHON_SCRIPT'
+python3 << 'PYTHON_SCRIPT'
 import json
-import sys
 import os
 
-data = json.load(sys.stdin)
+data = json.load(open('/tmp/skillport_response.json'))
 
 if 'error' in data:
+    import sys
     print(f"\\033[0;31mError: {data['error']}\\033[0m", file=sys.stderr)
     sys.exit(1)
 
@@ -265,6 +265,9 @@ if os.environ.get('PACKAGE_MODE') == 'true':
 
 print(f"\\n\\033[0;32m✓ Wrote {files_written} files to {skill_dir}\\033[0m")
 PYTHON_SCRIPT
+
+# Cleanup temp file
+rm -f /tmp/skillport_response.json
 
 # ----------------------------------------------------------------------------
 # Package mode: create .skill zip
