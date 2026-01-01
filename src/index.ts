@@ -326,6 +326,256 @@ fi
 }
 
 /**
+ * Handle edit token redemption
+ * Token-based file fetching for editing skills (PTC pattern)
+ */
+async function handleEditToken(
+  token: string,
+  env: Env
+): Promise<Response> {
+  // Validate token format
+  if (!token || !token.startsWith("sk_edit_")) {
+    return Response.json(
+      { error: "Invalid token format" },
+      { status: 400 }
+    );
+  }
+
+  // Look up token in KV
+  const tokenKey = `edit_token:${token}`;
+  const tokenDataStr = await env.OAUTH_KV.get(tokenKey);
+
+  if (!tokenDataStr) {
+    return Response.json(
+      { error: "Token not found or expired" },
+      { status: 404 }
+    );
+  }
+
+  const tokenData = JSON.parse(tokenDataStr) as {
+    skill: string;
+    plugin: string;
+    dirName: string;
+    version: string;
+    user: string;
+    created: number;
+    used: boolean;
+  };
+
+  if (tokenData.used) {
+    return Response.json(
+      { error: "Token already used" },
+      { status: 410 }
+    );
+  }
+
+  // Mark as used immediately
+  const usedTokenData = {
+    ...tokenData,
+    used: true,
+    usedAt: Date.now(),
+  };
+  await env.OAUTH_KV.put(tokenKey, JSON.stringify(usedTokenData), {
+    expirationTtl: 60, // Keep briefly for debugging
+  });
+
+  // Fetch all skill files
+  try {
+    const github = new GitHubClient(
+      env.GITHUB_SERVICE_TOKEN,
+      env.MARKETPLACE_REPO,
+      env.OAUTH_KV
+    );
+    const { skill, files } = await github.fetchSkill(tokenData.skill);
+
+    return Response.json(
+      {
+        skill: {
+          name: skill.name,
+          plugin: skill.plugin,
+          version: skill.version,
+        },
+        files: files.map((f) => ({
+          path: f.path,
+          content: f.content,
+          ...(f.encoding ? { encoding: f.encoding } : {}),
+        })),
+      },
+      {
+        headers: {
+          "Content-Type": "application/json",
+          "Cache-Control": "no-store",
+        },
+      }
+    );
+  } catch (error) {
+    return Response.json(
+      {
+        error: "Failed to fetch skill for editing",
+        message: error instanceof Error ? error.message : String(error),
+      },
+      { status: 500 }
+    );
+  }
+}
+
+/**
+ * Serve the edit.sh script
+ * This script is used by the PTC pattern to download skill files for editing
+ */
+function serveEditScript(env: Env): Response {
+  const connectorUrl =
+    env.CONNECTOR_URL || "https://skillport-connector.jack-ivers.workers.dev";
+
+  const script = `#!/bin/bash
+set -e
+
+# ============================================================================
+# Skillport Editor
+# Download skill files for editing using Programmatic Tool Calling (PTC)
+# ============================================================================
+
+TOKEN="$1"
+CONNECTOR_URL="\${SKILLPORT_CONNECTOR_URL:-${connectorUrl}}"
+
+# Colors for output
+RED='\\033[0;31m'
+GREEN='\\033[0;32m'
+YELLOW='\\033[1;33m'
+NC='\\033[0m' # No Color
+
+# ----------------------------------------------------------------------------
+# Validation
+# ----------------------------------------------------------------------------
+
+if [ -z "$TOKEN" ]; then
+  echo -e "\${RED}Error: No edit token provided\${NC}"
+  echo ""
+  echo "Usage: edit.sh <token>"
+  echo ""
+  echo "Get a token by calling fetch_skill_for_editing via the Skillport connector."
+  exit 1
+fi
+
+if [[ ! "$TOKEN" =~ ^sk_edit_ ]]; then
+  echo -e "\${RED}Error: Invalid token format\${NC}"
+  echo "Token should start with 'sk_edit_'"
+  exit 1
+fi
+
+# ----------------------------------------------------------------------------
+# Output location
+# ----------------------------------------------------------------------------
+
+OUTPUT_BASE="/tmp/skillport-edit"
+mkdir -p "$OUTPUT_BASE"
+
+# Export for Python script
+export OUTPUT_BASE
+
+# ----------------------------------------------------------------------------
+# Fetch skill via token
+# ----------------------------------------------------------------------------
+
+echo "Fetching skill files for editing..."
+
+# Use -s for silent, but NOT -f so we get the response body on errors
+HTTP_CODE=$(curl -s -w "%{http_code}" -o /tmp/skillport_edit_response.json "$CONNECTOR_URL/api/edit/$TOKEN")
+
+if [ "$HTTP_CODE" != "200" ]; then
+  echo -e "\${RED}Error: Failed to fetch skill (HTTP $HTTP_CODE)\${NC}"
+
+  # Try to parse error message from response
+  ERROR_MSG=$(python3 -c "import json; d=json.load(open('/tmp/skillport_edit_response.json')); print(d.get('error','Unknown error'))" 2>/dev/null) || ERROR_MSG="Unknown error"
+  echo "$ERROR_MSG"
+  rm -f /tmp/skillport_edit_response.json
+  exit 1
+fi
+
+# ----------------------------------------------------------------------------
+# Parse and write files
+# ----------------------------------------------------------------------------
+
+python3 << 'PYTHON_SCRIPT'
+import json
+import os
+
+data = json.load(open('/tmp/skillport_edit_response.json'))
+
+if 'error' in data:
+    import sys
+    print(f"\\033[0;31mError: {data['error']}\\033[0m", file=sys.stderr)
+    sys.exit(1)
+
+skill_name = data['skill']['name']
+skill_version = data['skill']['version']
+skill_plugin = data['skill'].get('plugin', skill_name)
+output_base = os.environ.get('OUTPUT_BASE', '/tmp/skillport-edit')
+skill_dir = os.path.join(output_base, skill_name)
+
+print(f"Downloading {skill_name} v{skill_version} for editing...")
+
+# Track files written
+files_written = 0
+file_list = []
+
+for f in data.get('files', []):
+    rel_path = f['path']
+    content = f['content']
+
+    # Handle base64-encoded files (may be binary)
+    is_binary = f.get('encoding') == 'base64'
+    if is_binary:
+        import base64
+        content = base64.b64decode(content)
+
+    file_path = os.path.join(skill_dir, rel_path)
+    dir_path = os.path.dirname(file_path)
+
+    # Create directory if needed
+    os.makedirs(dir_path, exist_ok=True)
+
+    # Write file (binary mode for base64, text mode otherwise)
+    if is_binary:
+        with open(file_path, 'wb') as out:
+            out.write(content)
+    else:
+        with open(file_path, 'w') as out:
+            out.write(content)
+
+    files_written += 1
+    file_list.append(rel_path)
+    print(f"  ✓ {rel_path}")
+
+# Store skill info for reference
+with open(os.path.join(skill_dir, '.edit_info'), 'w') as f:
+    json.dump({
+        'name': skill_name,
+        'plugin': skill_plugin,
+        'version': skill_version,
+        'files': file_list
+    }, f, indent=2)
+
+print(f"\\n\\033[0;32m✓ Downloaded {files_written} files\\033[0m")
+print(f"\\nSKILL_DIR={skill_dir}")
+print("FILES:")
+for f in file_list:
+    print(f"  {f}")
+PYTHON_SCRIPT
+
+# Cleanup temp file
+rm -f /tmp/skillport_edit_response.json
+`;
+
+  return new Response(script, {
+    headers: {
+      "Content-Type": "text/plain; charset=utf-8",
+      "Cache-Control": "public, max-age=300",
+    },
+  });
+}
+
+/**
  * Wrapper to add missing CORS headers required by Claude.ai
  * The @cloudflare/workers-oauth-provider doesn't include Access-Control-Expose-Headers
  * which is required for Claude to read the WWW-Authenticate header
@@ -346,10 +596,21 @@ export default {
       return serveInstallScript(env);
     }
 
-    // Handle token redemption
+    // Handle install token redemption
     if (url.pathname.startsWith("/api/install/")) {
       const token = url.pathname.split("/")[3];
       return handleInstallToken(token, env);
+    }
+
+    // Serve edit script
+    if (url.pathname === "/edit.sh") {
+      return serveEditScript(env);
+    }
+
+    // Handle edit token redemption
+    if (url.pathname.startsWith("/api/edit/")) {
+      const token = url.pathname.split("/")[3];
+      return handleEditToken(token, env);
     }
 
     // Delegate to OAuth provider for MCP routes

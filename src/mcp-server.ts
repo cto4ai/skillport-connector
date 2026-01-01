@@ -386,6 +386,127 @@ export class SkillportMCP extends McpAgent<Env, unknown, UserProps> {
       }
     );
 
+    // Tool: fetch_skill_for_editing (PTC pattern - download files locally for editing)
+    this.server.tool(
+      "fetch_skill_for_editing",
+      "Fetch all files for an existing skill to edit locally. " +
+        "Returns a command to download files. After editing, use save_skill to push changes. " +
+        "Requires write access to the skill.",
+      {
+        name: z.string().describe("Skill name"),
+      },
+      async ({ name }) => {
+        try {
+          this.logAction("fetch_skill_for_editing", { skill: name });
+          const github = this.getGitHubClient();
+          const accessControl = await this.getAccessControl();
+
+          // Find the skill
+          const skill = await github.getSkill(name);
+          if (!skill) {
+            return {
+              content: [
+                {
+                  type: "text" as const,
+                  text: JSON.stringify({
+                    error: "Skill not found",
+                    message: `Skill '${name}' not found. Use list_skills to see available skills.`,
+                  }),
+                },
+              ],
+              isError: true,
+            };
+          }
+
+          // Check WRITE access (editing requires write permissions)
+          if (!accessControl.canWrite(skill.plugin)) {
+            return {
+              content: [
+                {
+                  type: "text" as const,
+                  text: JSON.stringify({
+                    error: "Access denied",
+                    message: `You don't have write access to edit skill '${name}'. Only editors can edit skills.`,
+                  }),
+                },
+              ],
+              isError: true,
+            };
+          }
+
+          // Generate cryptographically random token
+          const tokenBytes = new Uint8Array(24);
+          crypto.getRandomValues(tokenBytes);
+          const token =
+            "sk_edit_" +
+            btoa(String.fromCharCode(...tokenBytes))
+              .replace(/\+/g, "-")
+              .replace(/\//g, "_")
+              .replace(/=/g, "");
+
+          // Store token in KV with 5 minute TTL
+          const tokenData = {
+            skill: name,
+            plugin: skill.plugin,
+            dirName: skill.dirName,
+            version: skill.version,
+            user: this.props.email,
+            created: Date.now(),
+            used: false,
+          };
+
+          await this.env.OAUTH_KV.put(
+            `edit_token:${token}`,
+            JSON.stringify(tokenData),
+            { expirationTtl: 300 }
+          );
+
+          const connectorUrl =
+            this.env.CONNECTOR_URL ||
+            "https://skillport-connector.jack-ivers.workers.dev";
+
+          return {
+            content: [
+              {
+                type: "text" as const,
+                text: JSON.stringify(
+                  {
+                    edit_token: token,
+                    skill: name,
+                    plugin: skill.plugin,
+                    version: skill.version,
+                    expires_in: 300,
+                    command: `curl -sf ${connectorUrl}/edit.sh | bash -s -- ${token}`,
+                    instructions:
+                      "Execute the command above using bash. " +
+                      "Files will be downloaded to /tmp/skillport-edit/<skill>/. " +
+                      "The output shows SKILL_DIR=<path> with the directory containing the files. " +
+                      "Read and modify files locally, then use save_skill to push changes back.",
+                  },
+                  null,
+                  2
+                ),
+              },
+            ],
+          };
+        } catch (error) {
+          return {
+            content: [
+              {
+                type: "text" as const,
+                text: JSON.stringify({
+                  error: "Failed to create edit token",
+                  message:
+                    error instanceof Error ? error.message : String(error),
+                }),
+              },
+            ],
+            isError: true,
+          };
+        }
+      }
+    );
+
     // Tool: check_updates
     this.server.tool(
       "check_updates",
