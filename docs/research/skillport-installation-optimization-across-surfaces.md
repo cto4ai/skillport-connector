@@ -9,7 +9,7 @@
 
 Claude Code supports remote MCP servers (announced June 2025), enabling Skillport Connector to work with Claude Code users. However, Claude Code's native Plugin Marketplace system does **not** support authentication to private repositories, which is an open feature request. This creates an opportunity for Skillport to solve the enterprise private repo problem across all Claude surfaces.
 
-**Key Discovery:** All Claude surfaces (Claude.ai, Claude Desktop, Claude Code) use computer tools for skill installation via the `skillport-manager` skill. This means token-based installation optimization benefits **all surfaces**, not just Claude Code. See Finding 8 for details.
+**Key Discovery:** All Claude surfaces (Claude.ai, Claude Desktop, Claude Code) use computer tools for skill installation via the `skillport-manager` skill. This enables **Programmatic Tool Calling (PTC)**—Anthropic's recommended pattern for token-efficient tool use—to benefit all surfaces. See Finding 8 for details on current flow and the Proposed Solution section for the PTC-based optimization.
 
 ---
 
@@ -739,16 +739,35 @@ For most users, installing skills is infrequent. The token cost may be acceptabl
 
 ---
 
-## Proposed Solution: Token-Based Installation (All Surfaces)
+## Proposed Solution: Programmatic Tool Calling for Installation (All Surfaces)
 
 **Status:** Proposed  
 **Complexity:** Medium  
-**Token Savings:** ~11k → ~100 tokens  
+**Token Savings:** ~11k → ~100 tokens (99% reduction)  
 **Scope:** All Claude surfaces (Claude.ai, Desktop, Code)
 
-### The Insight
+### Background: Programmatic Tool Calling (PTC)
 
-Instead of returning all skill content via MCP (expensive), return a short-lived install token that a script can redeem for the full content.
+This optimization follows Anthropic's recommended pattern called **Programmatic Tool Calling (PTC)**, announced in their [Advanced Tool Use](https://www.anthropic.com/engineering/advanced-tool-use) engineering blog.
+
+The core idea: instead of passing large data through Claude's context, have Claude write code that executes tool calls and processes results outside the model's context window.
+
+**Anthropic's findings on PTC:**
+- Token savings: 37% reduction on complex research tasks (43,588 → 27,297 tokens)
+- Reduced latency: Eliminates inference passes between tool calls
+- Improved accuracy: Explicit orchestration logic reduces errors vs juggling results in natural language
+
+From their blog on [Code Execution with MCP](https://www.anthropic.com/engineering/code-execution-with-mcp):
+> "With code execution environments becoming more common for agents, a solution is to present MCP servers as code APIs rather than direct tool calls. The agent can then write code to interact with MCP servers."
+
+### How PTC Applies to Skillport Installation
+
+| Current Approach | PTC Approach |
+|------------------|---------------|
+| `fetch_skill` returns ~11k tokens of file contents | `get_install_token` returns ~100 tokens |
+| Claude processes all content in context | Script fetches content out-of-band |
+| Claude calls Write() N times (N round-trips) | Script writes all files (1 bash call) |
+| Each round-trip = model inference time | Code executes at native speed |
 
 **Why this works for all surfaces:** All Claude surfaces have computer tools (bash, file creation). The `skillport-manager` skill uses these tools to write files and run scripts. See Finding 8 for the current installation flow.
 
@@ -1163,10 +1182,12 @@ The `skillport-manager` skill (installed via Skillport itself) handles skill ins
 
 Each tool call includes Claude thinking time between steps. A 5-file skill means 5+ round-trips plus processing.
 
-### How Token-Based Optimization Helps All Surfaces
+### How Programmatic Tool Calling (PTC) Optimizes This
 
-| Step | Current | Optimized |
-|------|---------|----------|
+The current flow is a textbook case for Anthropic's **Programmatic Tool Calling** pattern: large data passing through context, multiple round-trips, model processing intermediate results.
+
+| Step | Current | PTC Optimized |
+|------|---------|---------------|
 | 1. Get skill info | `fetch_skill` (~11k tokens) | `get_install_token` (~100 tokens) |
 | 2. Get files | Already in context | Bash script curls API |
 | 3. Write files | N × Write() calls | Script writes directly |
@@ -1175,6 +1196,8 @@ Each tool call includes Claude thinking time between steps. A 5-file skill means
 
 **Token savings:** ~11k → ~100 (99% reduction)  
 **Time savings:** 2-5 min → 5-10 sec (estimated)
+
+See the **Proposed Solution** section for full implementation details.
 
 ### Surface-Specific Considerations
 

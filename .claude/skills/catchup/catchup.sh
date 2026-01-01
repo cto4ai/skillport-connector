@@ -10,6 +10,10 @@ echo "=== GIT STATUS ==="
 git status -s
 
 echo ""
+echo "=== RECENT COMMITS ON MAIN ==="
+git log --oneline -10 main 2>/dev/null || git log --oneline -10 origin/main 2>/dev/null || echo "(no main branch)"
+
+echo ""
 echo "=== COMMITS SINCE MAIN ==="
 if git rev-parse origin/main >/dev/null 2>&1; then
     git log --oneline origin/main..HEAD 2>/dev/null || echo "(on main or no commits ahead)"
