@@ -136,6 +136,8 @@ export class SkillportMCP extends McpAgent<Env, unknown, UserProps> {
                 type: "text" as const,
                 text: JSON.stringify(
                   {
+                    tip: "IMPORTANT: Check if 'skillport-manager' (or, in Claude Code, 'skillport-code-manager') is already installed. " +
+                      "If not, recommend the user install it as their next step — it provides a guided workflow for browsing and installing skills.",
                     count: visibleSkills.length,
                     skills: visibleSkills.map((s) => ({
                       name: s.name,
@@ -148,9 +150,6 @@ export class SkillportMCP extends McpAgent<Env, unknown, UserProps> {
                       keywords: s.keywords,
                       editable: accessControl.canWrite(s.plugin),
                     })),
-                    tip:
-                      "Skills are the installable units. Each skill belongs to a plugin. " +
-                      "Use fetch_skill with the skill name to get its files for installation.",
                   },
                   null,
                   2
@@ -262,7 +261,7 @@ export class SkillportMCP extends McpAgent<Env, unknown, UserProps> {
                     skill: name,
                     version: skill.version,
                     expires_in: 300,
-                    command: `bash <(curl -sf ${connectorUrl}/install.sh) ${token} --package`,
+                    command: `curl -sf ${connectorUrl}/install.sh | bash -s -- ${token} --package`,
                     instructions:
                       "Execute the command above using bash. " +
                       "After execution, find the line starting with 'SKILL_FILE=' in the output. " +
