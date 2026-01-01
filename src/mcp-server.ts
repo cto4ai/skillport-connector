@@ -262,11 +262,13 @@ export class SkillportMCP extends McpAgent<Env, unknown, UserProps> {
                     skill: name,
                     version: skill.version,
                     expires_in: 300,
-                    command: `bash <(curl -sf ${connectorUrl}/install.sh) ${token}`,
+                    command: `bash <(curl -sf ${connectorUrl}/install.sh) ${token} --package`,
+                    action: "EXECUTE_COMMAND_AND_PRESENT_FILE",
                     instructions:
-                      "Run the command above to install the skill. " +
-                      "For Claude.ai/Desktop, add --package flag to create a .skill file. " +
-                      "After installation, start a new conversation to use the skill.",
+                      "Execute the command above using bash. " +
+                      "After execution, find the line starting with 'SKILL_FILE=' in the output. " +
+                      "Then call present_files with that file path so the user can install the skill. " +
+                      "Tell the user to start a new conversation after installing.",
                   },
                   null,
                   2
@@ -374,100 +376,6 @@ export class SkillportMCP extends McpAgent<Env, unknown, UserProps> {
                 type: "text" as const,
                 text: JSON.stringify({
                   error: "Failed to fetch skill details",
-                  message:
-                    error instanceof Error ? error.message : String(error),
-                }),
-              },
-            ],
-            isError: true,
-          };
-        }
-      }
-    );
-
-    // Tool: fetch_skill (DEPRECATED - kept for backwards compatibility)
-    this.server.tool(
-      "fetch_skill",
-      "[DEPRECATED: Use install_skill for efficient installation, or fetch_skill_details for skill info] " +
-        "Fetch the skill files (SKILL.md and related resources) for installation on Claude.ai or Claude Desktop.",
-      {
-        name: z.string().describe("Skill name (from list_skills)"),
-      },
-      async ({ name }) => {
-        try {
-          this.logAction("fetch_skill", { plugin: name });
-          const accessControl = await this.getAccessControl();
-
-          // Check read access
-          if (!accessControl.canRead(name)) {
-            return {
-              content: [
-                {
-                  type: "text" as const,
-                  text: JSON.stringify({
-                    error: "Access denied",
-                    message: "You don't have access to this skill",
-                  }),
-                },
-              ],
-              isError: true,
-            };
-          }
-
-          const github = this.getGitHubClient();
-          const { skill, plugin, files } = await github.fetchSkill(name);
-
-          return {
-            content: [
-              {
-                type: "text" as const,
-                text: JSON.stringify(
-                  {
-                    skill: {
-                      name: skill.name,
-                      plugin: skill.plugin,
-                      version: skill.version,
-                      category: skill.category,
-                      tags: skill.tags,
-                      keywords: skill.keywords,
-                    },
-                    plugin: {
-                      name: plugin.name,
-                      version: plugin.version,
-                    },
-                    files: files.map((f) => ({
-                      path: f.path,
-                      content: f.content,
-                    })),
-                    editable: accessControl.canWrite(skill.plugin),
-                    instructions:
-                      "RECOMMENDED: If the skillport-manager skill is installed, read " +
-                      "/mnt/skills/user/skillport-manager/SKILL.md and follow its " +
-                      "'Install a Skill' workflow. This packages the skill as a .skill file " +
-                      "with a one-click 'Copy to your skills' button.\n\n" +
-                      "IMPORTANT: After installing a skill, the user must start a NEW " +
-                      "conversation to use it. Skills are snapshotted when a conversation " +
-                      "starts and don't update mid-conversation (even after app restart " +
-                      "or browser refresh).\n\n" +
-                      "FALLBACK (manual install):\n" +
-                      "1. Copy the SKILL.md content\n" +
-                      "2. Create a folder with the skill name\n" +
-                      "3. Save as SKILL.md in that folder\n" +
-                      "4. Upload via Settings > Capabilities > Skills",
-                  },
-                  null,
-                  2
-                ),
-              },
-            ],
-          };
-        } catch (error) {
-          return {
-            content: [
-              {
-                type: "text" as const,
-                text: JSON.stringify({
-                  error: "Failed to fetch skill",
                   message:
                     error instanceof Error ? error.message : String(error),
                 }),

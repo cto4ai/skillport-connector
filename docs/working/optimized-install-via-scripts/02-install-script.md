@@ -1,5 +1,7 @@
 # Phase 2: Install Script
 
+**Status:** ✅ COMPLETE
+
 ## Overview
 
 A bash script that:

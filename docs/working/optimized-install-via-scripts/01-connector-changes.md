@@ -2,13 +2,15 @@
 
 ## Overview
 
+**Status:** ✅ COMPLETE
+
 Changes to skillport-connector:
 
-1. **New MCP Tool:** `install_skill` - returns token + command for PTC installation
-2. **New MCP Tool:** `fetch_skill_details` - returns only SKILL.md (replaces `fetch_skill`)
-3. **Deprecated:** `fetch_skill` - kept temporarily for backwards compatibility
-4. **New REST Endpoint:** `/api/install/:token` - redeems tokens for skill files
-5. **New Served Script:** `/install.sh` - the installation script
+1. **New MCP Tool:** `install_skill` - returns token + command for PTC installation ✅
+2. **New MCP Tool:** `fetch_skill_details` - returns only SKILL.md ✅
+3. **REMOVED:** `fetch_skill` - completely removed, not deprecated
+4. **New REST Endpoint:** `/api/install/:token` - redeems tokens for skill files ✅
+5. **New Served Script:** `/install.sh` - the installation script ✅
 
 ---
 
@@ -366,7 +368,7 @@ Value: {
 | Tool | Before | After |
 |------|--------|-------|
 | `list_skills` | Returns all skill metadata | Unchanged |
-| `fetch_skill` | Returns ALL files (~11k tokens) | **DEPRECATED** (kept for backwards compat) |
+| `fetch_skill` | Returns ALL files (~11k tokens) | **REMOVED** |
 | `fetch_skill_details` | N/A | **NEW**: Returns SKILL.md (~500-2k tokens) |
 | `install_skill` | N/A | **NEW**: Returns token + command (~100 tokens) |
 | `check_updates` | Compare versions | Unchanged |

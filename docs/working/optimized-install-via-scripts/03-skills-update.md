@@ -1,4 +1,6 @@
-# Phase 2: Skills Update
+# Phase 3: Skills Update
+
+**Status:** 🔄 IN PROGRESS
 
 ## Overview
 
@@ -249,26 +251,64 @@ Update `.claude-plugin/marketplace.json`:
 
 ## 5. Bootstrap Flow
 
-Both skills can bootstrap themselves:
+Both skills can bootstrap themselves - no chicken-and-egg problem because the `install_skill` tool response includes directive instructions that tell Claude exactly what to do.
 
-**Claude.ai / Desktop:**
+### How It Works (Before Any Skill Is Installed)
+
+The `install_skill` tool returns a response with an `action` and `instructions` field:
+
+```json
+{
+  "install_token": "sk_install_xxx",
+  "skill": "skillport-manager",
+  "version": "1.0.0",
+  "expires_in": 300,
+  "command": "bash <(curl -sf .../install.sh) sk_install_xxx --package",
+  "action": "EXECUTE_COMMAND_AND_PRESENT_FILE",
+  "instructions": "Execute the command above using bash. After execution, find the line starting with 'SKILL_FILE=' in the output. Then call present_files with that file path so the user can install the skill. Tell the user to start a new conversation after installing."
+}
+```
+
+Claude reads these instructions and:
+1. Executes the bash command
+2. Parses the output for `SKILL_FILE=`
+3. Calls `present_files` with the path
+4. Tells the user to click "Copy to your skills"
+
+This means **the skill itself doesn't need to exist** for installation to work. The connector's tool response guides Claude through the entire process.
+
+### Claude.ai / Desktop Bootstrap
+
 ```
 User: "install skillport-manager from skillport"
-Claude: [calls install_skill("skillport-manager")]
-Claude: [runs bash script with --package]
-Claude: [presents .skill file]
+Claude: [calls Skillport Connector:install_skill("skillport-manager")]
+       [reads action: "EXECUTE_COMMAND_AND_PRESENT_FILE"]
+       [runs: bash <(curl ...) sk_install_xxx --package]
+       [parses: SKILL_FILE=/tmp/skillport-manager.skill]
+       [calls present_files("/tmp/skillport-manager.skill")]
 User: clicks "Copy to your skills"
 ```
 
-**Claude Code:**
+### Claude Code Bootstrap
+
 ```
 User: "install skillport-code-manager from skillport"
-Claude: [calls install_skill("skillport-code-manager")]
-Claude: [runs bash script without flag]
+Claude: [calls skillport:install_skill("skillport-code-manager")]
+       [reads action: "EXECUTE_COMMAND_AND_PRESENT_FILE"]
+       [runs: bash <(curl ...) sk_install_xxx]
+       [files written to ~/.claude/skills/]
 Claude: "Installed. Restart Claude Code."
 ```
 
-No chicken-and-egg problem - the connector tools work without any skill installed.
+### Requirement: Domain Allowlist (Claude.ai Only)
+
+For Claude.ai, users must add the connector domain to their allowed domains:
+
+1. Go to **Settings > Code execution and file creation**
+2. Enable **Allow network egress**
+3. Under **Additional allowed domains**, add: `skillport-connector.jack-ivers.workers.dev`
+
+Without this, curl requests from Claude.ai's sandbox will be blocked with "host not allowed".
 
 ---
 
@@ -308,7 +348,7 @@ Claude Code users should install `skillport-code-manager` instead.
 | Install another skill via manager | Desktop | .skill file presented |
 | Install another skill via code-manager | Claude Code | Files in ~/.claude/skills/ |
 | list_skills | All | Returns skill list |
-| fetch_skill | All | Returns SKILL.md only |
+| fetch_skill_details | All | Returns SKILL.md only |
 | check_updates | All | Compares versions |
 
 ---
