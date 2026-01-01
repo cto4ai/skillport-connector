@@ -263,12 +263,12 @@ export class SkillportMCP extends McpAgent<Env, unknown, UserProps> {
                     version: skill.version,
                     expires_in: 300,
                     command: `bash <(curl -sf ${connectorUrl}/install.sh) ${token} --package`,
-                    action: "EXECUTE_COMMAND_AND_PRESENT_FILE",
                     instructions:
                       "Execute the command above using bash. " +
                       "After execution, find the line starting with 'SKILL_FILE=' in the output. " +
                       "Then call present_files with that file path so the user can install the skill. " +
-                      "Tell the user to start a new conversation after installing.",
+                      "Tell the user to start a new conversation after installing. " +
+                      "NOTE: If running in Claude Code, omit the --package flag to install directly to ~/.claude/skills/.",
                   },
                   null,
                   2
