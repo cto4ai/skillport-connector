@@ -176,16 +176,17 @@ export class SkillportMCP extends McpAgent<Env, unknown, UserProps> {
       }
     );
 
-    // Tool: fetch_skill
+    // Tool: install_skill (NEW - PTC optimized)
     this.server.tool(
-      "fetch_skill",
-      "Fetch the skill files (SKILL.md and related resources) for installation on Claude.ai or Claude Desktop.",
+      "install_skill",
+      "Install a skill efficiently. Returns a short-lived token and command to run. " +
+        "This is the recommended way to install skills - much faster than fetching all files.",
       {
-        name: z.string().describe("Skill name (from list_skills)"),
+        name: z.string().describe("Skill name to install"),
       },
       async ({ name }) => {
         try {
-          this.logAction("fetch_skill", { plugin: name });
+          this.logAction("install_skill", { skill: name });
           const accessControl = await this.getAccessControl();
 
           // Check read access
@@ -205,7 +206,51 @@ export class SkillportMCP extends McpAgent<Env, unknown, UserProps> {
           }
 
           const github = this.getGitHubClient();
-          const { skill, plugin, files } = await github.fetchSkill(name);
+          const skill = await github.getSkill(name);
+
+          if (!skill) {
+            return {
+              content: [
+                {
+                  type: "text" as const,
+                  text: JSON.stringify({
+                    error: "Skill not found",
+                    message: `Skill '${name}' not found. Use list_skills to see available skills.`,
+                  }),
+                },
+              ],
+              isError: true,
+            };
+          }
+
+          // Generate cryptographically random token
+          const tokenBytes = new Uint8Array(24);
+          crypto.getRandomValues(tokenBytes);
+          const token =
+            "sk_install_" +
+            btoa(String.fromCharCode(...tokenBytes))
+              .replace(/\+/g, "-")
+              .replace(/\//g, "_")
+              .replace(/=/g, "");
+
+          // Store token in KV with 5 minute TTL
+          const tokenData = {
+            skill: name,
+            version: skill.version,
+            user: this.props.email,
+            created: Date.now(),
+            used: false,
+          };
+
+          await this.env.OAUTH_KV.put(
+            `install_token:${token}`,
+            JSON.stringify(tokenData),
+            { expirationTtl: 300 }
+          );
+
+          const connectorUrl =
+            this.env.CONNECTOR_URL ||
+            "https://skillport-connector.jack-ivers.workers.dev";
 
           return {
             content: [
@@ -213,37 +258,17 @@ export class SkillportMCP extends McpAgent<Env, unknown, UserProps> {
                 type: "text" as const,
                 text: JSON.stringify(
                   {
-                    skill: {
-                      name: skill.name,
-                      plugin: skill.plugin,
-                      version: skill.version,
-                      category: skill.category,
-                      tags: skill.tags,
-                      keywords: skill.keywords,
-                    },
-                    plugin: {
-                      name: plugin.name,
-                      version: plugin.version,
-                    },
-                    files: files.map((f) => ({
-                      path: f.path,
-                      content: f.content,
-                    })),
-                    editable: accessControl.canWrite(skill.plugin),
+                    install_token: token,
+                    skill: name,
+                    version: skill.version,
+                    expires_in: 300,
+                    command: `bash <(curl -sf ${connectorUrl}/install.sh) ${token} --package`,
                     instructions:
-                      "RECOMMENDED: If the skillport-manager skill is installed, read " +
-                      "/mnt/skills/user/skillport-manager/SKILL.md and follow its " +
-                      "'Install a Skill' workflow. This packages the skill as a .skill file " +
-                      "with a one-click 'Copy to your skills' button.\n\n" +
-                      "IMPORTANT: After installing a skill, the user must start a NEW " +
-                      "conversation to use it. Skills are snapshotted when a conversation " +
-                      "starts and don't update mid-conversation (even after app restart " +
-                      "or browser refresh).\n\n" +
-                      "FALLBACK (manual install):\n" +
-                      "1. Copy the SKILL.md content\n" +
-                      "2. Create a folder with the skill name\n" +
-                      "3. Save as SKILL.md in that folder\n" +
-                      "4. Upload via Settings > Capabilities > Skills",
+                      "Execute the command above using bash. " +
+                      "After execution, find the line starting with 'SKILL_FILE=' in the output. " +
+                      "Then call present_files with that file path so the user can install the skill. " +
+                      "Tell the user to start a new conversation after installing. " +
+                      "NOTE: If running in Claude Code, omit the --package flag to install directly to ~/.claude/skills/.",
                   },
                   null,
                   2
@@ -257,7 +282,100 @@ export class SkillportMCP extends McpAgent<Env, unknown, UserProps> {
               {
                 type: "text" as const,
                 text: JSON.stringify({
-                  error: "Failed to fetch skill",
+                  error: "Failed to create install token",
+                  message:
+                    error instanceof Error ? error.message : String(error),
+                }),
+              },
+            ],
+            isError: true,
+          };
+        }
+      }
+    );
+
+    // Tool: fetch_skill_details (NEW - returns only SKILL.md)
+    this.server.tool(
+      "fetch_skill_details",
+      "Get details about a skill. Returns the SKILL.md content which describes what the skill does, " +
+        "how to use it, and its capabilities. Use install_skill to actually install a skill.",
+      {
+        name: z.string().describe("Skill name"),
+      },
+      async ({ name }) => {
+        try {
+          this.logAction("fetch_skill_details", { skill: name });
+          const accessControl = await this.getAccessControl();
+
+          // Check read access
+          if (!accessControl.canRead(name)) {
+            return {
+              content: [
+                {
+                  type: "text" as const,
+                  text: JSON.stringify({
+                    error: "Access denied",
+                    message: "You don't have access to this skill",
+                  }),
+                },
+              ],
+              isError: true,
+            };
+          }
+
+          const github = this.getGitHubClient();
+          const skill = await github.getSkill(name);
+
+          if (!skill) {
+            return {
+              content: [
+                {
+                  type: "text" as const,
+                  text: JSON.stringify({
+                    error: "Skill not found",
+                    message: `Skill '${name}' not found. Use list_skills to see available skills.`,
+                  }),
+                },
+              ],
+              isError: true,
+            };
+          }
+
+          // Fetch only SKILL.md content
+          const skillMd = await github.fetchSkillMd(name);
+
+          return {
+            content: [
+              {
+                type: "text" as const,
+                text: JSON.stringify(
+                  {
+                    skill: {
+                      name: skill.name,
+                      version: skill.version,
+                      description: skill.description,
+                      plugin: skill.plugin,
+                      category: skill.category,
+                      tags: skill.tags,
+                      keywords: skill.keywords,
+                    },
+                    skill_md: skillMd,
+                    editable: accessControl.canWrite(skill.plugin),
+                    tip: "Use install_skill to install this skill efficiently.",
+                  },
+                  null,
+                  2
+                ),
+              },
+            ],
+          };
+        } catch (error) {
+          return {
+            content: [
+              {
+                type: "text" as const,
+                text: JSON.stringify({
+                  error: "Failed to fetch skill details",
                   message:
                     error instanceof Error ? error.message : String(error),
                 }),
