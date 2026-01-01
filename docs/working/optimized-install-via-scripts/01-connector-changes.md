@@ -5,9 +5,10 @@
 Changes to skillport-connector:
 
 1. **New MCP Tool:** `install_skill` - returns token + command for PTC installation
-2. **Repurposed MCP Tool:** `fetch_skill` - now returns only SKILL.md (not all files)
-3. **New REST Endpoint:** `/api/install/:token` - redeems tokens for skill files
-4. **New Served Script:** `/install.sh` - the installation script
+2. **New MCP Tool:** `fetch_skill_details` - returns only SKILL.md (replaces `fetch_skill`)
+3. **Deprecated:** `fetch_skill` - kept temporarily for backwards compatibility
+4. **New REST Endpoint:** `/api/install/:token` - redeems tokens for skill files
+5. **New Served Script:** `/install.sh` - the installation script
 
 ---
 
@@ -97,9 +98,11 @@ async function handleInstallSkill(
 
 ---
 
-## 2. Repurposed MCP Tool: `fetch_skill`
+## 2. New MCP Tool: `fetch_skill_details`
 
-### Before (REMOVING)
+Replaces the old `fetch_skill` tool. Returns only SKILL.md content instead of all files.
+
+### Before: `fetch_skill` (REMOVING)
 
 Returned all files (~11k tokens):
 ```json
@@ -113,7 +116,7 @@ Returned all files (~11k tokens):
 }
 ```
 
-### After (NEW BEHAVIOR)
+### After: `fetch_skill_details` (NEW)
 
 Returns only SKILL.md content (~500-2k tokens):
 ```json
@@ -127,11 +130,11 @@ Returns only SKILL.md content (~500-2k tokens):
 }
 ```
 
-### Tool Definition (Updated)
+### Tool Definition
 
 ```typescript
 {
-  name: "fetch_skill",
+  name: "fetch_skill_details",
   description: "Get details about a skill. Returns the SKILL.md content which describes what the skill does, how to use it, and its capabilities. Use install_skill to actually install a skill.",
   inputSchema: {
     type: "object",
@@ -149,7 +152,7 @@ Returns only SKILL.md content (~500-2k tokens):
 ### Implementation
 
 ```typescript
-async function handleFetchSkill(
+async function handleFetchSkillDetails(
   params: { name: string },
   env: Env
 ): Promise<ToolResponse> {
@@ -363,7 +366,8 @@ Value: {
 | Tool | Before | After |
 |------|--------|-------|
 | `list_skills` | Returns all skill metadata | Unchanged |
-| `fetch_skill` | Returns ALL files (~11k tokens) | Returns only SKILL.md (~500-2k tokens) |
+| `fetch_skill` | Returns ALL files (~11k tokens) | **DEPRECATED** (kept for backwards compat) |
+| `fetch_skill_details` | N/A | **NEW**: Returns SKILL.md (~500-2k tokens) |
 | `install_skill` | N/A | **NEW**: Returns token + command (~100 tokens) |
 | `check_updates` | Compare versions | Unchanged |
 
@@ -372,9 +376,9 @@ Value: {
 ## 8. Files to Modify
 
 | File | Changes |
-|------|---------|
+|------|--------|
 | `src/index.ts` | Add routes for `/api/install/:token` and `/install.sh` |
-| `src/tools.ts` | Add `install_skill`, modify `fetch_skill` |
+| `src/tools.ts` | Add `install_skill`, add `fetch_skill_details`, mark `fetch_skill` deprecated |
 | `src/github.ts` | Add `fetchSkillMd()` helper |
 | `src/types.ts` | Add types for token data |
 
@@ -389,7 +393,7 @@ Value: {
 # Test token redemption directly
 curl -s "https://connector/api/install/sk_install_xxx" | jq .
 
-# Test fetch_skill returns only SKILL.md
+# Test fetch_skill_details returns only SKILL.md
 > "tell me more about the data-analyzer skill"
 # Should return skill_md content, not all files
 

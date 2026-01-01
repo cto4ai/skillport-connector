@@ -41,7 +41,7 @@ Call `Skillport Connector:list_skills`. Present results as a brief list showing 
 
 ## Get Skill Details
 
-Call `Skillport Connector:fetch_skill` with `name` parameter. This returns the SKILL.md content which describes capabilities, usage, and examples.
+Call `Skillport Connector:fetch_skill_details` with `name` parameter. This returns the SKILL.md content which describes capabilities, usage, and examples.
 
 ## Install a Skill
 
@@ -143,7 +143,7 @@ Call `skillport:list_skills`. Present results as a brief list showing name, desc
 
 ## Get Skill Details
 
-Call `skillport:fetch_skill` with `name` parameter. This returns the SKILL.md content which describes capabilities, usage, and examples.
+Call `skillport:fetch_skill_details` with `name` parameter. This returns the SKILL.md content which describes capabilities, usage, and examples.
 
 ## Install a Skill
 

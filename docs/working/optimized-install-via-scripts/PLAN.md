@@ -22,11 +22,12 @@ Reduce skill installation time from **2-5 minutes** to **5-10 seconds** across a
 | Tool | Before | After |
 |------|--------|-------|
 | `list_skills` | Returns metadata for all skills | Unchanged (future: slim down) |
-| `fetch_skill` | Returns ALL files (~11k tokens) | Returns only SKILL.md (~500-2k tokens) |
+| `fetch_skill` | Returns ALL files (~11k tokens) | **DEPRECATED** (kept for Phase 1-2) |
+| `fetch_skill_details` | N/A | **NEW**: Returns SKILL.md content (~500-2k tokens) |
 | `install_skill` | N/A | **NEW**: Returns token + command (~100 tokens) |
 | `check_updates` | Compare versions | Unchanged |
 
-**`fetch_skill` is repurposed, not removed.** It becomes a "tell me more" tool, not an installation tool.
+**`fetch_skill` is deprecated, not removed immediately.** This allows existing `skillport-manager` v1.x to keep working during transition.
 
 ### Surface-Specific Skills
 
@@ -67,19 +68,42 @@ User: "install data-analyzer from skillport"
 | Component | Location | Purpose |
 |-----------|----------|---------|
 | `install_skill` MCP tool | skillport-connector | Returns token + command |
+| `fetch_skill_details` MCP tool | skillport-connector | Returns SKILL.md (new tool) |
 | `/api/install/:token` REST endpoint | skillport-connector | Redeems token for skill files |
 | `/install.sh` served script | skillport-connector | Fetches and writes files |
-| Repurposed `fetch_skill` | skillport-connector | Returns only SKILL.md |
+| Remove `fetch_skill` | skillport-connector | Old tool that returned all files |
 | `skillport-manager` update | skillport-marketplace-template | Uses `install_skill` |
 | `skillport-code-manager` | skillport-marketplace-template | **NEW** skill for Claude Code |
+
+## Deployment Strategy
+
+**Problem:** If we remove `fetch_skill` from connector, existing `skillport-manager` v1.x breaks immediately.
+
+**Solution:** Coordinated deployment:
+
+1. **Deploy connector with ALL tools:**
+   - Keep `fetch_skill` (deprecated, still works)
+   - Add `fetch_skill_details` (new)
+   - Add `install_skill` (new)
+
+2. **Update and publish skills:**
+   - `skillport-manager` v2.0 uses `install_skill`
+   - `skillport-code-manager` v1.0 uses `install_skill`
+
+3. **Wait for adoption** (optional grace period)
+
+4. **Remove `fetch_skill`** in a later connector release
+
+This ensures no breaking changes for existing users.
 
 ## Phases
 
 ### Phase 1: Connector Changes
 - [ ] Add `install_skill` MCP tool
+- [ ] Add `fetch_skill_details` MCP tool
+- [ ] Keep `fetch_skill` (deprecated, for backwards compatibility)
 - [ ] Add `/api/install/:token` REST endpoint  
 - [ ] Add `/install.sh` served script
-- [ ] Repurpose `fetch_skill` to return only SKILL.md
 - [ ] Deploy and test
 
 ### Phase 2: Skills
@@ -87,6 +111,10 @@ User: "install data-analyzer from skillport"
 - [ ] Create `skillport-code-manager` skill for Claude Code
 - [ ] Test on all surfaces
 - [ ] Bump versions and publish
+
+### Phase 3: Cleanup (later)
+- [ ] Remove deprecated `fetch_skill` from connector
+- [ ] Update docs
 
 ## Detailed Specs
 
@@ -103,7 +131,7 @@ See individual spec files:
 | Token redeemable via curl | CLI | Full skill JSON returned |
 | Token single-use | CLI | Second request fails with 410 |
 | Token expires | CLI | Request after 5 min fails with 404 |
-| `fetch_skill` returns only SKILL.md | All | Single file, not all files |
+| `fetch_skill_details` returns SKILL.md | All | Single file content, not all files |
 | install.sh writes files | Claude Code | Files in ~/.claude/skills/ |
 | install.sh --package creates zip | Claude.ai | .skill file created |
 | Bootstrap skillport-manager | Claude.ai | Works via install_skill |
@@ -115,4 +143,4 @@ See individual spec files:
 - [ ] Token usage reduced by >90%
 - [ ] No regression in install success rate
 - [ ] Works for bootstrap (no chicken-egg problem)
-- [ ] `fetch_skill` still useful for "tell me more about X"
+- [ ] `fetch_skill_details` useful for "tell me more about X"

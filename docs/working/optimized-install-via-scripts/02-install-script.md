@@ -103,6 +103,10 @@ RESPONSE=$(curl -sf "$CONNECTOR_URL/api/install/$TOKEN" 2>&1) || {
 # Parse and write files
 # ----------------------------------------------------------------------------
 
+# Export for Python script (must be before heredoc)
+export OUTPUT_DIR
+export PACKAGE_MODE
+
 echo "$RESPONSE" | python3 << 'PYTHON_SCRIPT'
 import json
 import sys
@@ -160,10 +164,6 @@ if os.environ.get('PACKAGE_MODE') == 'true':
 
 print(f"\n\033[0;32m✓ Wrote {files_written} files to {skill_dir}\033[0m")
 PYTHON_SCRIPT
-
-# Export for Python script
-export OUTPUT_DIR
-export PACKAGE_MODE
 
 # ----------------------------------------------------------------------------
 # Package mode: create .skill zip
@@ -405,6 +405,16 @@ bash <(curl -sf .../install.sh) invalid_token
 bash <(curl -sf .../install.sh) sk_install_already_used
 # Expected: Error from API
 ```
+
+---
+
+### Partial Install Cleanup
+
+If the script fails mid-install (e.g., after writing 2 of 4 files), the skill directory may be in a broken state.
+
+**Current behavior:** Partial files remain. User must delete manually.
+
+**Future improvement:** Write to temp directory first, then `mv` atomically on success.
 
 ---
 
