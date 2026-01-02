@@ -307,7 +307,14 @@ export class GitHubClient {
       async () => {
         try {
           const content = await this.fetchFile(".skillport/access.json");
-          return JSON.parse(content) as AccessConfig;
+          const parsed = JSON.parse(content) as Partial<AccessConfig>;
+          // Merge with defaults to handle partial access.json files
+          return {
+            version: parsed.version ?? DEFAULT_ACCESS_CONFIG.version,
+            editors: parsed.editors ?? DEFAULT_ACCESS_CONFIG.editors,
+            skills: parsed.skills ?? DEFAULT_ACCESS_CONFIG.skills,
+            defaults: parsed.defaults ?? DEFAULT_ACCESS_CONFIG.defaults,
+          };
         } catch {
           // No access.json = everyone can read, no one can write
           return DEFAULT_ACCESS_CONFIG;
