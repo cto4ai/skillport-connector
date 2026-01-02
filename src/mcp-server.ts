@@ -1015,13 +1015,6 @@ export class SkillportMCP extends McpAgent<Env, unknown, UserProps> {
             `Delete skill ${skillName}\n\nRequested by: ${this.props.email}`
           );
 
-          // Remove from marketplace.json if published
-          try {
-            await github.removeFromMarketplace(skillName, this.props.email);
-          } catch {
-            // Skill might not be in marketplace.json yet, that's fine
-          }
-
           // If this was the last skill, delete the entire plugin
           let pluginDeleted = false;
           if (isLastSkillInPlugin) {
@@ -1031,6 +1024,13 @@ export class SkillportMCP extends McpAgent<Env, unknown, UserProps> {
               `Delete plugin ${skill.plugin} (last skill removed)\n\nRequested by: ${this.props.email}`
             );
             pluginDeleted = true;
+
+            // Remove plugin from marketplace.json
+            try {
+              await github.removeFromMarketplace(skill.plugin, this.props.email);
+            } catch {
+              // Plugin might not be in marketplace.json yet, that's fine
+            }
           }
 
           // Clear caches
