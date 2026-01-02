@@ -1,29 +1,29 @@
 # Skillport Connector
 
-MCP connector that bridges Claude Code Plugin Marketplaces to Claude.ai and Claude Desktop.
+MCP connector that bridges Claude Code Skill Marketplaces to Claude.ai and Claude Desktop.
+
+> **Note:** If `CLAUDE-MORE-DETAILS.md` exists in this repo, review it for additional development context.
 
 ## Project Overview
 
 This is a **Cloudflare Worker** that:
-- Exposes a Plugin Marketplace via MCP protocol
-- Authenticates users via Google OAuth (OAuth version) or API key (authless version)
+- Exposes a Skill Marketplace via MCP protocol
+- Authenticates users via Google OAuth
 - Provides tools to browse and fetch Skills for Claude.ai/Desktop users
 
 ## Sibling Repository
 
-This project is part of a two-repo workspace:
+This project is part of a two-repo system:
 
 | Repo | Purpose |
 |------|---------|
 | **skillport-connector** (this repo) | MCP connector deployed on Cloudflare Workers |
 | **skillport-marketplace** | GitHub template for creating skill marketplaces |
 
-The template is at `../skillport-marketplace/` in this workspace.
-
 ## Architecture
 
 ```
-Plugin Marketplace Repo → Claude Code (native)
+Skill Marketplace Repo → Claude Code (native plugin support)
                        → Skillport Connector (MCP) → Claude.ai / Claude Desktop
 ```
 
@@ -32,18 +32,16 @@ Plugin Marketplace Repo → Claude Code (native)
 - **Runtime**: Cloudflare Workers
 - **Language**: TypeScript
 - **MCP SDK**: @modelcontextprotocol/sdk
-- **Auth**: Google OAuth (OAuth version) or API key (authless version)
-- **Storage**: Cloudflare KV (for OAuth tokens and API keys)
+- **Auth**: Google OAuth
+- **Storage**: Cloudflare KV (for OAuth tokens)
 
 ## Key Files
 
 | File | Purpose |
 |------|---------|
-| [src/index.ts](src/index.ts) | OAuth entry point (for Claude Code) |
-| [src/index-authless.ts](src/index-authless.ts) | API key entry point (for Claude.ai) |
+| [src/index.ts](src/index.ts) | Entry point with OAuth handler |
 | [src/mcp-server.ts](src/mcp-server.ts) | MCP server with tool definitions |
-| [wrangler.toml](wrangler.toml) | OAuth worker configuration |
-| [wrangler-authless.toml](wrangler-authless.toml) | Authless worker configuration |
+| [wrangler.toml.example](wrangler.toml.example) | Worker configuration template |
 | [package.json](package.json) | Dependencies and scripts |
 
 ## MCP Tools
@@ -61,112 +59,74 @@ The connector exposes these MCP tools:
 ### Editor Tools (require write access)
 | Tool | Purpose |
 |------|---------|
-| `save_skill` | Create or update skill files (unified create/edit) |
+| `save_skill` | Create or update skill files |
 | `publish_skill` | Make a skill discoverable in the marketplace |
 | `bump_version` | Bump version for a skill's group |
 
-## Testing
+## Setup
 
-**Important:** Cannot test MCP tools directly from Claude Code due to OAuth requirements. Use one of these methods:
-
-1. **Claude.ai with connector enabled** - Add the connector in Settings, test tools in conversation
-2. **MCP Inspector** - `npx @anthropic-ai/mcp-inspector` with the SSE URL
-3. **Wrangler tail for logs** - `node node_modules/wrangler/bin/wrangler.js tail` to see audit logs
-
-## Development
+### 1. Copy configuration template
 
 ```bash
-npm install              # Install dependencies
-npm run dev              # OAuth version (localhost:8788)
-npm run dev:authless     # Authless version (localhost:8788)
-npm run deploy           # Deploy OAuth version
-npm run deploy:authless  # Deploy authless version
+cp wrangler.toml.example wrangler.toml
 ```
 
-**Note:** Wrangler v4 requires Node v20+. The VS Code extension runs Node v19.3.0, so run wrangler directly:
+### 2. Create KV namespaces
+
 ```bash
-node node_modules/wrangler/bin/wrangler.js dev
-node node_modules/wrangler/bin/wrangler.js dev -c wrangler-authless.toml
-node node_modules/wrangler/bin/wrangler.js deploy
-node node_modules/wrangler/bin/wrangler.js deploy -c wrangler-authless.toml
+npx wrangler kv namespace create OAUTH_KV
+npx wrangler kv namespace create API_KEYS
 ```
 
-## Configuration
+Update `wrangler.toml` with the namespace IDs from the output.
 
-### wrangler.toml
+### 3. Configure your marketplace
+
+Edit `wrangler.toml`:
 ```toml
 [vars]
 MARKETPLACE_REPO = "your-org/your-marketplace"
 ```
 
-### Secrets (via wrangler secret put)
+### 4. Set secrets
 
-**OAuth version:**
-- `GOOGLE_CLIENT_ID`
-- `GOOGLE_CLIENT_SECRET`
-- `GITHUB_SERVICE_TOKEN`
-- `COOKIE_ENCRYPTION_KEY`
+```bash
+npx wrangler secret put GOOGLE_CLIENT_ID
+npx wrangler secret put GOOGLE_CLIENT_SECRET
+npx wrangler secret put GITHUB_SERVICE_TOKEN
+npx wrangler secret put COOKIE_ENCRYPTION_KEY
+```
 
-**Authless version:**
-- `GITHUB_SERVICE_TOKEN`
+## Development
 
-## Production URLs
+```bash
+npm install              # Install dependencies
+npm run dev              # Start local dev server (localhost:8788)
+npm run deploy           # Deploy to Cloudflare Workers
+```
 
-| Version | URL | Use Case |
-|---------|-----|----------|
-| OAuth (recommended) | https://skillport-connector.jack-ivers.workers.dev/sse | Claude.ai, Claude Desktop, Claude Code |
-| Authless (deprecated) | https://skillport-connector-authless.jack-ivers.workers.dev/sse?api_key=... | Fallback only |
+**Note:** Wrangler v4 requires Node v20+. If using an older Node version:
+```bash
+node node_modules/wrangler/bin/wrangler.js dev
+node node_modules/wrangler/bin/wrangler.js deploy
+```
 
-**Note:** OAuth is now the recommended authentication method. The authless version with API key in query string was created as a workaround when OAuth had bugs, but OAuth is now working correctly.
+## Testing
 
-## User Email & Audit Logging
-
-**OAuth version:** User email is captured from Google OAuth and stored in `this.props.email` via the McpAgent session. This is the authoritative source for user identity.
-
-**Authless version:** Has a `user_email` parameter on each tool - this was a workaround before OAuth was working. Now deprecated.
-
-**Current approach:** Use `this.props.email` from OAuth session and log to console. View logs via `wrangler tail` or Cloudflare dashboard.
-
-**Implementation:** `logAction()` method uses `this.props.email` (OAuth) with fallback to `user_email` param (authless).
-
-## Implementation Status
-
-Current state: **Production (OAuth + Authless)**
-
-- [x] MCP server structure
-- [x] Tool definitions with schemas
-- [x] Google OAuth handler (OAuth version)
-- [x] API key authentication (authless version)
-- [x] GitHub API client for marketplace
-- [x] Tool implementations
-- [x] KV storage setup
-- [x] Audit logging via `logAction()` (OAuth email with authless fallback)
-- [ ] Rate limiting
-- [ ] Unit tests
+1. **Claude.ai with connector enabled** - Add the connector in Settings, test tools in conversation
+2. **MCP Inspector** - `npx @anthropic-ai/mcp-inspector` with your SSE URL
+3. **Wrangler tail for logs** - `npx wrangler tail` to see audit logs
 
 ## Documentation
 
-Documentation is organized in `/docs/`:
-
-### Reference (permanent docs)
+See `/docs/reference/` for detailed documentation:
 - [project-overview.md](docs/reference/project-overview.md) - High-level project overview
-- [architecture-decisions.md](docs/reference/architecture-decisions.md) - ADRs explaining design choices
-- [implementation-guide.md](docs/reference/implementation-guide.md) - Step-by-step implementation guide
+- [architecture-decisions.md](docs/reference/architecture-decisions.md) - Design decisions
+- [implementation-guide.md](docs/reference/implementation-guide.md) - Implementation guide
 - [access-control.md](docs/reference/access-control.md) - User roles and permissions
-
-### Research
-- [claude-connectors-research.md](docs/research/claude-connectors-research.md) - Research on Claude.ai connectors
-- [skills-system-research.md](docs/research/skills-system-research.md) - Research on Claude's Skills system
-
-### Working (checkpoints, in-progress)
-- `docs/working/checkpoints/` - Session checkpoints
-- `docs/working/` - Various working documents and explorations
 
 ## Git Workflow
 
 - Use conventional commits
-- **ALWAYS use a branch/PR process for code changes** - never commit code directly to main
-- Create a feature branch before making any code changes
-- Testing will often take place before a PR is issued for the branch
-- Updates direct to main for documentation-only changes are ok
-- "save our work" means add, commit, push
+- Use branch/PR process for code changes
+- Direct commits to main are ok for documentation-only changes

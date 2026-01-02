@@ -19,6 +19,7 @@ dist/
 
 # Wrangler
 .wrangler/
+wrangler.toml
 
 # Claude Code (machine-specific settings)
 .claude/settings.local.json
