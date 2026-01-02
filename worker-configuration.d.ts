@@ -15,7 +15,7 @@ interface Env {
   // GitHub write token for editor operations (optional)
   GITHUB_WRITE_TOKEN?: string;
 
-  // Marketplace repository (e.g., "cto4ai/skillport-marketplace-template")
+  // Marketplace repository (e.g., "your-org/your-marketplace")
   MARKETPLACE_REPO: string;
 
   // Cookie encryption key (32+ characters)

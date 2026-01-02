@@ -228,4 +228,4 @@ MARKETPLACE_REPO = "your-org/your-marketplace"
 
 **Repo naming:**
 - `skillport-connector` - the MCP bridge
-- `skillport-marketplace-template` - marketplace template
+- `skillport-marketplace` - marketplace template

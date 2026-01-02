@@ -41,7 +41,7 @@ Skillport bridges this gap:
 | Component | Purpose | Repository |
 |-----------|---------|------------|
 | **skillport-connector** | MCP Connector (Cloudflare Worker) | This repo |
-| **skillport-marketplace-template** | GitHub template for creating marketplaces | Sibling repo |
+| **skillport-marketplace** | GitHub template for creating marketplaces | Sibling repo |
 
 Organizations create their own marketplace instances from the template.
 
