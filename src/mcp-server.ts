@@ -1018,9 +1018,9 @@ export class SkillportMCP extends McpAgent<Env, unknown, UserProps> {
             deletedFiles = result.deletedFiles;
             pluginDeleted = true;
 
-            // Remove plugin from marketplace.json
+            // Remove plugin from marketplace.json (use write client!)
             try {
-              await github.removeFromMarketplace(skill.plugin, this.props.email);
+              await writeClient.removeFromMarketplace(skill.plugin, this.props.email);
             } catch (err) {
               // Log but don't fail - plugin might not be in marketplace.json yet
               console.log(`removeFromMarketplace failed for ${skill.plugin}:`, err instanceof Error ? err.message : err);
