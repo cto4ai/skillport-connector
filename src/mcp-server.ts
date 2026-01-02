@@ -1000,37 +1000,39 @@ export class SkillportMCP extends McpAgent<Env, unknown, UserProps> {
 
           const writeClient = this.getWriteGitHubClient();
 
-          // Get the skill directory path
-          // Use dirName (actual directory) not name (display name)
-          const skillDirPath = `plugins/${skill.plugin}/skills/${skill.dirName}`;
-
           // Check if this is the last skill in the plugin before deleting
           const allSkills = await github.listSkills();
           const pluginSkills = allSkills.filter(s => s.plugin === skill.plugin);
           const isLastSkillInPlugin = pluginSkills.length === 1;
 
-          // Delete all files in the skill directory
-          const { deletedFiles } = await writeClient.deleteDirectory(
-            skillDirPath,
-            `Delete skill ${skillName}\n\nRequested by: ${this.props.email}`
-          );
-
-          // If this was the last skill, delete the entire plugin
+          let deletedFiles: string[];
           let pluginDeleted = false;
+
           if (isLastSkillInPlugin) {
+            // Delete the entire plugin directory (includes skill files)
             const pluginPath = `plugins/${skill.plugin}`;
-            await writeClient.deleteDirectory(
+            const result = await writeClient.deleteDirectory(
               pluginPath,
               `Delete plugin ${skill.plugin} (last skill removed)\n\nRequested by: ${this.props.email}`
             );
+            deletedFiles = result.deletedFiles;
             pluginDeleted = true;
 
             // Remove plugin from marketplace.json
             try {
               await github.removeFromMarketplace(skill.plugin, this.props.email);
-            } catch {
-              // Plugin might not be in marketplace.json yet, that's fine
+            } catch (err) {
+              // Log but don't fail - plugin might not be in marketplace.json yet
+              console.log(`removeFromMarketplace failed for ${skill.plugin}:`, err instanceof Error ? err.message : err);
             }
+          } else {
+            // Just delete the skill directory
+            const skillDirPath = `plugins/${skill.plugin}/skills/${skill.dirName}`;
+            const result = await writeClient.deleteDirectory(
+              skillDirPath,
+              `Delete skill ${skillName}\n\nRequested by: ${this.props.email}`
+            );
+            deletedFiles = result.deletedFiles;
           }
 
           // Clear caches
