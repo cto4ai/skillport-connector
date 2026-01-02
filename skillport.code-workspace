@@ -5,6 +5,9 @@
 		},
 		{
 			"path": "../skillport-marketplace-template"
+		},
+		{
+			"path": "../crafty-skillport-marketplace"
 		}
 	],
 	"settings": {}

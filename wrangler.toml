@@ -5,7 +5,7 @@ compatibility_flags = ["nodejs_compat"]
 
 [vars]
 # Configure your marketplace repo here
-MARKETPLACE_REPO = "cto4ai/skillport-marketplace-template"
+MARKETPLACE_REPO = "cto4ai/crafty-skillport-marketplace"
 
 # OAuth KV namespace for storing tokens
 # Create with: wrangler kv namespace create OAUTH_KV
