@@ -11,6 +11,7 @@ Create a focused checkpoint document capturing current work state in `docs/check
 
 ### 1. Quick Context Gathering
 
+- Run `date '+%Y-%m-%d %H:%M:%S'` to get the **actual current date** (use this, not your internal knowledge)
 - Summarize recent conversation and activity in this session
 - Run `git branch --show-current` and `git status`
 - Run `git log --oneline -5` for recent commits
