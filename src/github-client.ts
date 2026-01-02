@@ -455,6 +455,21 @@ export class GitHubClient {
   }
 
   /**
+   * Count actual skill directories in a plugin (regardless of SKILL.md validity)
+   * Used to safely determine if deleting the last skill should remove the plugin
+   */
+  async countSkillDirectories(pluginName: string): Promise<number> {
+    const skillsDirPath = `plugins/${pluginName}/skills`;
+    try {
+      const entries = await this.listDirectory(skillsDirPath);
+      return entries.filter(e => e.type === "dir").length;
+    } catch {
+      // No skills directory
+      return 0;
+    }
+  }
+
+  /**
    * Fetch only the SKILL.md content for a skill (token-efficient)
    */
   async fetchSkillMd(skillName: string): Promise<string> {

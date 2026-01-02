@@ -1000,10 +1000,11 @@ export class SkillportMCP extends McpAgent<Env, unknown, UserProps> {
 
           const writeClient = this.getWriteGitHubClient();
 
-          // Check if this is the last skill in the plugin before deleting
-          const allSkills = await github.listSkills();
-          const pluginSkills = allSkills.filter(s => s.plugin === skill.plugin);
-          const isLastSkillInPlugin = pluginSkills.length === 1;
+          // Count actual skill directories (not just valid SKILL.md ones) to safely decide
+          // whether to delete the whole plugin. This avoids accidentally deleting other
+          // skill folders that might have invalid/missing SKILL.md.
+          const skillDirCount = await github.countSkillDirectories(skill.plugin);
+          const isLastSkillInPlugin = skillDirCount === 1;
 
           let deletedFiles: string[];
           let pluginDeleted = false;
