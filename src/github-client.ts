@@ -799,6 +799,54 @@ export class GitHubClient {
   }
 
   /**
+   * Delete a file from the repository
+   */
+  async deleteFile(path: string, message: string): Promise<void> {
+    // Get the file's SHA (required for deletion)
+    const meta = await this.getFileMeta(path);
+
+    const response = await fetch(
+      `${GITHUB_API}/repos/${this.repo}/contents/${path}`,
+      {
+        method: "DELETE",
+        headers: {
+          Authorization: `Bearer ${this.token}`,
+          Accept: "application/vnd.github.v3+json",
+          "User-Agent": "Skillport-Connector/1.0",
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          message,
+          sha: meta.sha,
+        }),
+      }
+    );
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      throw new Error(`Failed to delete file: ${response.status} - ${errorText}`);
+    }
+  }
+
+  /**
+   * Delete a directory and all its contents recursively
+   */
+  async deleteDirectory(path: string, message: string): Promise<{ deletedFiles: string[] }> {
+    // Get all files in the directory
+    const files = await this.fetchDirectoryRecursive(path, path);
+    const deletedFiles: string[] = [];
+
+    // Delete each file (GitHub API requires deleting files individually)
+    for (const file of files) {
+      const fullPath = `${path}/${file.path}`;
+      await this.deleteFile(fullPath, `${message}\n\nFile: ${file.path}`);
+      deletedFiles.push(file.path);
+    }
+
+    return { deletedFiles };
+  }
+
+  /**
    * Add a new plugin to marketplace.json
    */
   async addToMarketplace(
@@ -886,6 +934,35 @@ export class GitHubClient {
     );
 
     // Clear marketplace cache so new version is visible immediately
+    await this.clearCache();
+  }
+
+  /**
+   * Remove a skill from marketplace.json
+   */
+  async removeFromMarketplace(skillName: string, userEmail?: string): Promise<void> {
+    const marketplacePath = ".claude-plugin/marketplace.json";
+    const content = await this.fetchFile(marketplacePath);
+    const marketplace = JSON.parse(content) as Marketplace;
+
+    const initialLength = marketplace.plugins.length;
+    marketplace.plugins = marketplace.plugins.filter((p) => p.name !== skillName);
+
+    if (marketplace.plugins.length === initialLength) {
+      throw new Error(`Skill not found in marketplace: ${skillName}`);
+    }
+
+    const commitMessage = userEmail
+      ? `Remove ${skillName} from marketplace\n\nRequested by: ${userEmail}`
+      : `Remove ${skillName} from marketplace`;
+
+    await this.updateFile(
+      marketplacePath,
+      JSON.stringify(marketplace, null, 2),
+      commitMessage
+    );
+
+    // Clear marketplace cache
     await this.clearCache();
   }
 }

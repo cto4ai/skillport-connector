@@ -605,7 +605,8 @@ export class SkillportMCP extends McpAgent<Env, unknown, UserProps> {
       "save_skill",
       "Create or update files for a skill. For new skills, provide skill_group (defaults to skill name for standalone). " +
         "Paths are relative to the skill directory itself. " +
-        "Example: 'SKILL.md', 'templates/example.md', 'scripts/helper.py'",
+        "Example: 'SKILL.md', 'templates/example.md', 'scripts/helper.py'. " +
+        "To delete a file, pass empty string as content (cannot delete SKILL.md).",
       {
         skill: z
           .string()
@@ -620,10 +621,10 @@ export class SkillportMCP extends McpAgent<Env, unknown, UserProps> {
           .array(
             z.object({
               path: z.string().describe("Relative path within the skill directory (e.g., 'SKILL.md', 'templates/example.md')"),
-              content: z.string().describe("File content"),
+              content: z.string().describe("File content. Empty string means delete the file."),
             })
           )
-          .describe("Array of files to create/update"),
+          .describe("Array of files to create/update/delete"),
         commitMessage: z
           .string()
           .optional()
@@ -706,7 +707,7 @@ export class SkillportMCP extends McpAgent<Env, unknown, UserProps> {
             basePath = `plugins/${groupName}`;
           }
 
-          const results: Array<{ path: string; created: boolean }> = [];
+          const results: Array<{ path: string; created?: boolean; deleted?: boolean }> = [];
           const baseMessage = commitMessage || `Update ${skillName} skill files`;
 
           // Validate all file paths before processing any files
@@ -714,7 +715,9 @@ export class SkillportMCP extends McpAgent<Env, unknown, UserProps> {
           // For existing skills, use dirName (actual folder); for new skills, use skillName
           const skillDirName = existingSkill?.dirName || skillName;
           const skillPrefix = `skills/${skillDirName}/`;
-          const validatedFiles: Array<{ path: string; content: string; fullPath: string }> = [];
+          const filesToWrite: Array<{ path: string; content: string; fullPath: string }> = [];
+          const filesToDelete: Array<{ path: string; fullPath: string }> = [];
+
           for (const file of files) {
             const sanitizedPath = this.validateFilePath(file.path);
             if (!sanitizedPath) {
@@ -732,10 +735,36 @@ export class SkillportMCP extends McpAgent<Env, unknown, UserProps> {
               };
             }
 
+            // Check for SKILL.md deletion attempt
+            const isSkillMd = sanitizedPath === "SKILL.md" || sanitizedPath === "./SKILL.md";
+            if (isSkillMd && file.content === "") {
+              return {
+                content: [
+                  {
+                    type: "text" as const,
+                    text: JSON.stringify({
+                      error: "Cannot delete SKILL.md",
+                      message: "SKILL.md is required for all skills and cannot be deleted. Use delete_skill to remove the entire skill.",
+                    }),
+                  },
+                ],
+                isError: true,
+              };
+            }
+
             // Auto-prefix with skills/{skill}/ to get the full path within the group
             const fullPath = `${skillPrefix}${sanitizedPath}`;
-            validatedFiles.push({ path: file.path, content: file.content, fullPath });
+
+            // Empty content = delete, otherwise write
+            if (file.content === "") {
+              filesToDelete.push({ path: file.path, fullPath });
+            } else {
+              filesToWrite.push({ path: file.path, content: file.content, fullPath });
+            }
           }
+
+          // For validation, we only look at files being written
+          const validatedFiles = filesToWrite;
 
           // Validate SKILL.md frontmatter
           const skillMdFile = validatedFiles.find(f => f.path === "SKILL.md" || f.path === "./SKILL.md");
@@ -805,7 +834,7 @@ export class SkillportMCP extends McpAgent<Env, unknown, UserProps> {
             );
           }
 
-          // Process each validated file
+          // Process files to write
           for (const file of validatedFiles) {
             const absolutePath = `${basePath}/${file.fullPath}`;
             const fileMessage = `${baseMessage}\n\nFile: ${file.fullPath}\nRequested by: ${this.props.email}`;
@@ -818,12 +847,31 @@ export class SkillportMCP extends McpAgent<Env, unknown, UserProps> {
             results.push({ path: absolutePath, created });
           }
 
+          // Process files to delete
+          for (const file of filesToDelete) {
+            const absolutePath = `${basePath}/${file.fullPath}`;
+            const fileMessage = `Delete ${file.path}\n\nRequested by: ${this.props.email}`;
+
+            try {
+              await writeClient.deleteFile(absolutePath, fileMessage);
+              results.push({ path: absolutePath, deleted: true });
+            } catch (error) {
+              // If file doesn't exist, that's fine - it's already deleted
+              if (error instanceof Error && error.message.includes("File not found")) {
+                // Skip silently
+              } else {
+                throw error;
+              }
+            }
+          }
+
           // Clear cache for this skill group and skill directory
           await github.clearCache(groupName);
           await github.clearSkillDirCache(groupName, skillDirName);
 
-          const created = results.filter((r) => r.created).length;
-          const updated = results.filter((r) => !r.created).length;
+          const created = results.filter((r) => r.created === true).length;
+          const updated = results.filter((r) => r.created === false).length;
+          const deleted = results.filter((r) => r.deleted === true).length;
 
           // Build response with appropriate next steps
           const nextSteps: string[] = [];
@@ -831,6 +879,13 @@ export class SkillportMCP extends McpAgent<Env, unknown, UserProps> {
             nextSteps.push("Use publish_skill to make it discoverable in the marketplace");
           }
           nextSteps.push("Use bump_version to release updates");
+
+          // Build summary
+          const summaryParts: string[] = [];
+          if (created > 0) summaryParts.push(`${created} file(s) created`);
+          if (updated > 0) summaryParts.push(`${updated} file(s) updated`);
+          if (deleted > 0) summaryParts.push(`${deleted} file(s) deleted`);
+          const summary = summaryParts.join(", ") || "No changes";
 
           return {
             content: [
@@ -844,7 +899,7 @@ export class SkillportMCP extends McpAgent<Env, unknown, UserProps> {
                     isNewSkill,
                     isNewGroup,
                     files: results,
-                    summary: `${created} file(s) created, ${updated} file(s) updated`,
+                    summary,
                     message: isNewSkill
                       ? isNewGroup
                         ? `Created new skill "${skillName}" with new group "${groupName}"`
@@ -865,6 +920,132 @@ export class SkillportMCP extends McpAgent<Env, unknown, UserProps> {
                 type: "text" as const,
                 text: JSON.stringify({
                   error: "Failed to save skill files",
+                  message:
+                    error instanceof Error ? error.message : String(error),
+                }),
+              },
+            ],
+            isError: true,
+          };
+        }
+      }
+    );
+
+    // Tool: delete_skill (delete entire skill from marketplace)
+    this.server.tool(
+      "delete_skill",
+      "Delete a skill entirely from the marketplace. Removes all files and marketplace entry. " +
+        "This action is irreversible. Requires confirm=true.",
+      {
+        skill: z.string().describe("Skill name to delete"),
+        confirm: z
+          .boolean()
+          .describe("Must be true to confirm deletion"),
+      },
+      async ({ skill: skillName, confirm }) => {
+        try {
+          // Require explicit confirmation
+          if (!confirm) {
+            return {
+              content: [
+                {
+                  type: "text" as const,
+                  text: JSON.stringify({
+                    error: "Confirmation required",
+                    message: "Set confirm=true to delete the skill. This action is irreversible.",
+                  }),
+                },
+              ],
+              isError: true,
+            };
+          }
+
+          const github = this.getGitHubClient();
+          const accessControl = await this.getAccessControl();
+
+          // Look up skill
+          const skill = await github.getSkill(skillName);
+          if (!skill) {
+            return {
+              content: [
+                {
+                  type: "text" as const,
+                  text: JSON.stringify({
+                    error: "Skill not found",
+                    message: `Skill "${skillName}" not found. Use list_skills to see available skills.`,
+                  }),
+                },
+              ],
+              isError: true,
+            };
+          }
+
+          // Check write access
+          if (!accessControl.canWrite(skill.plugin)) {
+            return {
+              content: [
+                {
+                  type: "text" as const,
+                  text: JSON.stringify({
+                    error: "Access denied",
+                    message: `You don't have write access to skill group "${skill.plugin}"`,
+                  }),
+                },
+              ],
+              isError: true,
+            };
+          }
+
+          this.logAction("delete_skill", { skill: skillName, plugin: skill.plugin });
+
+          const writeClient = this.getWriteGitHubClient();
+
+          // Get the skill directory path
+          // Use dirName (actual directory) not name (display name)
+          const skillDirPath = `plugins/${skill.plugin}/skills/${skill.dirName}`;
+
+          // Delete all files in the skill directory
+          const { deletedFiles } = await writeClient.deleteDirectory(
+            skillDirPath,
+            `Delete skill ${skillName}\n\nRequested by: ${this.props.email}`
+          );
+
+          // Remove from marketplace.json if published
+          try {
+            await github.removeFromMarketplace(skillName, this.props.email);
+          } catch {
+            // Skill might not be in marketplace.json yet, that's fine
+          }
+
+          // Clear caches
+          await github.clearCache(skill.plugin);
+          await github.clearSkillDirCache(skill.plugin, skill.dirName);
+
+          return {
+            content: [
+              {
+                type: "text" as const,
+                text: JSON.stringify(
+                  {
+                    success: true,
+                    skill: skillName,
+                    plugin: skill.plugin,
+                    deletedFiles,
+                    message: `Deleted skill "${skillName}" (${deletedFiles.length} files removed)`,
+                  },
+                  null,
+                  2
+                ),
+              },
+            ],
+          };
+        } catch (error) {
+          return {
+            content: [
+              {
+                type: "text" as const,
+                text: JSON.stringify({
+                  error: "Failed to delete skill",
                   message:
                     error instanceof Error ? error.message : String(error),
                 }),
