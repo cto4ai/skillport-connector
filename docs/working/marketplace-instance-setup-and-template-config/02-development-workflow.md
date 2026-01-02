@@ -127,6 +127,16 @@ git push
 
 This is always safe because `main` is a subset of `development`.
 
+**Important:** After the initial clean-up of main, merging main into development won't delete your dev artifacts. Here's why:
+
+1. main deletes docs/working → commit A
+2. development merges A → docs gone (one-time event)
+3. development adds docs back → commit B ← **key commit**
+4. main adds feature X → commit C
+5. development merges C → docs stay (because B explicitly added them)
+
+Git merge preserves both sides' intentional changes. Since development has a commit that explicitly adds the dev docs *after* the merge point where they were deleted, future merges from main won't remove them.
+
 ### Syncing development → main (selective)
 
 When you develop something in `development` that should go to the clean template, use selective checkout:
