@@ -6,7 +6,7 @@
 import { McpAgent } from "agents/mcp";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
-import { GitHubClient } from "./github-client";
+import { GitHubClient, parseSkillFrontmatter } from "./github-client";
 import { AccessControl, AccessConfig } from "./access-control";
 
 interface UserProps extends Record<string, unknown> {
@@ -755,6 +755,52 @@ export class SkillportMCP extends McpAgent<Env, unknown, UserProps> {
             // Auto-prefix with skills/{skill}/ to get the full path within the group
             const fullPath = `${skillPrefix}${sanitizedPath}`;
             validatedFiles.push({ path: file.path, content: file.content, fullPath });
+          }
+
+          // Validate SKILL.md frontmatter
+          const skillMdFile = validatedFiles.find(f => f.path === "SKILL.md" || f.path === "./SKILL.md");
+
+          if (isNewSkill && !skillMdFile) {
+            return {
+              content: [
+                {
+                  type: "text" as const,
+                  text: JSON.stringify({
+                    error: "Missing SKILL.md",
+                    message: "New skills must include a SKILL.md file with name and description frontmatter.",
+                  }),
+                },
+              ],
+              isError: true,
+            };
+          }
+
+          if (skillMdFile) {
+            const frontmatter = parseSkillFrontmatter(skillMdFile.content);
+            const missingFields: string[] = [];
+
+            if (!frontmatter.name) {
+              missingFields.push("name");
+            }
+            if (!frontmatter.description) {
+              missingFields.push("description");
+            }
+
+            if (missingFields.length > 0) {
+              return {
+                content: [
+                  {
+                    type: "text" as const,
+                    text: JSON.stringify({
+                      error: "Invalid SKILL.md frontmatter",
+                      message: `SKILL.md must have ${missingFields.join(" and ")} in frontmatter. ` +
+                        `Expected format:\n---\nname: my-skill\ndescription: What this skill does\n---`,
+                    }),
+                  },
+                ],
+                isError: true,
+              };
+            }
           }
 
           // Process each validated file

@@ -57,7 +57,7 @@ export interface SkillEntry {
 /**
  * Parse SKILL.md frontmatter to extract name and description
  */
-function parseSkillFrontmatter(content: string): { name?: string; description?: string } {
+export function parseSkillFrontmatter(content: string): { name?: string; description?: string } {
   const match = content.match(/^---\n([\s\S]*?)\n---/);
   if (!match) return {};
 
