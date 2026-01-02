@@ -667,31 +667,11 @@ export class SkillportMCP extends McpAgent<Env, unknown, UserProps> {
             // Determine group name (defaults to skill name for standalone skills)
             groupName = skill_group || skillName;
 
-            // Check if group exists
+            // Check if group exists (we'll create it later after validation)
             const groupPath = `plugins/${groupName}`;
             const groupExists = await github.fileExists(`${groupPath}/.claude-plugin/plugin.json`);
-
             if (!groupExists) {
               isNewGroup = true;
-              // Create the plugin.json for new group
-              const writeClient = this.getWriteGitHubClient();
-              const manifest = {
-                name: groupName,
-                version: "1.0.0",
-                description: skill_group ? `Skill group: ${groupName}` : `Skill: ${skillName}`,
-                author: {
-                  name: this.props.name,
-                  email: this.props.email,
-                },
-                license: "MIT",
-                keywords: [],
-              };
-
-              await writeClient.createFile(
-                `${groupPath}/.claude-plugin/plugin.json`,
-                JSON.stringify(manifest, null, 2),
-                `Create ${groupName} skill group\n\nRequested by: ${this.props.email}`
-              );
             }
           }
 
@@ -801,6 +781,28 @@ export class SkillportMCP extends McpAgent<Env, unknown, UserProps> {
                 isError: true,
               };
             }
+          }
+
+          // All validation passed - now create group if needed (deferred to avoid orphaned files)
+          if (isNewGroup) {
+            const groupPath = `plugins/${groupName}`;
+            const manifest = {
+              name: groupName,
+              version: "1.0.0",
+              description: skill_group ? `Skill group: ${groupName}` : `Skill: ${skillName}`,
+              author: {
+                name: this.props.name,
+                email: this.props.email,
+              },
+              license: "MIT",
+              keywords: [],
+            };
+
+            await writeClient.createFile(
+              `${groupPath}/.claude-plugin/plugin.json`,
+              JSON.stringify(manifest, null, 2),
+              `Create ${groupName} skill group\n\nRequested by: ${this.props.email}`
+            );
           }
 
           // Process each validated file
