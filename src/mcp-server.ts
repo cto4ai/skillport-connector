@@ -1004,6 +1004,11 @@ export class SkillportMCP extends McpAgent<Env, unknown, UserProps> {
           // Use dirName (actual directory) not name (display name)
           const skillDirPath = `plugins/${skill.plugin}/skills/${skill.dirName}`;
 
+          // Check if this is the last skill in the plugin before deleting
+          const allSkills = await github.listSkills();
+          const pluginSkills = allSkills.filter(s => s.plugin === skill.plugin);
+          const isLastSkillInPlugin = pluginSkills.length === 1;
+
           // Delete all files in the skill directory
           const { deletedFiles } = await writeClient.deleteDirectory(
             skillDirPath,
@@ -1017,9 +1022,23 @@ export class SkillportMCP extends McpAgent<Env, unknown, UserProps> {
             // Skill might not be in marketplace.json yet, that's fine
           }
 
+          // If this was the last skill, delete the entire plugin
+          let pluginDeleted = false;
+          if (isLastSkillInPlugin) {
+            const pluginPath = `plugins/${skill.plugin}`;
+            await writeClient.deleteDirectory(
+              pluginPath,
+              `Delete plugin ${skill.plugin} (last skill removed)\n\nRequested by: ${this.props.email}`
+            );
+            pluginDeleted = true;
+          }
+
           // Clear caches
           await github.clearCache(skill.plugin);
           await github.clearSkillDirCache(skill.plugin, skill.dirName);
+          if (pluginDeleted) {
+            await github.clearCache(); // Clear all caches including marketplace
+          }
 
           return {
             content: [
@@ -1030,8 +1049,11 @@ export class SkillportMCP extends McpAgent<Env, unknown, UserProps> {
                     success: true,
                     skill: skillName,
                     plugin: skill.plugin,
+                    pluginDeleted,
                     deletedFiles,
-                    message: `Deleted skill "${skillName}" (${deletedFiles.length} files removed)`,
+                    message: pluginDeleted
+                      ? `Deleted skill "${skillName}" and plugin "${skill.plugin}" (last skill in plugin)`
+                      : `Deleted skill "${skillName}" (${deletedFiles.length} files removed)`,
                   },
                   null,
                   2
