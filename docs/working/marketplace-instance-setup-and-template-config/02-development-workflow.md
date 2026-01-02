@@ -116,12 +116,30 @@ git push
 
 ## Keeping Branches in Sync
 
-Periodically merge main into development to keep them aligned:
+### Syncing main → development (safe, do often)
+
+Merge main into development to keep them aligned:
 ```bash
 git checkout development
 git merge main
 git push
 ```
+
+This is always safe because `main` is a subset of `development`.
+
+### Syncing development → main (selective)
+
+When you develop something in `development` that should go to the clean template, use selective checkout:
+```bash
+git checkout main
+git checkout development -- path/to/specific/file
+git add -A && git commit -m "feat: add specific feature"
+git push
+```
+
+Or use cherry-pick for specific commits (see "Releasing to Main" above).
+
+**Never** do a full merge from development → main, as it would pull dev artifacts into the clean template.
 
 ## Questions to Resolve
 
