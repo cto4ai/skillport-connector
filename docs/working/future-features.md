@@ -74,3 +74,34 @@ done
 ```
 
 **Why deferred:** The 503 was transient and resolved on manual retry. Claude.ai's model handles retries reasonably well. Revisit if 503s become frequent.
+
+## GitHub API Rate Limit / Subrequest Errors
+
+**Status:** Deferred
+
+When Claude Code calls `publish_skill` multiple times in quick succession (e.g., batch creating 5+ skills), it can hit Cloudflare Workers' subrequest limit or GitHub API rate limits, causing "Too many subrequests" errors.
+
+**Observed behavior:** Publishing 5 skills sequentially works if saves are batched first, then publishes follow. But rapid parallel publish calls fail.
+
+**Proposed solutions:**
+
+1. **Batch publish tool** - Add `publish_skills` (plural) that accepts an array of skills and publishes them all in one request with a single marketplace.json update
+   ```typescript
+   publish_skills({ skills: [
+     { skill: "foo", description: "...", category: "..." },
+     { skill: "bar", description: "...", category: "..." }
+   ]})
+   ```
+
+2. **Combine save + publish** - Add optional `publish` boolean to `save_skill` that publishes in the same request
+   ```typescript
+   save_skill({
+     skill: "foo",
+     files: [...],
+     publish: { description: "...", category: "..." }
+   })
+   ```
+
+3. **Auto-publish on save** - If skill already exists in marketplace.json, auto-update its metadata on save (preserve description/category, update version)
+
+**Why deferred:** Workaround exists (batch saves first, then publish). The model can be instructed to call sequentially. Revisit if this becomes a frequent friction point.

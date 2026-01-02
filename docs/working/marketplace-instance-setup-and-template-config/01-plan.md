@@ -44,36 +44,46 @@ See [02-development-workflow.md](./02-development-workflow.md) for branch strate
 
 ---
 
-## Phase 1: Create Jack's Production Marketplace
+## Phase 1: Create Jack's Production Marketplace ✅ COMPLETE
 
-### 1.1 Create New Repo
-- Name: `craftycto-skillport` (or `craftycto-marketplace`)
+### 1.1 Create New Repo ✅
+- Name: `crafty-skillport-marketplace`
 - Private repo under cto4ai org
-- Initialize from clean template structure (not from current template)
+- Created with clean structure
 
-### 1.2 Migrate Production Plugins
-Move these from template to new instance:
-- [ ] skillport-manager
-- [ ] skillport-code-manager
-- [ ] data-analyzer
-- [ ] soil-data-analyzer
-- [ ] csv-analyzer
-- [ ] meeting-digest
-- [ ] git-commit-generator
-- [ ] catchup
-- [ ] word-pair-swap
+### 1.2 Migrate Production Plugins ✅
+Migrated all plugins (16 total):
+- [x] skillport-manager
+- [x] skillport-code-manager
+- [x] data-analyzer
+- [x] soil-data-analyzer
+- [x] csv-analyzer
+- [x] meeting-digest
+- [x] git-commit-generator
+- [x] catchup
+- [x] word-pair-swap
+- [x] json-formatter
+- [x] astro-scaffold (new)
+- [x] twitter-thread (new)
+- [x] proofread (new)
+- [x] chat-transcript (new)
+- [x] named-entity-linking (new)
+- [x] linkedin-post-plain (new)
 
-### 1.3 Configure Access
-- Set up access.json with Jack's Google ID
-- Configure any team members
+### 1.3 Configure Access ✅
+- Set up access.json with Jack's Google ID (`google:114339316701728183084`)
+- Fixed UserRef format: `{id: "provider:uid", label: "..."}`
 
-### 1.4 Update Connector
-- Change `MARKETPLACE_REPO` to point to new instance
-- Deploy updated connector
+### 1.4 Update Connector ✅
+- Changed `MARKETPLACE_REPO` to `cto4ai/crafty-skillport-marketplace`
+- Fixed `fetchAccessConfig` to merge partial configs with defaults
+- Deployed and tested successfully
 
 ---
 
 ## Phase 2: Clean Template for Open Source
+
+**Target repo:** `skillport-marketplace-template` → rename to `skillport-marketplace`
 
 ### 2.1 Create Development Branch (preserve dev artifacts)
 ```bash
@@ -86,20 +96,32 @@ git push -u origin development
 ```bash
 git checkout main
 
-# Remove production plugins (keep only example-skill)
-rm -rf plugins/data-analyzer plugins/soil-data-analyzer plugins/csv-analyzer
-rm -rf plugins/meeting-digest plugins/git-commit-generator plugins/catchup
-rm -rf plugins/word-pair-swap plugins/skillport-manager plugins/skillport-code-manager
+# Remove production plugins (keep example-skill, data-analyzer, meeting-digest, skillport-manager, skillport-code-manager)
+rm -rf plugins/soil-data-analyzer plugins/csv-analyzer
+rm -rf plugins/git-commit-generator plugins/catchup
+rm -rf plugins/word-pair-swap
+rm -rf plugins/json-formatter
 
 # Remove dev artifacts
 rm -rf docs/working docs/research
 
-# Clean marketplace.json - remove all plugins except example-skill
+# Clean marketplace.json - keep example-skill, data-analyzer, meeting-digest, skillport-manager, skillport-code-manager
 # Clean access.json - replace with placeholder
 
 git add -A && git commit -m "chore: clean main for open source template"
 git push
 ```
+
+**Skills to retain as examples:**
+- `example-skill` - Basic skill structure demo
+- `data-analyzer` - Shows data processing patterns
+- `meeting-digest` - Shows integration with external services (Fireflies)
+- `skillport-manager` - Core skill for browsing/installing from marketplace (Claude.ai)
+- `skillport-code-manager` - Core skill for browsing/installing from marketplace (Claude Code)
+
+### 2.6 Rename Repo
+- Rename `skillport-marketplace-template` → `skillport-marketplace`
+- Update any references in connector docs
 
 ### 2.3 Update Config Files with Placeholders
 
@@ -127,9 +149,8 @@ git push
 {
   "editors": [
     {
-      "provider": "google",
-      "id": "YOUR_GOOGLE_ID_HERE",
-      "comment": "Get your ID using the whoami MCP tool"
+      "id": "google:YOUR_GOOGLE_ID_HERE",
+      "label": "Your Name - your@email.com (get ID using whoami MCP tool)"
     }
   ]
 }
@@ -144,6 +165,9 @@ git push
 
 ### 2.5 Enable GitHub Template
 In repo settings, check "Template repository"
+
+### 2.7 Add License
+- Add MIT LICENSE file to repo root
 
 ---
 
@@ -190,6 +214,9 @@ Keep in main:
 - /docs/research/ (after archiving)
 - .claude/skills/catchup/ (move to marketplace template)
 
+### 3.6 Add License
+- Add MIT LICENSE file to repo root
+
 ---
 
 ## Phase 4: Deployment Model Decision
@@ -223,20 +250,19 @@ Keep in main:
 
 ---
 
+## Decisions Made
+
+| Decision | Choice | Rationale |
+|----------|--------|-----------|
+| **Production instance** | `crafty-skillport-marketplace` | ✅ Created and working |
+| **Template repo name** | `skillport-marketplace` (drop "-template") | Cleaner name, GitHub marks it as template anyway |
+| **Organization** | cto4ai | Keep existing org, no need for dedicated one |
+| **License** | MIT | Most permissive, minimal restrictions |
+| **Connector hosting** | Self-deploy only (for now) | No shared hosting planned; may revisit if demand |
+| **Default branch** | `main` | Standard convention; `development` branch for dev artifacts |
+
 ## Open Questions
 
-1. **Repo naming:**
-   - `skillport-marketplace-template` vs `skillport-template` vs `skillport-marketplace`
-   - `skillport-connector` vs `skillport-bridge` vs `skillport-mcp`
-
-2. **Organization:**
-   - Keep under cto4ai or move to dedicated org?
-   - License choice (MIT?)
-
-3. **Connector hosting:**
-   - Will we offer a public hosted connector?
-   - Or require users to deploy their own?
-
-4. **Plugin marketplace:**
+1. **Plugin marketplace:**
    - Should there be a central "community" marketplace?
    - Or only private org marketplaces?
