@@ -1023,8 +1023,13 @@ export class SkillportMCP extends McpAgent<Env, unknown, UserProps> {
             try {
               await writeClient.removeFromMarketplace(skill.plugin, this.props.email);
             } catch (err) {
-              // Log but don't fail - plugin might not be in marketplace.json yet
-              console.log(`removeFromMarketplace failed for ${skill.plugin}:`, err instanceof Error ? err.message : err);
+              const errMsg = err instanceof Error ? err.message : String(err);
+              // Only swallow "not in marketplace" error - propagate others (network, permissions, etc.)
+              if (errMsg.includes("not found in marketplace")) {
+                console.log(`Plugin ${skill.plugin} not in marketplace.json (unpublished skill)`);
+              } else {
+                throw err;
+              }
             }
           } else {
             // Just delete the skill directory
