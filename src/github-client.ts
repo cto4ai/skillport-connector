@@ -56,9 +56,13 @@ export interface SkillEntry {
 
 /**
  * Parse SKILL.md frontmatter to extract name and description
+ * Handles both LF and CRLF line endings
  */
-function parseSkillFrontmatter(content: string): { name?: string; description?: string } {
-  const match = content.match(/^---\n([\s\S]*?)\n---/);
+export function parseSkillFrontmatter(content: string): { name?: string; description?: string } {
+  // Normalize line endings to LF for consistent parsing
+  const normalized = content.replace(/\r\n/g, '\n');
+
+  const match = normalized.match(/^---\n([\s\S]*?)\n---/);
   if (!match) return {};
 
   const frontmatter = match[1];

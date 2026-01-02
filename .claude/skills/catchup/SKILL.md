@@ -1,4 +1,5 @@
 ---
+name: catchup
 description: Restore Claude's context after conversation reset. Triggers on "catchup", "where were we", "what were we working on".
 ---
 
@@ -7,7 +8,7 @@ description: Restore Claude's context after conversation reset. Triggers on "cat
 Run the catchup script to gather all context in one call:
 
 ```bash
-bash .claude/skills/catchup/catchup.sh
+bash catchup.sh
 ```
 
 Then summarize:

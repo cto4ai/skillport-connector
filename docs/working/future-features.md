@@ -46,3 +46,31 @@ The install token redemption in `src/index.ts` has a theoretical race condition.
 3. **Compare-and-swap pattern** - Use conditional KV operations if available
 
 **Why deferred:** The race window is tiny, impact is benign (duplicate install), and the fix adds significant complexity.
+
+## Install Script Retry Logic
+
+**Status:** Deferred
+
+Add automatic retry with exponential backoff in `install.sh` and `edit.sh` for transient 503 errors. Observed a 503 during skill installation that resolved on manual retry.
+
+**Proposed implementation:**
+```bash
+MAX_RETRIES=3
+RETRY_DELAY=2
+
+for attempt in $(seq 1 $MAX_RETRIES); do
+  HTTP_CODE=$(curl -s -w "%{http_code}" -o /tmp/response.json "$URL")
+  if [ "$HTTP_CODE" = "200" ]; then
+    break
+  elif [ "$HTTP_CODE" = "503" ] && [ $attempt -lt $MAX_RETRIES ]; then
+    echo "Server temporarily unavailable, retrying in ${RETRY_DELAY}s..."
+    sleep $RETRY_DELAY
+    RETRY_DELAY=$((RETRY_DELAY * 2))
+  else
+    # Handle error
+    exit 1
+  fi
+done
+```
+
+**Why deferred:** The 503 was transient and resolved on manual retry. Claude.ai's model handles retries reasonably well. Revisit if 503s become frequent.

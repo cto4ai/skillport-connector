@@ -6,7 +6,7 @@
 import { McpAgent } from "agents/mcp";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
-import { GitHubClient } from "./github-client";
+import { GitHubClient, parseSkillFrontmatter } from "./github-client";
 import { AccessControl, AccessConfig } from "./access-control";
 
 interface UserProps extends Record<string, unknown> {
@@ -667,31 +667,11 @@ export class SkillportMCP extends McpAgent<Env, unknown, UserProps> {
             // Determine group name (defaults to skill name for standalone skills)
             groupName = skill_group || skillName;
 
-            // Check if group exists
+            // Check if group exists (we'll create it later after validation)
             const groupPath = `plugins/${groupName}`;
             const groupExists = await github.fileExists(`${groupPath}/.claude-plugin/plugin.json`);
-
             if (!groupExists) {
               isNewGroup = true;
-              // Create the plugin.json for new group
-              const writeClient = this.getWriteGitHubClient();
-              const manifest = {
-                name: groupName,
-                version: "1.0.0",
-                description: skill_group ? `Skill group: ${groupName}` : `Skill: ${skillName}`,
-                author: {
-                  name: this.props.name,
-                  email: this.props.email,
-                },
-                license: "MIT",
-                keywords: [],
-              };
-
-              await writeClient.createFile(
-                `${groupPath}/.claude-plugin/plugin.json`,
-                JSON.stringify(manifest, null, 2),
-                `Create ${groupName} skill group\n\nRequested by: ${this.props.email}`
-              );
             }
           }
 
@@ -755,6 +735,74 @@ export class SkillportMCP extends McpAgent<Env, unknown, UserProps> {
             // Auto-prefix with skills/{skill}/ to get the full path within the group
             const fullPath = `${skillPrefix}${sanitizedPath}`;
             validatedFiles.push({ path: file.path, content: file.content, fullPath });
+          }
+
+          // Validate SKILL.md frontmatter
+          const skillMdFile = validatedFiles.find(f => f.path === "SKILL.md" || f.path === "./SKILL.md");
+
+          if (isNewSkill && !skillMdFile) {
+            return {
+              content: [
+                {
+                  type: "text" as const,
+                  text: JSON.stringify({
+                    error: "Missing SKILL.md",
+                    message: "New skills must include a SKILL.md file with name and description frontmatter.",
+                  }),
+                },
+              ],
+              isError: true,
+            };
+          }
+
+          if (skillMdFile) {
+            const frontmatter = parseSkillFrontmatter(skillMdFile.content);
+            const missingFields: string[] = [];
+
+            if (!frontmatter.name) {
+              missingFields.push("name");
+            }
+            if (!frontmatter.description) {
+              missingFields.push("description");
+            }
+
+            if (missingFields.length > 0) {
+              return {
+                content: [
+                  {
+                    type: "text" as const,
+                    text: JSON.stringify({
+                      error: "Invalid SKILL.md frontmatter",
+                      message: `SKILL.md must have ${missingFields.join(" and ")} in frontmatter. ` +
+                        `Expected format:\n---\nname: my-skill\ndescription: What this skill does\n---`,
+                    }),
+                  },
+                ],
+                isError: true,
+              };
+            }
+          }
+
+          // All validation passed - now create group if needed (deferred to avoid orphaned files)
+          if (isNewGroup) {
+            const groupPath = `plugins/${groupName}`;
+            const manifest = {
+              name: groupName,
+              version: "1.0.0",
+              description: skill_group ? `Skill group: ${groupName}` : `Skill: ${skillName}`,
+              author: {
+                name: this.props.name,
+                email: this.props.email,
+              },
+              license: "MIT",
+              keywords: [],
+            };
+
+            await writeClient.createFile(
+              `${groupPath}/.claude-plugin/plugin.json`,
+              JSON.stringify(manifest, null, 2),
+              `Create ${groupName} skill group\n\nRequested by: ${this.props.email}`
+            );
           }
 
           // Process each validated file
