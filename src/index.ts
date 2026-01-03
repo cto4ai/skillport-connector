@@ -93,6 +93,8 @@ async function handleInstallToken(
 
     return Response.json(
       {
+        skill_name: skill.name,
+        skill_version: skill.version,
         skill: {
           name: skill.name,
           version: skill.version,
@@ -392,6 +394,9 @@ async function handleEditToken(
 
     return Response.json(
       {
+        skill_name: skill.name,
+        skill_version: skill.version,
+        skill_plugin: skill.plugin,
         skill: {
           name: skill.name,
           plugin: skill.plugin,
