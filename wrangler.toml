@@ -3,6 +3,11 @@ main = "src/index.ts"
 compatibility_date = "2024-12-01"
 compatibility_flags = ["nodejs_compat"]
 
+# Handle .md files as text imports
+[[rules]]
+type = "Text"
+globs = ["**/*.md"]
+
 [vars]
 # Configure your marketplace repo here
 MARKETPLACE_REPO = "cto4ai/crafty-skillport-marketplace"
