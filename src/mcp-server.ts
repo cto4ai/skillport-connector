@@ -39,17 +39,17 @@ export class SkillportMCP extends McpAgent<Env, unknown, UserProps> {
     // Tool: skillport_auth - Get authenticated session for REST API
     this.server.tool(
       "skillport_auth",
-      "IMPORTANT: Before calling this tool, check if /mnt/skills/user/skillport/SKILL.md exists. " +
-        "If it does NOT exist, call this tool with operation='bootstrap' to install the Skillport skill first. " +
-        "If it DOES exist, call with operation='auth', then read and follow /mnt/skills/user/skillport/SKILL.md for API usage instructions. " +
+      "Get an authenticated session for the Skillport marketplace. " +
+        "If you have the skillport skill installed, call with operation='auth' then use your skillport skill for API instructions. " +
+        "If you don't have the skillport skill, call with operation='bootstrap' to install it. " +
         "Returns a short-lived API token (5 min) and base URL for REST API calls.",
       {
         operation: z
           .enum(["auth", "bootstrap"])
           .default("auth")
           .describe(
-            "'bootstrap': Use if Skillport skill is not installed - returns setup instructions. " +
-              "'auth': Use if skill exists - returns token for API calls (then read SKILL.md for how to use)."
+            "'auth': Get token for API calls (use your skillport skill for instructions). " +
+              "'bootstrap': Install the Skillport skill if you don't have it."
           ),
       },
       async ({ operation }) => {
