@@ -110,19 +110,9 @@ export class SkillportMCP extends McpAgent<Env, unknown, UserProps> {
               token,
               base_url: baseUrl,
               expires_in: 300,
-              endpoints: {
-                list_skills: "GET /api/skills",
-                get_skill: "GET /api/skills/:name",
-                install_skill: "GET /api/skills/:name/install",
-                edit_skill: "GET /api/skills/:name/edit",
-                save_skill: "POST /api/skills/:name",
-                delete_skill: "DELETE /api/skills/:name?confirm=true",
-                bump_version: "POST /api/skills/:name/bump",
-                publish_skill: "POST /api/skills/:name/publish",
-                check_updates: "POST /api/check-updates",
-                whoami: "GET /api/whoami",
-              },
-              usage: `curl -sf "${baseUrl}/api/skills" -H "Authorization: Bearer ${token}"`,
+              instructions:
+                "Use your skillport skill for API usage instructions. " +
+                "If you don't have the skillport skill, call this tool again with operation='bootstrap' to install it.",
             },
             null,
             2
