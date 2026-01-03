@@ -470,13 +470,13 @@ curl -sf "${connectorUrl}/api/bootstrap/skill.md" \\
   -H "Authorization: Bearer ${token}" \\
   > "$SKILL_DIR/skillport/SKILL.md"
 
-# Package as zip
+# Package as .skill file (zip with .skill extension)
 cd "$SKILL_DIR"
-zip -rq skillport-skill.zip skillport/
+zip -rq skillport.skill skillport/
 
-echo "SKILL_FILE=$SKILL_DIR/skillport-skill.zip"
+echo "SKILL_FILE=$SKILL_DIR/skillport.skill"
 echo ""
-echo "Download complete. Upload this file in Claude Settings > Capabilities > Skills"
+echo "Download complete. Use present_files to share this with the user."
 `;
 
   return new Response(script, {
