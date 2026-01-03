@@ -298,7 +298,7 @@ async function handleInstallSkill(
         created: Date.now(),
         used: false,
       }),
-      { expirationTtl: 300 }
+      { expirationTtl: 900 }
     );
 
     const connectorUrl =
@@ -308,7 +308,7 @@ async function handleInstallSkill(
       install_token: installToken,
       skill: skillName,
       version: skill.version,
-      expires_in: 300,
+      expires_in: 900,
       command: `curl -sf ${connectorUrl}/install.sh | bash -s -- ${installToken} --package`,
     });
   } catch (error) {
@@ -371,7 +371,7 @@ async function handleEditSkill(
         created: Date.now(),
         used: false,
       }),
-      { expirationTtl: 300 }
+      { expirationTtl: 900 }
     );
 
     const connectorUrl =
@@ -382,7 +382,7 @@ async function handleEditSkill(
       skill: skillName,
       plugin: skill.plugin,
       version: skill.version,
-      expires_in: 300,
+      expires_in: 900,
       command: `curl -sf ${connectorUrl}/edit.sh | bash -s -- ${editToken}`,
     });
   } catch (error) {

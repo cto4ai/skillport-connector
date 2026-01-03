@@ -43,7 +43,7 @@ export class SkillportMCP extends McpAgent<Env, unknown, UserProps> {
       "Get an authenticated session for the Skillport marketplace. " +
         "If you have the skillport skill installed, call with operation='auth' then use your skillport skill for API instructions. " +
         "If you don't have the skillport skill, call with operation='bootstrap' to install it. " +
-        "Returns a short-lived API token (5 min) and base URL for REST API calls.",
+        "Returns a short-lived API token (15 min) and base URL for REST API calls.",
       {
         operation: z
           .enum(["auth", "bootstrap"])
@@ -81,7 +81,7 @@ export class SkillportMCP extends McpAgent<Env, unknown, UserProps> {
         .replace(/\//g, "_")
         .replace(/=/g, "");
 
-    // Store token in KV with 5 minute TTL
+    // Store token in KV with 15 minute TTL
     const tokenData = {
       uid: this.props.uid,
       provider: this.props.provider,
@@ -93,7 +93,7 @@ export class SkillportMCP extends McpAgent<Env, unknown, UserProps> {
     await this.env.OAUTH_KV.put(
       `api_token:${token}`,
       JSON.stringify(tokenData),
-      { expirationTtl: 300 }
+      { expirationTtl: 900 }
     );
 
     const baseUrl =
@@ -110,7 +110,7 @@ export class SkillportMCP extends McpAgent<Env, unknown, UserProps> {
             {
               token,
               base_url: baseUrl,
-              expires_in: 300,
+              expires_in: 900,
               instructions:
                 "Use your skillport skill for API usage instructions. " +
                 "If you don't have the skillport skill, call this tool again with operation='bootstrap' to install it.",
@@ -182,7 +182,7 @@ export class SkillportMCP extends McpAgent<Env, unknown, UserProps> {
         created: Date.now(),
         used: false,
       }),
-      { expirationTtl: 300 }
+      { expirationTtl: 900 }
     );
 
     this.logAction("skillport_bootstrap");
