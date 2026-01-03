@@ -113,6 +113,39 @@ export class SkillportMCP extends McpAgent<Env, unknown, UserProps> {
   }
 
   async init() {
+    // ============================================================
+    // Primary Tool: skillport_auth (for REST API access)
+    // ============================================================
+
+    // Tool: skillport_auth - Get authenticated session for REST API
+    this.server.tool(
+      "skillport_auth",
+      "Get an authenticated session for Skillport operations. " +
+        "Returns a short-lived API token and base URL. " +
+        "Use curl or Python with the returned token to call REST API endpoints. " +
+        "Token expires in 5 minutes. " +
+        "See /api/skills for listing, /api/skills/:name for details, etc.",
+      {
+        operation: z
+          .enum(["auth", "bootstrap"])
+          .default("auth")
+          .describe(
+            "Operation type: 'auth' for normal API access, " +
+              "'bootstrap' for first-time Skillport skill setup instructions"
+          ),
+      },
+      async ({ operation }) => {
+        if (operation === "bootstrap") {
+          return this.handleBootstrap();
+        }
+        return this.handleAuth();
+      }
+    );
+
+    // ============================================================
+    // Legacy Tools (kept for backwards compatibility)
+    // ============================================================
+
     // Tool: list_skills
     this.server.tool(
       "list_skills",
@@ -1362,5 +1395,136 @@ export class SkillportMCP extends McpAgent<Env, unknown, UserProps> {
         }
       }
     );
+  }
+
+  // ============================================================
+  // Auth Handlers for skillport_auth tool
+  // ============================================================
+
+  /**
+   * Handle auth operation - generate API token for REST API access
+   */
+  private async handleAuth() {
+    // Generate cryptographically random token
+    const tokenBytes = new Uint8Array(24);
+    crypto.getRandomValues(tokenBytes);
+    const token =
+      "sk_api_" +
+      btoa(String.fromCharCode(...tokenBytes))
+        .replace(/\+/g, "-")
+        .replace(/\//g, "_")
+        .replace(/=/g, "");
+
+    // Store token in KV with 5 minute TTL
+    const tokenData = {
+      uid: this.props.uid,
+      provider: this.props.provider,
+      email: this.props.email,
+      name: this.props.name,
+      created: Date.now(),
+    };
+
+    await this.env.OAUTH_KV.put(
+      `api_token:${token}`,
+      JSON.stringify(tokenData),
+      { expirationTtl: 300 }
+    );
+
+    const baseUrl =
+      this.env.CONNECTOR_URL ||
+      "https://skillport-connector.jack-ivers.workers.dev";
+
+    this.logAction("skillport_auth");
+
+    return {
+      content: [
+        {
+          type: "text" as const,
+          text: JSON.stringify(
+            {
+              token,
+              base_url: baseUrl,
+              expires_in: 300,
+              endpoints: {
+                list_skills: "GET /api/skills",
+                get_skill: "GET /api/skills/:name",
+                install_skill: "GET /api/skills/:name/install",
+                edit_skill: "GET /api/skills/:name/edit",
+                save_skill: "POST /api/skills/:name",
+                delete_skill: "DELETE /api/skills/:name?confirm=true",
+                bump_version: "POST /api/skills/:name/bump",
+                publish_skill: "POST /api/skills/:name/publish",
+                check_updates: "POST /api/check-updates",
+                whoami: "GET /api/whoami",
+              },
+              usage: `curl -sf "${baseUrl}/api/skills" -H "Authorization: Bearer ${token}"`,
+            },
+            null,
+            2
+          ),
+        },
+      ],
+    };
+  }
+
+  /**
+   * Handle bootstrap operation - instructions for first-time setup
+   */
+  private async handleBootstrap() {
+    // Generate cryptographically random token
+    const tokenBytes = new Uint8Array(24);
+    crypto.getRandomValues(tokenBytes);
+    const token =
+      "sk_bootstrap_" +
+      btoa(String.fromCharCode(...tokenBytes))
+        .replace(/\+/g, "-")
+        .replace(/\//g, "_")
+        .replace(/=/g, "");
+
+    // Store token in KV with 5 minute TTL
+    const tokenData = {
+      uid: this.props.uid,
+      provider: this.props.provider,
+      email: this.props.email,
+      name: this.props.name,
+      created: Date.now(),
+    };
+
+    await this.env.OAUTH_KV.put(
+      `bootstrap_token:${token}`,
+      JSON.stringify(tokenData),
+      { expirationTtl: 300 }
+    );
+
+    const baseUrl =
+      this.env.CONNECTOR_URL ||
+      "https://skillport-connector.jack-ivers.workers.dev";
+
+    this.logAction("skillport_bootstrap");
+
+    return {
+      content: [
+        {
+          type: "text" as const,
+          text: JSON.stringify(
+            {
+              message: "Skillport skill not installed. Follow these steps:",
+              steps: [
+                "1. Run the bootstrap command below to download the Skillport skill",
+                "2. Use present_files to share the downloaded .zip with the user",
+                "3. Instruct the user to upload the .zip in Claude Settings > Skills",
+                "4. User should start a new conversation after installing",
+              ],
+              command: `curl -sf "${baseUrl}/bootstrap.sh?token=${token}" | bash`,
+              note:
+                "The bootstrap script downloads the Skillport skill package. " +
+                "After the user installs it, they can use Skillport normally.",
+            },
+            null,
+            2
+          ),
+        },
+      ],
+    };
   }
 }
