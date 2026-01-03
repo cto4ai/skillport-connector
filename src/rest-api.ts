@@ -12,7 +12,6 @@
 
 import { GitHubClient, parseSkillFrontmatter } from "./github-client";
 import { AccessControl } from "./access-control";
-import skillportSkillMd from "./skillport-skill.md";
 
 // Token data stored in KV
 interface TokenData {
@@ -955,19 +954,6 @@ async function handleWhoami(user: TokenData): Promise<Response> {
   });
 }
 
-/**
- * GET /api/bootstrap/skill.md - Get Skillport SKILL.md for bootstrap
- */
-async function handleBootstrapSkillMd(): Promise<Response> {
-  return new Response(skillportSkillMd, {
-    status: 200,
-    headers: {
-      "Content-Type": "text/markdown; charset=utf-8",
-      "Cache-Control": "no-store",
-    },
-  });
-}
-
 // ============================================================
 // Main Router
 // ============================================================
@@ -1087,15 +1073,6 @@ export async function handleAPI(
   // Route: GET /api/whoami
   if (pathParts[0] === "whoami" && method === "GET") {
     return handleWhoami(user);
-  }
-
-  // Route: GET /api/bootstrap/skill.md
-  if (
-    pathParts[0] === "bootstrap" &&
-    pathParts[1] === "skill.md" &&
-    method === "GET"
-  ) {
-    return handleBootstrapSkillMd();
   }
 
   // Not found

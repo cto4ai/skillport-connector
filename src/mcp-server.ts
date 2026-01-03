@@ -6,6 +6,7 @@
 import { McpAgent } from "agents/mcp";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
+import { GitHubClient } from "./github-client";
 
 interface UserProps extends Record<string, unknown> {
   uid: string; // Stable unique identifier from IdP
@@ -123,38 +124,66 @@ export class SkillportMCP extends McpAgent<Env, unknown, UserProps> {
   }
 
   /**
-   * Handle bootstrap operation - instructions for first-time setup
-   * Uses same sk_api_ token as normal auth
+   * Handle bootstrap operation - install skillport skill from marketplace
+   * Uses the standard install flow for the "skillport" skill
    */
   private async handleBootstrap() {
-    // Generate standard API token (same as handleAuth)
+    const connectorUrl =
+      this.env.CONNECTOR_URL ||
+      "https://skillport-connector.jack-ivers.workers.dev";
+
+    // Check if skillport skill exists in the marketplace
+    const github = new GitHubClient(
+      this.env.GITHUB_SERVICE_TOKEN,
+      this.env.MARKETPLACE_REPO,
+      this.env.OAUTH_KV
+    );
+
+    const skill = await github.getSkill("skillport");
+    if (!skill) {
+      return {
+        content: [
+          {
+            type: "text" as const,
+            text: JSON.stringify(
+              {
+                error: "Skillport skill not found in marketplace",
+                message:
+                  "The 'skillport' skill needs to be added to the marketplace before bootstrap can work.",
+                instructions: [
+                  "Add the skillport skill to your marketplace repo",
+                  "Then call bootstrap again",
+                ],
+              },
+              null,
+              2
+            ),
+          },
+        ],
+      };
+    }
+
+    // Generate install token (same as handleInstallSkill in rest-api.ts)
     const tokenBytes = new Uint8Array(24);
     crypto.getRandomValues(tokenBytes);
-    const token =
-      "sk_api_" +
+    const installToken =
+      "sk_install_" +
       btoa(String.fromCharCode(...tokenBytes))
         .replace(/\+/g, "-")
         .replace(/\//g, "_")
         .replace(/=/g, "");
 
-    // Store token in KV with 5 minute TTL
-    const tokenData = {
-      uid: this.props.uid,
-      provider: this.props.provider,
-      email: this.props.email,
-      name: this.props.name,
-      created: Date.now(),
-    };
-
     await this.env.OAUTH_KV.put(
-      `api_token:${token}`,
-      JSON.stringify(tokenData),
+      `install_token:${installToken}`,
+      JSON.stringify({
+        skill: "skillport",
+        version: skill.version,
+        user: this.props.email,
+        created: Date.now(),
+        used: false,
+      }),
       { expirationTtl: 300 }
     );
-
-    const baseUrl =
-      this.env.CONNECTOR_URL ||
-      "https://skillport-connector.jack-ivers.workers.dev";
 
     this.logAction("skillport_bootstrap");
 
@@ -164,16 +193,14 @@ export class SkillportMCP extends McpAgent<Env, unknown, UserProps> {
           type: "text" as const,
           text: JSON.stringify(
             {
-              message: "Skillport skill not installed. Follow these steps:",
+              message: "Skillport skill found. Follow these steps:",
               steps: [
-                "1. Run the bootstrap command below to download the Skillport skill",
+                "1. Run the install command below to download the Skillport skill",
                 "2. Use present_files to share the downloaded .skill file with the user",
-                "3. User should start a new conversation after installing",
+                "3. User should click 'Copy to your skills' then start a new conversation",
               ],
-              command: `curl -sf "${baseUrl}/bootstrap.sh" -H "Authorization: Bearer ${token}" | bash`,
-              note:
-                "The bootstrap script downloads the Skillport skill package. " +
-                "After the user installs it, they can use Skillport normally.",
+              command: `curl -sf ${connectorUrl}/install.sh | bash -s -- ${installToken} --package`,
+              version: skill.version,
             },
             null,
             2
