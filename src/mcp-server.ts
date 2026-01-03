@@ -1469,13 +1469,14 @@ export class SkillportMCP extends McpAgent<Env, unknown, UserProps> {
 
   /**
    * Handle bootstrap operation - instructions for first-time setup
+   * Uses same sk_api_ token as normal auth
    */
   private async handleBootstrap() {
-    // Generate cryptographically random token
+    // Generate standard API token (same as handleAuth)
     const tokenBytes = new Uint8Array(24);
     crypto.getRandomValues(tokenBytes);
     const token =
-      "sk_bootstrap_" +
+      "sk_api_" +
       btoa(String.fromCharCode(...tokenBytes))
         .replace(/\+/g, "-")
         .replace(/\//g, "_")
@@ -1491,7 +1492,7 @@ export class SkillportMCP extends McpAgent<Env, unknown, UserProps> {
     };
 
     await this.env.OAUTH_KV.put(
-      `bootstrap_token:${token}`,
+      `api_token:${token}`,
       JSON.stringify(tokenData),
       { expirationTtl: 300 }
     );
@@ -1515,7 +1516,7 @@ export class SkillportMCP extends McpAgent<Env, unknown, UserProps> {
                 "3. Instruct the user to upload the .zip in Claude Settings > Skills",
                 "4. User should start a new conversation after installing",
               ],
-              command: `curl -sf "${baseUrl}/bootstrap.sh?token=${token}" | bash`,
+              command: `curl -sf "${baseUrl}/bootstrap.sh" -H "Authorization: Bearer ${token}" | bash`,
               note:
                 "The bootstrap script downloads the Skillport skill package. " +
                 "After the user installs it, they can use Skillport normally.",

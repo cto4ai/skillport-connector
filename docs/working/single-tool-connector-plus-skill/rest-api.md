@@ -311,18 +311,14 @@ GET /api/whoami
 
 ### Bootstrap
 
-Get the Skillport skill for first-time setup. Requires a bootstrap token from `skillport_auth({ operation: "bootstrap" })`.
+Get the Skillport skill for first-time setup. Uses standard Bearer token authentication.
 
 ```
-GET /bootstrap.sh?token=BOOTSTRAP_TOKEN
+GET /bootstrap.sh
+Authorization: Bearer TOKEN
 ```
 
 **Response:** Returns a shell script that downloads and packages the Skillport skill.
-
-The token is validated before returning the script. This ensures:
-- Only authenticated users can download the Skillport skill
-- Audit trail of who bootstrapped
-- Endpoint isn't open to the public
 
 ---
 

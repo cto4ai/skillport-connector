@@ -331,7 +331,7 @@ skillport/
 
 ## Bootstrap Delivery
 
-For first-time users, the `/bootstrap.sh?token=TOKEN` endpoint validates the token, then returns:
+For first-time users, the `/bootstrap.sh` endpoint (with standard Bearer auth) returns:
 
 ```bash
 #!/bin/bash
@@ -340,7 +340,7 @@ set -e
 SKILL_DIR="/tmp/skillport-bootstrap"
 mkdir -p "$SKILL_DIR/skillport"
 
-# Download SKILL.md (token already validated by endpoint)
+# Download SKILL.md
 curl -sf "https://skillport-connector.jack-ivers.workers.dev/api/bootstrap/skill.md" \
   > "$SKILL_DIR/skillport/SKILL.md"
 
@@ -353,7 +353,4 @@ echo ""
 echo "Download complete. Upload this file in Claude Settings > Capabilities > Skills"
 ```
 
-The endpoint validates the `sk_bootstrap_` token before returning the script. This ensures:
-- Only authenticated users can bootstrap
-- Audit trail of who downloaded the skill
-- Tokens are single-use (5 minute TTL)
+Same `sk_api_` token, same validation — bootstrap is just another authenticated endpoint.

@@ -422,6 +422,72 @@ async function handleEditToken(
 }
 
 /**
+ * Handle bootstrap.sh request
+ * Returns a script that downloads the Skillport skill for first-time setup
+ * Requires Bearer token authentication
+ */
+async function handleBootstrapScript(
+  request: Request,
+  env: Env
+): Promise<Response> {
+  // Validate Bearer token
+  const authHeader = request.headers.get("Authorization");
+  if (!authHeader?.startsWith("Bearer ")) {
+    return Response.json(
+      { error: "Unauthorized", message: "Bearer token required" },
+      { status: 401 }
+    );
+  }
+
+  const token = authHeader.slice(7);
+  if (!token.startsWith("sk_api_")) {
+    return Response.json(
+      { error: "Invalid token format" },
+      { status: 400 }
+    );
+  }
+
+  const tokenData = await env.OAUTH_KV.get(`api_token:${token}`);
+  if (!tokenData) {
+    return Response.json(
+      { error: "Token not found or expired" },
+      { status: 401 }
+    );
+  }
+
+  const connectorUrl =
+    env.CONNECTOR_URL || "https://skillport-connector.jack-ivers.workers.dev";
+
+  // Return bootstrap script
+  const script = `#!/bin/bash
+set -e
+
+SKILL_DIR="/tmp/skillport-bootstrap"
+mkdir -p "$SKILL_DIR/skillport"
+
+# Download SKILL.md
+curl -sf "${connectorUrl}/api/bootstrap/skill.md" \\
+  -H "Authorization: Bearer ${token}" \\
+  > "$SKILL_DIR/skillport/SKILL.md"
+
+# Package as zip
+cd "$SKILL_DIR"
+zip -rq skillport-skill.zip skillport/
+
+echo "SKILL_FILE=$SKILL_DIR/skillport-skill.zip"
+echo ""
+echo "Download complete. Upload this file in Claude Settings > Capabilities > Skills"
+`;
+
+  return new Response(script, {
+    headers: {
+      "Content-Type": "text/plain; charset=utf-8",
+      "Cache-Control": "no-store",
+    },
+  });
+}
+
+/**
  * Serve the edit.sh script
  * This script is used by the PTC pattern to download skill files for editing
  */
@@ -596,6 +662,11 @@ export default {
     // REST API endpoints (token-based auth)
     if (url.pathname.startsWith("/api/") && !url.pathname.startsWith("/api/install/") && !url.pathname.startsWith("/api/edit/")) {
       return handleAPI(request, env);
+    }
+
+    // Bootstrap endpoint (for first-time Skillport skill setup)
+    if (url.pathname === "/bootstrap.sh") {
+      return handleBootstrapScript(request, env);
     }
 
     // Legacy PTC routes (install/edit token redemption)
