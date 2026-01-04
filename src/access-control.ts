@@ -7,7 +7,7 @@
 
 export interface UserRef {
   id: string; // e.g., "google:110248495921238986420"
-  label: string; // e.g., "jack@craftycto.com" (informational only)
+  label: string; // e.g., "user@example.com" (informational only)
 }
 
 export interface AccessConfig {

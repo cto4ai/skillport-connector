@@ -16,6 +16,7 @@ dist/
 .idea/
 .vscode/
 .history/
+*.code-workspace
 
 # Wrangler
 .wrangler/
