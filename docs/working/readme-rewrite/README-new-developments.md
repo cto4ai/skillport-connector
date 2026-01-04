@@ -1,4 +1,19 @@
-We have been working on a new readme for Skillport, which is located at README2.md. We've made a ton of progress since our last draft of that document. Key changes:
+We have been working on a new readme for Skillport, which is located at README2.md. We've made a ton of progress since our last draft of that document.
+
+Key changes:
+Early Jan:
+
+- Connector
+  - Super low overhead, high performance connector (a single tool), which leverages code execution in a PTC/Advance Tool Calling-like manner within Claude direct model operation
+    - Best we can do without the full toolkit of API tools from Anthropic
+  - Skill invocation is now consistent: the new Skillport Skill is consistently used by the model, rather than being bypassed with the model calling Connector tools directly; critical for more intelligent operation, such as enabling rules like "make sure you always get user's positive assent before writes to repo."
+- Marketplace and Skills
+  - New Skillport Skill improves significantly over previous Skillport Manager skill
+    - Thoroughly trains model in the API exposed through Skillport Connect for PTC/Advance Tool Calling-like low-context-overhead, high performance operation
+    - More compliant with Anthropic best practices such is conciseness, use of 3rd party voice, and progressive disclosure
+    - Includes extensive Skill Best Practices guide to support high quality skill creation
+
+Late Dec:
 
 - Naming: Skillport (overall solution); Skillport Connector (Claude compatible Connector); Skillport Marketplace (Claude Plugin Marketplace compatible skill repository template)
 - We have iterated significantly on the Skillport Marketplace repository structure to make sure it follows Anthropic's Plugin Marketplace structure.
