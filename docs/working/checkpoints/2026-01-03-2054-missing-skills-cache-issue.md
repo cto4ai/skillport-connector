@@ -1,7 +1,7 @@
 # Checkpoint: Missing Skills Cache Issue Investigation
 
 **Date:** 2026-01-03 20:54:03
-**Status:** ROOT CAUSE IDENTIFIED
+**Status:** ROOT CAUSE IDENTIFIED - SOLUTION RECOMMENDED
 **Branch:** feat/single-tool-api
 
 ## Objective
@@ -31,7 +31,74 @@ The last two plugins alphabetically (`twitter-thread`, `word-pair-swap`) fail be
 [listSkills] Found 15 skills from 17 plugin directories
 ```
 
-## Changes Made
+## Recommended Solution: Upgrade to Workers Paid Plan ⭐
+
+**Cost: $5/month** - simplest and most cost-effective fix.
+
+### Subrequest Limits by Plan
+
+| Plan | Subrequest Limit | Cost |
+|------|------------------|------|
+| **Free** | 50 subrequests/request | $0 |
+| **Paid (Standard)** | **1,000 subrequests/request** | **$5/month base** |
+
+### What You Get for $5/month
+
+| Resource | Free | Paid |
+|----------|------|------|
+| Requests | 100k/day | 10M/month included (+$0.30/M) |
+| CPU time | 10ms/invocation | 30M ms/month (+$0.02/M ms) |
+| **Subrequests** | **50** | **1,000** |
+| KV reads | 100k/day | 10M/month (+$0.50/M) |
+| KV storage | 1 GB | 1 GB (+$0.50/GB-mo) |
+
+### Why This Works
+
+- Current usage: ~52 subrequests
+- Paid limit: 1,000 subrequests
+- **Headroom: 20x** - supports growth to ~300+ plugins
+
+### Estimated Monthly Cost for Skillport
+
+Given typical usage:
+- Requests: A few thousand/month → **included in base**
+- CPU time: Minimal → **included in base**  
+- KV operations: Caching reduces GitHub calls → **included in base**
+
+**Total: ~$5/month flat** (unlikely to exceed included allocations)
+
+### How to Upgrade
+
+1. Go to [Cloudflare Dashboard](https://dash.cloudflare.com) → **Workers & Pages**
+2. Find **Plans** or **Usage Model** → Upgrade to Standard/Paid
+3. Redeploy or wait for cache to expire (5 min TTL)
+
+### Benefits Beyond Subrequests
+
+- Higher KV limits (10M reads/month vs 100k/day)
+- More CPU time (30M ms/month vs 10ms/invocation)
+- Better analytics and observability
+- No code changes required
+
+## Alternative Solutions (If Paid Plan Not Desired)
+
+1. **Pre-computed Skills Index** - Build `skills-index.json` via GitHub Action on push
+   - Pros: 1 subrequest instead of 50+
+   - Cons: Requires webhook/CI setup, slight delay on updates
+
+2. **GitHub GraphQL API** - Batch multiple file fetches into single request
+   - Pros: No infrastructure changes
+   - Cons: More complex query building
+
+3. **Individual Manifest Caching** - Cache each `plugin.json` separately with longer TTL
+   - Pros: Simple change
+   - Cons: First request still fails, eventual consistency
+
+4. **Lazy Discovery** - Only fetch full details on-demand
+   - Pros: Reduces initial load
+   - Cons: Slower individual skill fetches
+
+## Changes Made (Diagnostics)
 
 **Modified Files:**
 - `src/github-client.ts` - Added diagnostic logging to silent catch blocks in `listSkills()`
@@ -44,27 +111,12 @@ The last two plugins alphabetically (`twitter-thread`, `word-pair-swap`) fail be
 - `fd64edc` fix: validate installed array in check-updates endpoint
 - `cef8738` feat: add file listing to skill details, validate bump type
 
-## Key Issues/Findings
-
-1. **Missing skills:** `twitter-thread` and `word-pair-swap` exist in repo with valid structure but don't appear in API list
-2. **Root cause:** Cloudflare Workers 50-subrequest limit exceeded
-3. **GitHub API returns correctly:** Debug endpoint shows all 17 plugins
-4. **Alphabetical order matters:** Last plugins fail when limit is hit
-
 ## Diagnostic Endpoints Added
 
 | Endpoint | Purpose |
 |----------|---------|
 | `GET /api/skills?refresh=true` | Force cache invalidation before listing |
 | `GET /api/debug/plugins` | Raw GitHub API response for plugins directory |
-
-## Potential Solutions
-
-1. **Use GitHub GraphQL API** - Batch multiple file fetches into one request
-2. **Cache individual manifests** - Cache `plugin.json` and `SKILL.md` separately with longer TTL
-3. **Pre-compute skill index** - Build index at deploy time or via webhook
-4. **Reduce API calls** - Fetch only what's needed, lazy-load details
-5. **Upgrade Cloudflare plan** - Paid plans have higher limits
 
 ## Testing
 
@@ -81,4 +133,4 @@ The last two plugins alphabetically (`twitter-thread`, `word-pair-swap`) fail be
 
 ---
 
-**Last Updated:** 2026-01-04 03:30:00
+**Last Updated:** 2026-01-04 04:15:00
