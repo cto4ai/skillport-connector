@@ -217,6 +217,42 @@ export class GitHubClient {
   }
 
   /**
+   * Recursively list all file paths in a directory (without fetching content)
+   */
+  private async listDirectoryRecursive(
+    dirPath: string,
+    basePath: string
+  ): Promise<string[]> {
+    const items = await this.listDirectory(dirPath);
+    const paths: string[] = [];
+
+    for (const item of items) {
+      if (item.type === "file") {
+        const relativePath = item.path.replace(basePath + "/", "");
+        paths.push(relativePath);
+      } else if (item.type === "dir") {
+        const subPaths = await this.listDirectoryRecursive(item.path, basePath);
+        paths.push(...subPaths);
+      }
+    }
+
+    return paths;
+  }
+
+  /**
+   * List all files in a skill directory (paths only, no content)
+   */
+  async listSkillFiles(skillName: string): Promise<string[]> {
+    const skill = await this.getSkill(skillName);
+    if (!skill) {
+      throw new Error(`Skill not found: ${skillName}`);
+    }
+
+    const fullSkillDir = `plugins/${skill.plugin}/skills/${skill.dirName}`;
+    return this.listDirectoryRecursive(fullSkillDir, fullSkillDir);
+  }
+
+  /**
    * Fetch a file from the repository as text
    */
   private async fetchFile(path: string): Promise<string> {

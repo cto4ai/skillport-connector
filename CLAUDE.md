@@ -101,13 +101,14 @@ npx wrangler secret put COOKIE_ENCRYPTION_KEY
 
 ```bash
 npm install              # Install dependencies
+npm run dev              # Start local dev server (localhost:8788)
+npm run deploy           # Deploy to Cloudflare Workers
 ```
 
-**Important:** Run wrangler commands directly (not via npm scripts):
+**Note:** Wrangler v4 requires Node v20+. If using an older Node version (e.g., VSCode with Node 19):
 ```bash
-npx wrangler dev         # Start local dev server
-npx wrangler deploy      # Deploy to Cloudflare Workers
-npx wrangler tail        # View logs
+node node_modules/wrangler/bin/wrangler.js dev
+node node_modules/wrangler/bin/wrangler.js deploy
 ```
 
 ## Testing

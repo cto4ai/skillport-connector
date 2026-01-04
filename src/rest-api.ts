@@ -225,7 +225,11 @@ async function handleGetSkill(
       );
     }
 
-    const skillMd = await github.fetchSkillMd(skillName);
+    // Fetch SKILL.md content and file list in parallel
+    const [skillMd, files] = await Promise.all([
+      github.fetchSkillMd(skillName),
+      github.listSkillFiles(skillName),
+    ]);
 
     return jsonResponse({
       skill: {
@@ -238,6 +242,7 @@ async function handleGetSkill(
         keywords: skill.keywords,
       },
       skill_md: skillMd,
+      files,
       editable: accessControl.canWrite(skill.plugin),
     });
   } catch (error) {
@@ -1042,8 +1047,16 @@ export async function handleAPI(
     pathParts[2] === "bump" &&
     method === "POST"
   ) {
-    const body = await request.json() as { type: "major" | "minor" | "patch" };
-    return handleBumpVersion(env, user, pathParts[1], body.type);
+    const body = await request.json() as { type?: string };
+    const validTypes = ["major", "minor", "patch"];
+    if (!body.type || !validTypes.includes(body.type)) {
+      return errorResponse(
+        "Invalid bump type",
+        `type must be one of: ${validTypes.join(", ")}`,
+        400
+      );
+    }
+    return handleBumpVersion(env, user, pathParts[1], body.type as "major" | "minor" | "patch");
   }
 
   // Route: POST /api/skills/:name/publish
