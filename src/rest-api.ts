@@ -1078,9 +1078,16 @@ export async function handleAPI(
   // Route: POST /api/check-updates
   if (pathParts[0] === "check-updates" && method === "POST") {
     const body = await request.json() as {
-      installed: Array<{ name: string; version: string }>;
+      installed?: unknown;
     };
-    return handleCheckUpdates(env, user, body.installed);
+    if (!Array.isArray(body.installed)) {
+      return errorResponse(
+        "Invalid request",
+        "installed must be an array of {name, version} objects",
+        400
+      );
+    }
+    return handleCheckUpdates(env, user, body.installed as Array<{ name: string; version: string }>);
   }
 
   // Route: GET /api/whoami
