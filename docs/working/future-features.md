@@ -105,3 +105,40 @@ When Claude Code calls `publish_skill` multiple times in quick succession (e.g.,
 3. **Auto-publish on save** - If skill already exists in marketplace.json, auto-update its metadata on save (preserve description/category, update version)
 
 **Why deferred:** Workaround exists (batch saves first, then publish). The model can be instructed to call sequentially. Revisit if this becomes a frequent friction point.
+
+## Reduce Subrequests in Skill Discovery
+
+**Status:** Deferred (paid plan resolves immediate issue)
+
+The `listSkills()` function in `github-client.ts` makes ~3 GitHub API calls per plugin:
+1. Fetch `plugin.json` manifest
+2. List `skills/` directory
+3. Fetch `SKILL.md` for each skill
+
+With 17 plugins, this totals ~52 subrequests per uncached call. Cloudflare Workers free tier has a 50-subrequest limit, causing the last plugins (alphabetically) to fail silently.
+
+**Current fix:** Upgraded to Cloudflare Workers paid plan ($5/mo) with 1,000 subrequest limit.
+
+**Better long-term solutions:**
+
+1. **Pre-computed skills index** - Generate `skills-index.json` via GitHub Action on push
+   - Single subrequest to fetch entire index
+   - Requires webhook or CI setup
+   - Slight delay on updates (seconds, not minutes)
+
+2. **GitHub GraphQL API** - Batch multiple file fetches into single request
+   - Query multiple files in one request
+   - More complex query building
+   - No infrastructure changes required
+
+3. **Individual manifest caching** - Cache each `plugin.json` with longer TTL (1 hour+)
+   - Reduces repeated fetches
+   - First request still expensive
+   - Eventual consistency on updates
+
+4. **Lazy skill details** - Only fetch basic info in list, full details on demand
+   - `list_skills` returns names/versions only (from index)
+   - `get_skill` fetches SKILL.md on demand
+   - Faster list response, more calls for details
+
+**Why deferred:** Paid plan provides 20x headroom (1,000 vs 52 subrequests). Revisit if marketplace grows beyond ~300 plugins or if cost optimization becomes priority.
