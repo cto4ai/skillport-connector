@@ -169,7 +169,7 @@ async function handleListSkills(
     const allSkills = await github.listSkills();
 
     const visibleSkills = allSkills.filter((s) =>
-      accessControl.canRead(s.plugin)
+      accessControl.canRead(s.name)
     );
 
     return jsonResponse({
@@ -183,7 +183,7 @@ async function handleListSkills(
         category: s.category,
         tags: s.tags,
         keywords: s.keywords,
-        editable: accessControl.canWrite(s.plugin),
+        editable: accessControl.canWrite(s.name),
       })),
     });
   } catch (error) {
@@ -243,7 +243,7 @@ async function handleGetSkill(
       },
       skill_md: skillMd,
       files,
-      editable: accessControl.canWrite(skill.plugin),
+      editable: accessControl.canWrite(skillName),
     });
   } catch (error) {
     return errorResponse(
