@@ -331,7 +331,7 @@ async function handleInstallSkill(
     );
 
     const connectorUrl =
-      env.CONNECTOR_URL || "https://skillport-connector.jack-ivers.workers.dev";
+      env.CONNECTOR_URL || "https://your-connector.workers.dev";
 
     return jsonResponse({
       install_token: installToken,
@@ -405,7 +405,7 @@ async function handleEditSkill(
     );
 
     const connectorUrl =
-      env.CONNECTOR_URL || "https://skillport-connector.jack-ivers.workers.dev";
+      env.CONNECTOR_URL || "https://your-connector.workers.dev";
 
     return jsonResponse({
       edit_token: editToken,

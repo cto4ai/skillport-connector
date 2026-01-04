@@ -5,7 +5,7 @@ compatibility_flags = ["nodejs_compat"]
 
 [vars]
 # Configure your marketplace repo here (required)
-# MARKETPLACE_REPO = "your-org/your-marketplace"
+MARKETPLACE_REPO = "your-org/your-marketplace"
 
 # KV namespaces - create with wrangler and update IDs
 # wrangler kv namespace create OAUTH_KV

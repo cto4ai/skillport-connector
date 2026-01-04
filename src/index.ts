@@ -129,7 +129,7 @@ async function handleInstallToken(
  */
 function serveInstallScript(env: Env): Response {
   const connectorUrl =
-    env.CONNECTOR_URL || "https://skillport-connector.jack-ivers.workers.dev";
+    env.CONNECTOR_URL || "https://your-connector.workers.dev";
 
   const script = `#!/bin/bash
 set -e
@@ -432,7 +432,7 @@ async function handleEditToken(
  */
 function serveEditScript(env: Env): Response {
   const connectorUrl =
-    env.CONNECTOR_URL || "https://skillport-connector.jack-ivers.workers.dev";
+    env.CONNECTOR_URL || "https://your-connector.workers.dev";
 
   const script = `#!/bin/bash
 set -e

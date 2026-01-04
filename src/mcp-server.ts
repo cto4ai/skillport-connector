@@ -98,7 +98,7 @@ export class SkillportMCP extends McpAgent<Env, unknown, UserProps> {
 
     const baseUrl =
       this.env.CONNECTOR_URL ||
-      "https://skillport-connector.jack-ivers.workers.dev";
+      "https://your-connector.workers.dev";
 
     this.logAction("skillport_auth");
 
@@ -130,7 +130,7 @@ export class SkillportMCP extends McpAgent<Env, unknown, UserProps> {
   private async handleBootstrap() {
     const connectorUrl =
       this.env.CONNECTOR_URL ||
-      "https://skillport-connector.jack-ivers.workers.dev";
+      "https://your-connector.workers.dev";
 
     // Check if skillport skill exists in the marketplace
     const github = new GitHubClient(

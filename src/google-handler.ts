@@ -187,9 +187,9 @@ app.get("/callback", async (c) => {
 
   // Optional: Verify user is from allowed domain
   // Uncomment and set your domain to restrict access
-  if (user.hd !== "craftycto.com") {
-    return c.text("Unauthorized domain", 403);
-  }
+  // if (user.hd !== "yourdomain.com") {
+  //   return c.text("Unauthorized domain", 403);
+  // }
 
   // Complete the OAuth flow
   const { redirectTo } = await c.env.OAUTH_PROVIDER.completeAuthorization({
