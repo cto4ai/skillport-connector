@@ -204,7 +204,7 @@ async function handleListSkills(
         category: s.category,
         tags: s.tags,
         keywords: s.keywords,
-        editable: accessControl.canWrite(s.name),
+        editable: accessControl.canWrite(s.plugin),
       })),
     });
   } catch (error) {
@@ -265,8 +265,8 @@ async function handleGetSkill(
       },
       skill_md: skillMd,
       files,
-      // Access control is keyed by skill name
-      editable: accessControl.canWrite(skillName),
+      // Write access is keyed by group name
+      editable: accessControl.canWrite(skill.plugin),
     });
   } catch (error) {
     return errorResponse(
@@ -362,21 +362,21 @@ async function handleEditSkill(
     const github = getGitHubClient(env);
     const accessControl = await getAccessControl(env, user.provider, user.uid);
 
-    // Access control is keyed by skill name
-    if (!accessControl.canWrite(skillName)) {
-      return errorResponse(
-        "Access denied",
-        `You don't have write access to edit skill '${skillName}'`,
-        403
-      );
-    }
-
     const skill = await github.getSkill(skillName);
     if (!skill) {
       return errorResponse(
         "Skill not found",
         `Skill '${skillName}' not found`,
         404
+      );
+    }
+
+    // Write access is keyed by group name
+    if (!accessControl.canWrite(skill.plugin)) {
+      return errorResponse(
+        "Access denied",
+        `You don't have write access to group '${skill.plugin}'`,
+        403
       );
     }
 
@@ -481,11 +481,11 @@ async function handleSaveSkill(
       }
     }
 
-    // Access control is keyed by skill name
-    if (!accessControl.canWrite(skillName)) {
+    // Write access is keyed by group name
+    if (!accessControl.canWrite(groupName)) {
       return errorResponse(
         "Access denied",
-        `You don't have write access to skill "${skillName}"`,
+        `You don't have write access to group "${groupName}"`,
         403
       );
     }
@@ -687,21 +687,21 @@ async function handleDeleteSkill(
     const github = getGitHubClient(env);
     const accessControl = await getAccessControl(env, user.provider, user.uid);
 
-    // Access control is keyed by skill name
-    if (!accessControl.canWrite(skillName)) {
-      return errorResponse(
-        "Access denied",
-        `You don't have write access to skill "${skillName}"`,
-        403
-      );
-    }
-
     const skill = await github.getSkill(skillName);
     if (!skill) {
       return errorResponse(
         "Skill not found",
         `Skill "${skillName}" not found`,
         404
+      );
+    }
+
+    // Write access is keyed by group name
+    if (!accessControl.canWrite(skill.plugin)) {
+      return errorResponse(
+        "Access denied",
+        `You don't have write access to group "${skill.plugin}"`,
+        403
       );
     }
 
@@ -778,17 +778,7 @@ async function handleBumpVersion(
 ): Promise<Response> {
   try {
     const github = getGitHubClient(env);
-
     const accessControl = await getAccessControl(env, user.provider, user.uid);
-
-    // Access control is keyed by skill name
-    if (!accessControl.canWrite(skillName)) {
-      return errorResponse(
-        "Access denied",
-        `You don't have write access to skill "${skillName}"`,
-        403
-      );
-    }
 
     const skill = await github.getSkill(skillName);
     if (!skill) {
@@ -800,6 +790,15 @@ async function handleBumpVersion(
     }
 
     const groupName = skill.plugin;
+
+    // Write access is keyed by group name
+    if (!accessControl.canWrite(groupName)) {
+      return errorResponse(
+        "Access denied",
+        `You don't have write access to group "${groupName}"`,
+        403
+      );
+    }
 
     logAction(user.email, "bump_version", {
       skill: skillName,
