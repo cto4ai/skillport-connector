@@ -105,7 +105,7 @@ npm run dev              # Start local dev server (localhost:8788)
 npm run deploy           # Deploy to Cloudflare Workers
 ```
 
-**Note:** Wrangler v4 requires Node v20+. If using an older Node version:
+**Note:** Wrangler v4 requires Node v20+. If using an older Node version (e.g., VSCode with Node 19):
 ```bash
 node node_modules/wrangler/bin/wrangler.js dev
 node node_modules/wrangler/bin/wrangler.js deploy
@@ -116,6 +116,8 @@ node node_modules/wrangler/bin/wrangler.js deploy
 1. **Claude.ai with connector enabled** - Add the connector in Settings, test tools in conversation
 2. **MCP Inspector** - `npx @anthropic-ai/mcp-inspector` with your SSE URL
 3. **Wrangler tail for logs** - `npx wrangler tail` to see audit logs
+
+**Note:** Claude Code cannot directly call MCP tools in this project because they require Google OAuth authentication. Testing must be done via Claude.ai or Claude Desktop with the connector enabled.
 
 ## Documentation
 

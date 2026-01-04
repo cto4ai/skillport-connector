@@ -5,7 +5,7 @@ allowed-tools: ["Bash(git:*)", "Read", "Glob", "Write"]
 
 # Checkpoint Command
 
-Create a focused checkpoint document capturing current work state in `docs/checkpoints/`.
+Create a focused checkpoint document capturing current work state in `docs/working/checkpoints/`.
 
 ## Instructions
 
@@ -15,11 +15,11 @@ Create a focused checkpoint document capturing current work state in `docs/check
 - Summarize recent conversation and activity in this session
 - Run `git branch --show-current` and `git status`
 - Run `git log --oneline -5` for recent commits
-- List `docs/checkpoints/` to see most recent checkpoint (optional: read it briefly)
+- List `docs/working/checkpoints/` to see most recent checkpoint (optional: read it briefly)
 
 ### 2. Create Checkpoint File
 
-**Filename:** `docs/checkpoints/YYYY-MM-DD-HHMM-brief-description.md`
+**Filename:** `docs/working/checkpoints/YYYY-MM-DD-HHMM-brief-description.md`
 
 **Simplified Structure:**
 
@@ -72,7 +72,7 @@ Create a focused checkpoint document capturing current work state in `docs/check
 
 ### 3. Save
 
-- Write to `docs/checkpoints/`
+- Write to `docs/working/checkpoints/`
 - Tell user where it was saved and what was captured
 
 ## Guidelines

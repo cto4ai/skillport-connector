@@ -15,6 +15,7 @@ import { OAuthProvider } from "@cloudflare/workers-oauth-provider";
 import googleHandler from "./google-handler";
 import { SkillportMCP } from "./mcp-server";
 import { GitHubClient } from "./github-client";
+import { handleAPI } from "./rest-api";
 
 // Export the MCP server class for Durable Objects
 export { SkillportMCP };
@@ -92,6 +93,8 @@ async function handleInstallToken(
 
     return Response.json(
       {
+        skill_name: skill.name,
+        skill_version: skill.version,
         skill: {
           name: skill.name,
           version: skill.version,
@@ -391,6 +394,9 @@ async function handleEditToken(
 
     return Response.json(
       {
+        skill_name: skill.name,
+        skill_version: skill.version,
+        skill_plugin: skill.plugin,
         skill: {
           name: skill.name,
           plugin: skill.plugin,
@@ -590,7 +596,14 @@ export default {
     const url = new URL(request.url);
 
     // Handle REST API routes BEFORE OAuth provider
-    // These don't require OAuth - token is the auth
+    // These use Bearer token auth (from skillport_auth MCP tool)
+
+    // REST API endpoints (token-based auth)
+    if (url.pathname.startsWith("/api/") && !url.pathname.startsWith("/api/install/") && !url.pathname.startsWith("/api/edit/")) {
+      return handleAPI(request, env);
+    }
+
+    // PTC routes (install/edit token redemption)
 
     // Serve install script
     if (url.pathname === "/install.sh") {
