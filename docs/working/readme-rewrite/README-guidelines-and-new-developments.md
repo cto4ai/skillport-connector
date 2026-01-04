@@ -30,7 +30,7 @@
 
 ### Late Dec:
 
-- Naming: Skillport (overall solution); Skillport Connector (Claude compatible Connector); Skillport Marketplace (Claude Plugin Marketplace compatible skill repository template)
+- Refined naming: Skillport (overall solution); Skillport Connector (Claude compatible Connector); Skillport Marketplace (Claude Plugin Marketplace compatible skill repository template)
 - We have iterated significantly on the Skillport Marketplace repository structure to make sure it follows Anthropic's Plugin Marketplace structure.
 - We are open-sourcing Skillport under the permissive MIT license. Both the Skillport Connector https://github.com/cto4ai/skillport-connector and Skillport Marketplace https://github.com/cto4ai/skillport-marketplace repos will soon be public under that license.
 - We have done extensive work to make it easy for organizations and individuals to set up their own private Skillport skill repositories using these two repos. skillport-connector is set up for easy forking so organizations can configured and deploy their own OAuth-enabled Skillport Connector. skillport-marketplace is a GitHub Template that supports "Use this template" to quickly set up a new private Skillport Marketplace repo to work with Skillport Connector.
