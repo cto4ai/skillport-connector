@@ -121,6 +121,16 @@ function logAction(
 }
 
 /**
+ * Validate skill or group name to prevent path traversal
+ * Must match: lowercase letters, numbers, and hyphens only
+ */
+const VALID_NAME_PATTERN = /^[a-z0-9-]+$/;
+
+function validateName(name: string): boolean {
+  return VALID_NAME_PATTERN.test(name);
+}
+
+/**
  * Validate file path to prevent path traversal
  */
 function validateFilePath(filePath: string): string | null {
@@ -999,7 +1009,15 @@ export async function handleAPI(
 
   // Route: GET /api/skills/:name
   if (pathParts[0] === "skills" && pathParts.length === 2 && method === "GET") {
-    return handleGetSkill(env, user, pathParts[1]);
+    const skillName = pathParts[1];
+    if (!validateName(skillName)) {
+      return errorResponse(
+        "Invalid skill name",
+        "Skill name must contain only lowercase letters, numbers, and hyphens",
+        400
+      );
+    }
+    return handleGetSkill(env, user, skillName);
   }
 
   // Route: GET /api/skills/:name/install
@@ -1009,7 +1027,15 @@ export async function handleAPI(
     pathParts[2] === "install" &&
     method === "GET"
   ) {
-    return handleInstallSkill(env, user, pathParts[1]);
+    const skillName = pathParts[1];
+    if (!validateName(skillName)) {
+      return errorResponse(
+        "Invalid skill name",
+        "Skill name must contain only lowercase letters, numbers, and hyphens",
+        400
+      );
+    }
+    return handleInstallSkill(env, user, skillName);
   }
 
   // Route: GET /api/skills/:name/edit
@@ -1019,7 +1045,15 @@ export async function handleAPI(
     pathParts[2] === "edit" &&
     method === "GET"
   ) {
-    return handleEditSkill(env, user, pathParts[1]);
+    const skillName = pathParts[1];
+    if (!validateName(skillName)) {
+      return errorResponse(
+        "Invalid skill name",
+        "Skill name must contain only lowercase letters, numbers, and hyphens",
+        400
+      );
+    }
+    return handleEditSkill(env, user, skillName);
   }
 
   // Route: POST /api/skills/:name
@@ -1028,12 +1062,28 @@ export async function handleAPI(
     pathParts.length === 2 &&
     method === "POST"
   ) {
-    const body = await request.json();
-    return handleSaveSkill(env, user, pathParts[1], body as {
+    const skillName = pathParts[1];
+    if (!validateName(skillName)) {
+      return errorResponse(
+        "Invalid skill name",
+        "Skill name must contain only lowercase letters, numbers, and hyphens",
+        400
+      );
+    }
+    const body = await request.json() as {
       skill_group?: string;
       files: Array<{ path: string; content: string }>;
       commitMessage?: string;
-    });
+    };
+    // Validate skill_group if provided
+    if (body.skill_group && !validateName(body.skill_group)) {
+      return errorResponse(
+        "Invalid skill group",
+        "Skill group must contain only lowercase letters, numbers, and hyphens",
+        400
+      );
+    }
+    return handleSaveSkill(env, user, skillName, body);
   }
 
   // Route: DELETE /api/skills/:name
@@ -1042,8 +1092,16 @@ export async function handleAPI(
     pathParts.length === 2 &&
     method === "DELETE"
   ) {
+    const skillName = pathParts[1];
+    if (!validateName(skillName)) {
+      return errorResponse(
+        "Invalid skill name",
+        "Skill name must contain only lowercase letters, numbers, and hyphens",
+        400
+      );
+    }
     const confirm = url.searchParams.get("confirm") === "true";
-    return handleDeleteSkill(env, user, pathParts[1], confirm);
+    return handleDeleteSkill(env, user, skillName, confirm);
   }
 
   // Route: POST /api/skills/:name/bump
@@ -1053,6 +1111,14 @@ export async function handleAPI(
     pathParts[2] === "bump" &&
     method === "POST"
   ) {
+    const skillName = pathParts[1];
+    if (!validateName(skillName)) {
+      return errorResponse(
+        "Invalid skill name",
+        "Skill name must contain only lowercase letters, numbers, and hyphens",
+        400
+      );
+    }
     const body = await request.json() as { type?: string };
     const validTypes = ["major", "minor", "patch"];
     if (!body.type || !validTypes.includes(body.type)) {
@@ -1062,7 +1128,7 @@ export async function handleAPI(
         400
       );
     }
-    return handleBumpVersion(env, user, pathParts[1], body.type as "major" | "minor" | "patch");
+    return handleBumpVersion(env, user, skillName, body.type as "major" | "minor" | "patch");
   }
 
   // Route: POST /api/skills/:name/publish
@@ -1072,8 +1138,16 @@ export async function handleAPI(
     pathParts[2] === "publish" &&
     method === "POST"
   ) {
+    const skillName = pathParts[1];
+    if (!validateName(skillName)) {
+      return errorResponse(
+        "Invalid skill name",
+        "Skill name must contain only lowercase letters, numbers, and hyphens",
+        400
+      );
+    }
     const body = await request.json();
-    return handlePublishSkill(env, user, pathParts[1], body as {
+    return handlePublishSkill(env, user, skillName, body as {
       description: string;
       category?: string;
       tags?: string[];
