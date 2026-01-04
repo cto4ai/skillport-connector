@@ -12,6 +12,7 @@
 5. **Open Source:** Fully open source under the unrestrictive MIT license.
 6. **Skill Versioning for All:** Skillport brings Skill versioning to Claude's non-developer surfaces Claude.ai and Claude Desktop.
 7. **Claude Plugin Marketplace Compliant GitHub Template:** The Skillport Marketplace repository is fully compliant with Anthropic's Plugin Marketplace standard. It is a GitHub Public Template that exposes the "Use this template" button in GitHub.
+8. **Cloudflare Workers Connector Infrastructure:** Cloudflare is a leader in MCP infrastructure and Skillport Connector is configured to deploy as a Cloudflare Worker.
 
 ## Recent Developments
 

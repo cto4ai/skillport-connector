@@ -48,12 +48,14 @@ Pull requests, code review, version history—your existing workflow.
 
 ### Skillport Connector
 
-A Claude Connector that bridges your GitHub repository to Claude.ai and Claude Desktop. Users add one URL in Settings → Connectors, authenticate with their corporate identity, and your organization's Skills become available.
+A Claude Connector that bridges your GitHub repository to Claude.ai and Claude Desktop. Deploys to Cloudflare Workers—Cloudflare is a leader in MCP infrastructure, and the Connector is configured for their platform out of the box.
+
+Users add one URL in Settings → Connectors, authenticate with their corporate identity, and your organization's Skills become available.
 
 ```
-Your GitHub Repo    →    Skillport Connector    →    Claude.ai
-(private)                (OAuth + GitHub API)        Claude Desktop
-                                                     Claude Mobile
+Your GitHub Repo    →    Skillport Connector       →    Claude.ai
+(private or public)      (Cloudflare Workers)           Claude Desktop
+                         (OAuth + GitHub API)           Claude Mobile
 ```
 
 The Connector uses a single-tool architecture inspired by Anthropic's Programmable Tool Calling patterns. Low context overhead. Fast responses.
@@ -116,9 +118,11 @@ When your team improves a Skill, everyone can update with a single interaction.
 
 The Skillport Marketplace template follows Anthropic's Plugin Marketplace standard exactly. This means:
 
-- Claude Code users can access your Skills directly via `/plugin`—no Connector needed
-- The same repository works for developers (native) and everyone else (via Connector)
+- If you choose to make your repository public, Claude Code users can access your Skills directly via `/plugin`—no Connector needed
+- The same repository structure works for developers (native, if public) and everyone else (via Connector)
 - You're building on Anthropic's standard, not around it
+
+For private repositories, all users—including Claude Code users—access Skills through the Connector.
 
 The template is available as a GitHub Public Template with "Use this template" for quick setup.
 
@@ -149,14 +153,21 @@ Use the [Skillport Marketplace template](https://github.com/cto4ai/skillport-mar
 
 ### 2. Deploy Your Connector
 
+Skillport Connector deploys to Cloudflare Workers—Cloudflare is a leader in MCP infrastructure and the Connector is configured for their platform out of the box.
+
 ```bash
 git clone https://github.com/cto4ai/skillport-connector
 cd skillport-connector
 npm install
+
+# Configure before deploying:
+# - Google OAuth credentials (or Microsoft Entra when available)
+# - GitHub token for repository access
+# - Your marketplace repository URL
+# See the full setup guide in the repository
+
 npm run deploy
 ```
-
-Configure OAuth credentials (Google Cloud), a GitHub token, and your marketplace repository. Full setup guide in the repository.
 
 ### 3. Connect Users
 
@@ -172,39 +183,40 @@ Configure OAuth credentials (Google Cloud), a GitHub token, and your marketplace
 ```
 ┌─────────────────────────────────────────────────────────────┐
 │                    YOUR GITHUB REPO                          │
-│                    (private)                                 │
+│                    (private or public)                       │
 │                                                              │
 │  .skillport/access.json          ← Access control            │
 │  .claude-plugin/marketplace.json ← Skill index               │
 │  plugins/*/skills/*/SKILL.md     ← Your Skills               │
 └─────────────────────────────────────────────────────────────┘
-                           │
-                           ▼
-┌─────────────────────────────────────────────────────────────┐
-│              SKILLPORT CONNECTOR                             │
-│              (Cloudflare Workers)                            │
-│                                                              │
-│  • Single-tool architecture (low context overhead)           │
-│  • OAuth authentication (Google, Microsoft Entra coming)     │
-│  • GitHub API integration                                    │
-│  • Access control enforcement                                │
-└─────────────────────────────────────────────────────────────┘
-                           │
-           ┌───────────────┼───────────────┐
-           ▼               ▼               ▼
-   ┌──────────────┐ ┌──────────────┐ ┌──────────────┐
-   │  Claude.ai   │ │    Claude    │ │    Claude    │
-   │    (web)     │ │   Desktop    │ │    Mobile    │
-   └──────────────┘ └──────────────┘ └──────────────┘
+                 │                              │
+                 │                              │ (direct, if public)
+                 ▼                              ▼
+┌────────────────────────────────────┐  ┌──────────────┐
+│        SKILLPORT CONNECTOR         │  │  Claude Code │
+│        (Cloudflare Workers)        │  │    (CLI)     │
+│                                    │  └──────────────┘
+│  • Single-tool architecture        │
+│  • OAuth authentication            │
+│  • GitHub API integration          │
+│  • Access control enforcement      │
+└────────────────────────────────────┘
+                 │
+     ┌───────────┼───────────┐
+     ▼           ▼           ▼
+┌──────────┐ ┌──────────┐ ┌──────────┐
+│Claude.ai │ │  Claude  │ │  Claude  │
+│  (web)   │ │ Desktop  │ │  Mobile  │
+└──────────┘ └──────────┘ └──────────┘
 ```
 
-Claude Code users access the same repository directly via Plugin Marketplace—the Connector extends that capability to everyone else.
+Claude Code users can access public repositories directly via Plugin Marketplace. For most teams, however, the Connector provides a better experience—with support for private repositories a key consideration for enterprise use.
 
 ---
 
 ## Costs
 
-Skillport runs on Cloudflare's free tier for most organizations:
+Skillport runs on Cloudflare's free or $5/mo tier for most organizations:
 
 | Resource | Free Limit | Typical Usage |
 |----------|------------|---------------|
@@ -235,7 +247,7 @@ Yes. Skills installed via Claude.ai or Desktop sync to mobile automatically.
 
 **What about Claude Code users?**
 
-Claude Code has native Plugin Marketplace support. Those users can access your repository directly—Skillport extends that same capability to everyone else.
+Claude Code can access public repositories directly via Plugin Marketplace. For most teams, however, the Connector provides a better experience—with support for private repositories a key consideration for enterprise use.
 
 ---
 
