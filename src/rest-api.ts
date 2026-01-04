@@ -168,8 +168,9 @@ async function handleListSkills(
     const accessControl = await getAccessControl(env, user.provider, user.uid);
     const allSkills = await github.listSkills();
 
+    // Access control is keyed by plugin/group name, not skill name
     const visibleSkills = allSkills.filter((s) =>
-      accessControl.canRead(s.name)
+      accessControl.canRead(s.plugin)
     );
 
     return jsonResponse({
@@ -183,7 +184,7 @@ async function handleListSkills(
         category: s.category,
         tags: s.tags,
         keywords: s.keywords,
-        editable: accessControl.canWrite(s.name),
+        editable: accessControl.canWrite(s.plugin),
       })),
     });
   } catch (error) {
@@ -208,20 +209,22 @@ async function handleGetSkill(
     const github = getGitHubClient(env);
     const accessControl = await getAccessControl(env, user.provider, user.uid);
 
-    if (!accessControl.canRead(skillName)) {
-      return errorResponse(
-        "Access denied",
-        "You don't have access to this skill",
-        403
-      );
-    }
-
+    // Fetch skill first to get plugin name for access control
     const skill = await github.getSkill(skillName);
     if (!skill) {
       return errorResponse(
         "Skill not found",
         `Skill '${skillName}' not found`,
         404
+      );
+    }
+
+    // Access control is keyed by plugin/group name
+    if (!accessControl.canRead(skill.plugin)) {
+      return errorResponse(
+        "Access denied",
+        "You don't have access to this skill",
+        403
       );
     }
 
@@ -243,7 +246,8 @@ async function handleGetSkill(
       },
       skill_md: skillMd,
       files,
-      editable: accessControl.canWrite(skillName),
+      // Access control is keyed by plugin/group name
+      editable: accessControl.canWrite(skill.plugin),
     });
   } catch (error) {
     return errorResponse(
@@ -267,20 +271,22 @@ async function handleInstallSkill(
     const github = getGitHubClient(env);
     const accessControl = await getAccessControl(env, user.provider, user.uid);
 
-    if (!accessControl.canRead(skillName)) {
-      return errorResponse(
-        "Access denied",
-        "You don't have access to this skill",
-        403
-      );
-    }
-
+    // Fetch skill first to get plugin name for access control
     const skill = await github.getSkill(skillName);
     if (!skill) {
       return errorResponse(
         "Skill not found",
         `Skill '${skillName}' not found`,
         404
+      );
+    }
+
+    // Access control is keyed by plugin/group name
+    if (!accessControl.canRead(skill.plugin)) {
+      return errorResponse(
+        "Access denied",
+        "You don't have access to this skill",
+        403
       );
     }
 
