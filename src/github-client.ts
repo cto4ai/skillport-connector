@@ -430,8 +430,9 @@ export class GitHubClient {
           try {
             const manifestContent = await this.fetchFile(manifestPath);
             manifest = JSON.parse(manifestContent) as PluginManifest;
-          } catch {
+          } catch (e) {
             // No valid manifest, skip this directory
+            console.warn(`[listSkills] Failed to fetch manifest for plugin "${groupName}":`, e instanceof Error ? e.message : e);
             continue;
           }
 
@@ -475,15 +476,18 @@ export class GitHubClient {
                   tags: publishedInfo?.tags,
                   keywords: publishedInfo?.keywords,
                 });
-              } catch {
+              } catch (e) {
                 // Skip if SKILL.md is missing or invalid
+                console.warn(`[listSkills] Failed to fetch SKILL.md for "${dir.name}" in plugin "${groupName}":`, e instanceof Error ? e.message : e);
               }
             }
-          } catch {
+          } catch (e) {
             // Plugin has no skills directory
+            console.warn(`[listSkills] No skills directory for plugin "${groupName}":`, e instanceof Error ? e.message : e);
           }
         }
 
+        console.log(`[listSkills] Found ${result.length} skills from ${pluginDirs.length} plugin directories`);
         return result;
       }
     );
@@ -495,6 +499,22 @@ export class GitHubClient {
   async getSkill(skillName: string): Promise<SkillEntry | null> {
     const allSkills = await this.listSkills();
     return allSkills.find(s => s.name === skillName) || null;
+  }
+
+  /**
+   * Debug: List raw plugin directories from GitHub API
+   * Returns the raw response from GitHub's Contents API for diagnostics
+   */
+  async debugListPlugins(): Promise<{ directories: GitHubContentItem[]; error?: string }> {
+    try {
+      const dirs = await this.listDirectory("plugins");
+      return { directories: dirs };
+    } catch (e) {
+      return {
+        directories: [],
+        error: e instanceof Error ? e.message : String(e)
+      };
+    }
   }
 
   /**

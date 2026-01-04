@@ -167,14 +167,24 @@ function validateFilePath(filePath: string): string | null {
 
 /**
  * GET /api/skills - List all skills
+ * Query params:
+ *   - refresh=true: Force cache refresh before listing
  */
 async function handleListSkills(
   env: Env,
-  user: TokenData
+  user: TokenData,
+  refresh: boolean = false
 ): Promise<Response> {
   try {
-    logAction(user.email, "list_skills");
+    logAction(user.email, refresh ? "list_skills_refresh" : "list_skills");
     const github = getGitHubClient(env);
+
+    // Force cache refresh if requested
+    if (refresh) {
+      await github.clearCache();
+      console.log(`[list_skills] Cache cleared for user ${user.email}`);
+    }
+
     const accessControl = await getAccessControl(env, user.provider, user.uid);
     const allSkills = await github.listSkills();
 
@@ -1004,7 +1014,8 @@ export async function handleAPI(
 
   // Route: GET /api/skills
   if (pathParts[0] === "skills" && pathParts.length === 1 && method === "GET") {
-    return handleListSkills(env, user);
+    const refresh = url.searchParams.get("refresh") === "true";
+    return handleListSkills(env, user, refresh);
   }
 
   // Route: GET /api/skills/:name
@@ -1173,6 +1184,20 @@ export async function handleAPI(
   // Route: GET /api/whoami
   if (pathParts[0] === "whoami" && method === "GET") {
     return handleWhoami(user);
+  }
+
+  // Route: GET /api/debug/plugins - Debug endpoint to see raw GitHub API response
+  if (pathParts[0] === "debug" && pathParts[1] === "plugins" && method === "GET") {
+    logAction(user.email, "debug_plugins");
+    const github = getGitHubClient(env);
+    const result = await github.debugListPlugins();
+    return jsonResponse({
+      repo: env.MARKETPLACE_REPO,
+      timestamp: new Date().toISOString(),
+      ...result,
+      count: result.directories.length,
+      names: result.directories.filter(d => d.type === "dir").map(d => d.name)
+    });
   }
 
   // Not found
