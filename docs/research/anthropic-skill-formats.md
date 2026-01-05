@@ -129,6 +129,41 @@ marketplace-repo/
 }
 ```
 
+### Additional Plugin Types
+
+Beyond skills, plugins can include:
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `commands` | string\|array | Custom slash commands |
+| `agents` | string\|array | Custom agents |
+| `hooks` | string\|object | Hooks configuration |
+| `mcpServers` | string\|object | MCP server configurations |
+| `lspServers` | string\|object | LSP server configurations |
+
+**Example with MCP and LSP servers:**
+
+```json
+{
+  "name": "enterprise-tools",
+  "mcpServers": {
+    "enterprise-db": {
+      "command": "${CLAUDE_PLUGIN_ROOT}/servers/db-server",
+      "args": ["--config", "${CLAUDE_PLUGIN_ROOT}/config.json"]
+    }
+  },
+  "lspServers": {
+    "custom-lsp": {
+      "command": "${CLAUDE_PLUGIN_ROOT}/lsp-server"
+    }
+  }
+}
+```
+
+Note: `${CLAUDE_PLUGIN_ROOT}` references files within the plugin's installation directory.
+
+*Source: [Plugin Marketplaces Documentation](https://code.claude.com/docs/en/plugin-marketplaces)*
+
 ### marketplace.json Format
 
 ```json
