@@ -190,6 +190,28 @@ Both formats work with Claude Code's `/plugin` command, but the Plugin Marketpla
 
 ---
 
+## Q&A: Why Plugin Marketplace Format?
+
+**Q: If skill versioning is important, did we choose the right format?**
+
+**A: Yes.** The key difference for versioning:
+
+| Format | Versioning |
+|--------|------------|
+| Agent Skills | Marketplace level only |
+| Plugin Marketplace | **Per-plugin** via `.claude-plugin/plugin.json` |
+
+With the simpler Agent Skills format, you can only version the entire marketplace as a unit. With Plugin Marketplace format:
+
+- Each plugin has its own version in `plugin.json`
+- `check-updates` API can tell users which specific skills have updates
+- `bump_version` API can increment individual plugins
+- Users can update selectively
+
+The trade-off is more structure (the extra `plugin.json` files), but that's minimal overhead for the versioning capability.
+
+---
+
 ## References
 
 - [Agent Skills Specification](https://agentskills.io/specification)
