@@ -142,3 +142,40 @@ With 17 plugins, this totals ~52 subrequests per uncached call. Cloudflare Worke
    - Faster list response, more calls for details
 
 **Why deferred:** Paid plan provides 20x headroom (1,000 vs 52 subrequests). Revisit if marketplace grows beyond ~300 plugins or if cost optimization becomes priority.
+
+## Support for Non-Skill Plugin Types
+
+**Status:** Future consideration
+
+The Plugin Marketplace format supports more than just skills:
+- Slash commands (`commands/`)
+- Custom agents (`agents/`)
+- Hooks
+- MCP servers
+- LSP servers
+
+Currently Skillport only handles skills. Extending to support these other plugin types would make Skillport a more complete plugin distribution system.
+
+**Considerations:**
+- Commands/agents have different installation paths than skills
+- May require different API endpoints or tool parameters
+- Security implications vary by plugin type (hooks especially)
+
+## Multi-Repo Support
+
+**Status:** Future consideration
+
+Currently each Skillport Connector instance serves a single GitHub repository. Multi-repo support would allow:
+- Aggregating skills from multiple source repos
+- Federated marketplace with different owners
+- Public + private repo combinations
+
+**Possible approaches:**
+1. **Config-based** - List multiple repos in wrangler.toml vars
+2. **Dynamic registration** - API to add/remove repos at runtime
+3. **Proxy federation** - Connect multiple Skillport instances together
+
+**Considerations:**
+- Namespace collisions (same skill name in different repos)
+- Access control across repos
+- Cache invalidation complexity
