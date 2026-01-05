@@ -161,3 +161,286 @@ Or use cherry-pick for specific commits (see "Releasing to Main" above).
 
 3. **Checkpoint location** - Should checkpoints go in repo or separate?
    - Recommendation: Keep in `development` branch, they're useful context
+
+## Proposed Worktree Structure to Replace Basic Branching Approach
+
+### Motivation
+
+With parallel Claude Code agents working on separate features, constantly switching branches becomes a bottleneck. Git worktrees allow multiple branches to be checked out simultaneously in separate directories, enabling:
+
+- Multiple Claude Code instances working on different features in parallel
+- No branch switching—each feature has its own isolated file state
+- Cleaner mental model: branches as physical directories you can `cd` into
+
+### Bare Repository + Grouped Worktrees Pattern
+
+Instead of having one "main clone" on a particular branch, use a bare repository (git database only) with all branches as peer worktrees:
+
+```
+/Users/jackivers/Projects/skillport/skillport-connector/
+├── .bare/                 # git database (no working files)
+├── .git                   # file pointing to .bare
+├── main/                  # worktree - clean public branch
+├── development/           # worktree - ongoing dev work
+├── feature-oauth/         # worktree - active feature (temporary)
+└── feature-notifications/ # worktree - another active feature (temporary)
+
+/Users/jackivers/Projects/skillport/skillport-marketplace/
+├── .bare/
+├── .git
+├── main/
+├── development/
+├── feature-oauth/         # cross-repo feature, same branch name
+└── feature-notifications/
+
+/Users/jackivers/Projects/skillport/crafty-skillport-marketplace/
+├── .bare/
+├── .git
+├── main/
+├── development/
+├── feature-oauth/
+└── feature-notifications/
+```
+
+### Initial Setup
+
+**For skillport-connector:**
+
+```bash
+# Backup and restructure
+cd /Users/jackivers/Projects/skillport
+mv skillport-connector skillport-connector-old
+
+# Create new structure with bare repo
+mkdir skillport-connector
+cd skillport-connector
+git clone --bare git@github.com:jack4git/skillport-connector.git .bare
+
+# Create .git file pointing to bare repo
+echo "gitdir: $(pwd)/.bare" > .git
+
+# Create worktrees for persistent branches
+git worktree add main main
+git worktree add development development
+
+# Clean up old clone after verifying
+rm -rf ../skillport-connector-old
+```
+
+**For skillport-marketplace:**
+
+```bash
+cd /Users/jackivers/Projects/skillport
+mv skillport-marketplace skillport-marketplace-old
+
+mkdir skillport-marketplace
+cd skillport-marketplace
+git clone --bare git@github.com:jack4git/skillport-marketplace.git .bare
+echo "gitdir: $(pwd)/.bare" > .git
+git worktree add main main
+git worktree add development development
+
+rm -rf ../skillport-marketplace-old
+```
+
+**For crafty-skillport-marketplace (instance repo):**
+
+```bash
+cd /Users/jackivers/Projects/skillport
+mv crafty-skillport-marketplace crafty-skillport-marketplace-old
+
+mkdir crafty-skillport-marketplace
+cd crafty-skillport-marketplace
+git clone --bare git@github.com:jack4git/crafty-skillport-marketplace.git .bare
+echo "gitdir: $(pwd)/.bare" > .git
+git worktree add main main
+git worktree add development development
+
+rm -rf ../crafty-skillport-marketplace-old
+```
+
+### Feature Branch Workflow
+
+**Starting a feature:**
+
+```bash
+cd /Users/jackivers/Projects/skillport/skillport-connector
+git worktree add feature-oauth development -b feature-oauth
+
+# If the feature spans both repos:
+cd /Users/jackivers/Projects/skillport/skillport-marketplace
+git worktree add feature-oauth development -b feature-oauth
+```
+
+**Working on the feature:**
+
+```bash
+cd /Users/jackivers/Projects/skillport/skillport-connector/feature-oauth
+claude  # Claude Code works in isolated directory
+```
+
+**Creating a PR:**
+
+```bash
+cd /Users/jackivers/Projects/skillport/skillport-connector/feature-oauth
+git push -u origin feature-oauth
+gh pr create --base development  # Always target development, not main
+```
+
+**After merge, clean up:**
+
+```bash
+cd /Users/jackivers/Projects/skillport/skillport-connector
+git worktree remove feature-oauth
+git branch -d feature-oauth
+
+# Update development worktree
+cd development
+git pull
+```
+
+### Cross-Repo Features
+
+For features touching both connector and marketplace, use the same branch name in both repos:
+
+```bash
+# Setup
+cd /Users/jackivers/Projects/skillport/skillport-connector
+git worktree add feature-oauth development -b feature-oauth
+
+cd /Users/jackivers/Projects/skillport/skillport-marketplace  
+git worktree add feature-oauth development -b feature-oauth
+
+# Work with parallel Claude Code instances
+# Terminal 1: claude in skillport-connector/feature-oauth/
+# Terminal 2: claude in skillport-marketplace/feature-oauth/
+
+# Create PRs in both repos
+cd /Users/jackivers/Projects/skillport/skillport-connector/feature-oauth
+gh pr create --base development
+
+cd /Users/jackivers/Projects/skillport/skillport-marketplace/feature-oauth
+gh pr create --base development
+```
+
+### Directory Structure Comparison
+
+**Before (basic branching):**
+```
+/Users/jackivers/Projects/skillport/
+├── skillport-connector/          # single clone, switch branches
+├── skillport-marketplace/        # single clone, switch branches
+└── crafty-skillport-marketplace/ # single clone, switch branches
+```
+
+**After (worktrees):**
+```
+/Users/jackivers/Projects/skillport/
+├── skillport-connector/
+│   ├── .bare/
+│   ├── main/
+│   ├── development/
+│   └── feature-*/              # as needed
+├── skillport-marketplace/
+│   ├── .bare/
+│   ├── main/
+│   ├── development/
+│   └── feature-*/              # as needed
+└── crafty-skillport-marketplace/
+    ├── .bare/
+    ├── main/
+    ├── development/
+    └── feature-*/              # as needed
+```
+
+### IDE/Workspace Considerations
+
+Each worktree is a full directory that can be opened independently:
+
+- **Cursor/VS Code**: Open the specific worktree directory (e.g., `skillport-connector/feature-oauth/`)
+- **Cross-repo workspace**: Create a workspace containing both repos' worktrees for the same feature
+- **AeroSpace**: Dedicate a workspace to a feature, with terminal panes for each repo's worktree
+
+### Key Differences from Basic Branching
+
+| Aspect | Basic Branching | Worktrees |
+|--------|-----------------|------------|
+| Switching context | `git checkout branch` | `cd ../branch-dir` |
+| Parallel features | Not possible | Multiple directories |
+| Uncommitted changes | Must stash or commit | Isolated per worktree |
+| Claude Code parallelism | One at a time | Multiple simultaneous |
+| Disk space | Single copy | Multiple copies (shallow) |
+
+### Deployment Workflow
+
+With worktrees, deployment happens from a specific worktree directory, not the repo root.
+
+**For skillport-connector:**
+
+```bash
+# Deploy from development worktree (typical)
+cd /Users/jackivers/Projects/skillport/skillport-connector/development
+npx wrangler deploy
+
+# Deploy from main worktree (production release)
+cd /Users/jackivers/Projects/skillport/skillport-connector/main
+npx wrangler deploy
+```
+
+**Important:** Each worktree has its own `wrangler.toml`. Keep deployment config (secrets, KV bindings) consistent across worktrees, or designate one worktree as the canonical deploy source.
+
+**Recommendation:** Use `development/` as the primary deploy source for ongoing work. Only deploy from `main/` for tagged releases.
+
+### Workspace File Updates
+
+The VS Code workspace file needs updated paths after migration:
+
+**Before (basic branching):**
+```json
+{
+  "folders": [
+    { "path": "." },
+    { "path": "../skillport-marketplace" },
+    { "path": "../crafty-skillport-marketplace" }
+  ]
+}
+```
+
+**After (worktrees):**
+```json
+{
+  "folders": [
+    { "path": "development" },
+    { "path": "../skillport-marketplace/development" },
+    { "path": "../crafty-skillport-marketplace/development" }
+  ]
+}
+```
+
+The workspace file should live at the repo root level (alongside `.bare/`), not inside a worktree.
+
+**Feature-specific workspaces:** For cross-repo features, create temporary workspace files:
+
+```json
+// skillport-oauth-feature.code-workspace
+{
+  "folders": [
+    { "path": "skillport-connector/feature-oauth" },
+    { "path": "skillport-marketplace/feature-oauth" }
+  ]
+}
+```
+
+### Per-Worktree Dependencies
+
+Each worktree needs its own `node_modules`:
+
+```bash
+cd /Users/jackivers/Projects/skillport/skillport-connector/development
+npm install
+
+cd /Users/jackivers/Projects/skillport/skillport-connector/feature-oauth
+npm install
+```
+
+This is correct behavior—each worktree may have different dependencies if branches diverge. The disk space overhead is minimal for these projects.
