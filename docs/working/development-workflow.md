@@ -162,7 +162,7 @@ Or use cherry-pick for specific commits (see "Releasing to Main" above).
 3. **Checkpoint location** - Should checkpoints go in repo or separate?
    - Recommendation: Keep in `development` branch, they're useful context
 
-## Proposed Worktree Structure to Replace Basic Branching Approach
+## Worktree Structure (Implemented January 2026)
 
 ### Motivation
 
@@ -214,14 +214,22 @@ mv skillport-connector skillport-connector-old
 # Create new structure with bare repo
 mkdir skillport-connector
 cd skillport-connector
-git clone --bare git@github.com:jack4git/skillport-connector.git .bare
+git clone --bare git@github.com:cto4ai/skillport-connector.git .bare
 
 # Create .git file pointing to bare repo
 echo "gitdir: $(pwd)/.bare" > .git
 
+# Fix fetch config (bare clone defaults to fetching only HEAD)
+git config remote.origin.fetch "+refs/heads/*:refs/remotes/origin/*"
+git fetch origin
+
 # Create worktrees for persistent branches
 git worktree add main main
 git worktree add development development
+
+# Set upstream tracking
+cd main && git branch -u origin/main && cd ..
+cd development && git branch -u origin/development && cd ..
 
 # Clean up old clone after verifying
 rm -rf ../skillport-connector-old
@@ -235,10 +243,16 @@ mv skillport-marketplace skillport-marketplace-old
 
 mkdir skillport-marketplace
 cd skillport-marketplace
-git clone --bare git@github.com:jack4git/skillport-marketplace.git .bare
+git clone --bare git@github.com:cto4ai/skillport-marketplace.git .bare
 echo "gitdir: $(pwd)/.bare" > .git
+
+# Fix fetch config and set upstream tracking
+git config remote.origin.fetch "+refs/heads/*:refs/remotes/origin/*"
+git fetch origin
 git worktree add main main
 git worktree add development development
+cd main && git branch -u origin/main && cd ..
+cd development && git branch -u origin/development && cd ..
 
 rm -rf ../skillport-marketplace-old
 ```
@@ -251,10 +265,14 @@ mv crafty-skillport-marketplace crafty-skillport-marketplace-old
 
 mkdir crafty-skillport-marketplace
 cd crafty-skillport-marketplace
-git clone --bare git@github.com:jack4git/crafty-skillport-marketplace.git .bare
+git clone --bare git@github.com:cto4ai/crafty-skillport-marketplace.git .bare
 echo "gitdir: $(pwd)/.bare" > .git
-git worktree add main main
-git worktree add development development
+
+# Fix fetch config and set upstream tracking
+git config remote.origin.fetch "+refs/heads/*:refs/remotes/origin/*"
+git fetch origin
+git worktree add main main  # crafty only has main branch
+cd main && git branch -u origin/main && cd ..
 
 rm -rf ../crafty-skillport-marketplace-old
 ```
