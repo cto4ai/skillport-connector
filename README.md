@@ -251,8 +251,8 @@ MIT—use it, modify it, deploy it.
 
 Skillport builds on Anthropic's excellent work:
 
-- [Claude Connectors](https://docs.anthropic.com/en/docs/build-with-claude/mcp/remote-mcp-servers)
-- [Plugin Marketplaces](https://docs.anthropic.com/en/docs/claude-code/plugins)
-- [Programmable Tool Calling patterns](https://docs.anthropic.com/en/docs/build-with-claude/tool-use)
+- [MCP Connector](https://platform.claude.com/docs/en/agents-and-tools/mcp-connector)
+- [Plugin Marketplaces](https://code.claude.com/docs/en/plugin-marketplaces)
+- [Programmatic Tool Calling](https://platform.claude.com/docs/en/agents-and-tools/tool-use/programmatic-tool-calling)
 
 And runs on [Cloudflare Workers](https://workers.cloudflare.com/).
