@@ -20,10 +20,25 @@ import { handleAPI } from "./rest-api";
 // Export the MCP server class for Durable Objects
 export { SkillportMCP };
 
-// Create the OAuth provider
+// Create handlers for both transports
+const sseHandler = SkillportMCP.mount("/sse");  // SSE for Claude.ai/Desktop/Inspector
+const httpHandler = SkillportMCP.serve("/mcp"); // Streamable HTTP for Claude Code
+
+// Combined handler that routes based on path
+const combinedMcpHandler = {
+  fetch: (request: Request, env: Env, ctx: ExecutionContext) => {
+    const url = new URL(request.url);
+    if (url.pathname.startsWith("/sse")) {
+      return sseHandler.fetch(request, env, ctx);
+    }
+    return httpHandler.fetch(request, env, ctx);
+  }
+};
+
+// Create the OAuth provider with both transports
 const oauthProvider = new OAuthProvider({
-  apiRoute: ["/mcp"],
-  apiHandler: SkillportMCP.serve("/mcp"),
+  apiRoute: ["/mcp", "/sse", "/sse/message"],
+  apiHandler: combinedMcpHandler,
   defaultHandler: googleHandler,
   authorizeEndpoint: "/authorize",
   tokenEndpoint: "/token",
