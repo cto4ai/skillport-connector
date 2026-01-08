@@ -22,8 +22,8 @@ export { SkillportMCP };
 
 // Create the OAuth provider
 const oauthProvider = new OAuthProvider({
-  apiRoute: ["/sse", "/sse/message", "/mcp"],
-  apiHandler: SkillportMCP.mount("/sse"),
+  apiRoute: ["/mcp"],
+  apiHandler: SkillportMCP.serve("/mcp"),
   defaultHandler: googleHandler,
   authorizeEndpoint: "/authorize",
   tokenEndpoint: "/token",
