@@ -9,7 +9,8 @@
     "deploy": "wrangler deploy",
     "deploy:authless": "wrangler deploy -c wrangler-authless.toml",
     "test": "vitest",
-    "cf-typegen": "wrangler types"
+    "cf-typegen": "wrangler types",
+    "postinstall": "node scripts/patch-oauth-provider.js"
   },
   "dependencies": {
     "@cloudflare/workers-oauth-provider": "^0.2.2",
