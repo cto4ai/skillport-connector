@@ -10,7 +10,7 @@
     "deploy:authless": "wrangler deploy -c wrangler-authless.toml",
     "test": "vitest",
     "cf-typegen": "wrangler types",
-    "postinstall": "node scripts/patch-oauth-provider.js"
+    "postinstall": "node scripts/patch-oauth-provider.js && node scripts/patch-agents-mcp.js"
   },
   "dependencies": {
     "@cloudflare/workers-oauth-provider": "^0.2.2",
