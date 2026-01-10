@@ -114,8 +114,53 @@ After verifying the transport migration works, upgrade `agents@0.0.72` → `agen
 **Test checklist for upgrade:**
 - [ ] Tool registration still works
 - [ ] OAuth flow still works
-- [ ] Props passed correctly to handlers
+- [x] Props passed correctly to handlers (fixed 2026-01-09, see Bug Fix section)
 - [ ] All MCP tools functional
+
+## Bug Fix: Streamable HTTP Props (2026-01-09)
+
+### Problem
+
+After migrating to streamable HTTP transport, user identity was not being passed to the MCP agent:
+- `whoami` API returned `{"id": "undefined:undefined"}`
+- Edit/create APIs failed due to missing user context
+
+### Root Cause
+
+Bug in `agents@0.0.72` package. The SSE transport (`.mount()`) correctly calls `doStub._init(ctx.props)` to pass user identity to the durable object, but the streamable HTTP transport (`.serve()`) was missing this call.
+
+**SSE transport (line ~398):**
+```javascript
+const doStub = namespace.get(id);
+await doStub._init(ctx.props);  // ✅ Props passed
+```
+
+**Streamable HTTP transport (line ~664):**
+```javascript
+const doStub = namespace.get(id);
+if (isInitializationRequest) {
+  await doStub.setInitialized();  // ❌ No _init(ctx.props) call
+}
+```
+
+### Fix
+
+Created `scripts/patch-agents-mcp.js` to patch the agents package locally:
+- Adds `await doStub._init(ctx.props);` before `setInitialized()` in `.serve()`
+- Runs automatically via postinstall alongside oauth-provider patch
+- Stays on `agents@0.0.72` to avoid ai SDK 4→6 breaking changes
+
+### Decision: Patch vs Upgrade
+
+Chose local patch over upgrading to `agents@0.3.4` because:
+
+| Factor | Patch | Upgrade |
+|--------|-------|---------|
+| Risk | Low - 1 line fix | High - ai SDK 4→6 breaking |
+| Testing needed | Minimal | Full regression |
+| Maintenance | Check on future upgrades | None if bug fixed |
+
+The patch is simple, well-documented, and avoids the high-risk dependency upgrades.
 
 ## Decision Log
 
@@ -125,3 +170,4 @@ After verifying the transport migration works, upgrade `agents@0.0.72` → `agen
 | 2025-01-07 | Use `/mcp` endpoint | Convention from Cloudflare docs, clearer than `/sse` |
 | 2025-01-07 | Skip agents package update | Test migration first, update separately if needed |
 | 2025-01-07 | Keep agents@0.0.72 | .serve() exists, avoid AI SDK 4→6 breaking changes |
+| 2026-01-09 | Patch agents@0.0.72 locally | Fix props bug without ai SDK 4→6 breaking changes |
