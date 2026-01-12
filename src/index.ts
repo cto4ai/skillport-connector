@@ -56,7 +56,7 @@ async function handleInstallToken(
   // Validate token format
   if (!token || !token.startsWith("sk_install_")) {
     return Response.json(
-      { error: "Invalid token format" },
+      { error: "Invalid token format", message: "Token should start with 'sk_install_'" },
       { status: 400 }
     );
   }
@@ -67,7 +67,7 @@ async function handleInstallToken(
 
   if (!tokenDataStr) {
     return Response.json(
-      { error: "Token not found or expired" },
+      { error: "Token not found or expired", message: "Get a new token by asking Claude to install the skill again" },
       { status: 404 }
     );
   }
@@ -82,7 +82,7 @@ async function handleInstallToken(
 
   if (tokenData.used) {
     return Response.json(
-      { error: "Token already used" },
+      { error: "Token already used", message: "Each install token can only be used once. Request a new one." },
       { status: 410 }
     );
   }
@@ -204,23 +204,60 @@ export OUTPUT_DIR
 export PACKAGE_MODE
 
 # ----------------------------------------------------------------------------
-# Fetch skill via token
+# Fetch skill via token (with retry for transient errors)
 # ----------------------------------------------------------------------------
 
 echo "Fetching skill..."
 
-# Use -s for silent, but NOT -f so we get the response body on errors
-HTTP_CODE=$(curl -s -w "%{http_code}" -o /tmp/skillport_response.json "$CONNECTOR_URL/api/install/$TOKEN")
+MAX_RETRIES=3
+RETRY_DELAY=2
+ATTEMPT=1
 
-if [ "$HTTP_CODE" != "200" ]; then
+while [ $ATTEMPT -le $MAX_RETRIES ]; do
+  # Use -s for silent, but NOT -f so we get the response body on errors
+  HTTP_CODE=$(curl -s -w "%{http_code}" -o /tmp/skillport_response.json "$CONNECTOR_URL/api/install/$TOKEN")
+
+  if [ "$HTTP_CODE" = "200" ]; then
+    break
+  fi
+
+  # Transient errors (5xx) should be retried
+  if [ "$HTTP_CODE" -ge 500 ] && [ $ATTEMPT -lt $MAX_RETRIES ]; then
+    echo -e "\${YELLOW}Server error (HTTP $HTTP_CODE), retrying in \${RETRY_DELAY}s... (attempt $ATTEMPT/$MAX_RETRIES)\${NC}"
+    sleep $RETRY_DELAY
+    RETRY_DELAY=$((RETRY_DELAY * 2))
+    ATTEMPT=$((ATTEMPT + 1))
+    continue
+  fi
+
+  # Non-retryable error or max retries reached
   echo -e "\${RED}Error: Failed to fetch skill (HTTP $HTTP_CODE)\${NC}"
 
-  # Try to parse error message from response
-  ERROR_MSG=$(python3 -c "import json; d=json.load(open('/tmp/skillport_response.json')); print(d.get('error','Unknown error'))" 2>/dev/null) || ERROR_MSG="Unknown error"
-  echo "$ERROR_MSG"
+  # Try to parse error details from JSON response
+  if [ -f /tmp/skillport_response.json ]; then
+    ERROR_MSG=$(python3 -c "
+import json
+try:
+    d = json.load(open('/tmp/skillport_response.json'))
+    error = d.get('error', '')
+    message = d.get('message', '')
+    if error and message:
+        print(f'{error}: {message}')
+    elif error:
+        print(error)
+    else:
+        # Show raw response if no error field
+        print(open('/tmp/skillport_response.json').read()[:200])
+except:
+    # JSON parse failed, show raw response
+    print(open('/tmp/skillport_response.json').read()[:200])
+" 2>/dev/null) || ERROR_MSG="No response body"
+    echo "$ERROR_MSG"
+  fi
+
   rm -f /tmp/skillport_response.json
   exit 1
-fi
+done
 
 # ----------------------------------------------------------------------------
 # Parse and write files
@@ -354,7 +391,7 @@ async function handleEditToken(
   // Validate token format
   if (!token || !token.startsWith("sk_edit_")) {
     return Response.json(
-      { error: "Invalid token format" },
+      { error: "Invalid token format", message: "Token should start with 'sk_edit_'" },
       { status: 400 }
     );
   }
@@ -365,7 +402,7 @@ async function handleEditToken(
 
   if (!tokenDataStr) {
     return Response.json(
-      { error: "Token not found or expired" },
+      { error: "Token not found or expired", message: "Get a new token via the edit API endpoint" },
       { status: 404 }
     );
   }
@@ -382,7 +419,7 @@ async function handleEditToken(
 
   if (tokenData.used) {
     return Response.json(
-      { error: "Token already used" },
+      { error: "Token already used", message: "Each edit token can only be used once. Request a new one." },
       { status: 410 }
     );
   }
@@ -496,23 +533,60 @@ mkdir -p "$OUTPUT_BASE"
 export OUTPUT_BASE
 
 # ----------------------------------------------------------------------------
-# Fetch skill via token
+# Fetch skill via token (with retry for transient errors)
 # ----------------------------------------------------------------------------
 
 echo "Fetching skill files for editing..."
 
-# Use -s for silent, but NOT -f so we get the response body on errors
-HTTP_CODE=$(curl -s -w "%{http_code}" -o /tmp/skillport_edit_response.json "$CONNECTOR_URL/api/edit/$TOKEN")
+MAX_RETRIES=3
+RETRY_DELAY=2
+ATTEMPT=1
 
-if [ "$HTTP_CODE" != "200" ]; then
+while [ $ATTEMPT -le $MAX_RETRIES ]; do
+  # Use -s for silent, but NOT -f so we get the response body on errors
+  HTTP_CODE=$(curl -s -w "%{http_code}" -o /tmp/skillport_edit_response.json "$CONNECTOR_URL/api/edit/$TOKEN")
+
+  if [ "$HTTP_CODE" = "200" ]; then
+    break
+  fi
+
+  # Transient errors (5xx) should be retried
+  if [ "$HTTP_CODE" -ge 500 ] && [ $ATTEMPT -lt $MAX_RETRIES ]; then
+    echo -e "\${YELLOW}Server error (HTTP $HTTP_CODE), retrying in \${RETRY_DELAY}s... (attempt $ATTEMPT/$MAX_RETRIES)\${NC}"
+    sleep $RETRY_DELAY
+    RETRY_DELAY=$((RETRY_DELAY * 2))
+    ATTEMPT=$((ATTEMPT + 1))
+    continue
+  fi
+
+  # Non-retryable error or max retries reached
   echo -e "\${RED}Error: Failed to fetch skill (HTTP $HTTP_CODE)\${NC}"
 
-  # Try to parse error message from response
-  ERROR_MSG=$(python3 -c "import json; d=json.load(open('/tmp/skillport_edit_response.json')); print(d.get('error','Unknown error'))" 2>/dev/null) || ERROR_MSG="Unknown error"
-  echo "$ERROR_MSG"
+  # Try to parse error details from JSON response
+  if [ -f /tmp/skillport_edit_response.json ]; then
+    ERROR_MSG=$(python3 -c "
+import json
+try:
+    d = json.load(open('/tmp/skillport_edit_response.json'))
+    error = d.get('error', '')
+    message = d.get('message', '')
+    if error and message:
+        print(f'{error}: {message}')
+    elif error:
+        print(error)
+    else:
+        # Show raw response if no error field
+        print(open('/tmp/skillport_edit_response.json').read()[:200])
+except:
+    # JSON parse failed, show raw response
+    print(open('/tmp/skillport_edit_response.json').read()[:200])
+" 2>/dev/null) || ERROR_MSG="No response body"
+    echo "$ERROR_MSG"
+  fi
+
   rm -f /tmp/skillport_edit_response.json
   exit 1
-fi
+done
 
 # ----------------------------------------------------------------------------
 # Parse and write files

@@ -421,6 +421,9 @@ export class GitHubClient {
           if (pluginDir.type !== "dir") continue;
 
           const groupName = pluginDir.name;
+
+          // Only include published plugins (those in marketplace.json)
+          if (!publishedPlugins.has(groupName)) continue;
           const basePath = `plugins/${groupName}`;
           const skillsDirPath = `${basePath}/skills`;
 
@@ -543,6 +546,14 @@ export class GitHubClient {
 
     const skillMdPath = `plugins/${skill.plugin}/skills/${skill.dirName}/SKILL.md`;
     return this.fetchFile(skillMdPath);
+  }
+
+  /**
+   * Get raw file content from repository
+   * Public wrapper around fetchFile for cases where callers need to read arbitrary files
+   */
+  async getFileContent(path: string): Promise<string> {
+    return this.fetchFile(path);
   }
 
   /**
