@@ -52,6 +52,8 @@ export interface SkillEntry {
   category?: string;
   tags?: string[];
   keywords?: string[];
+  // Whether the skill's plugin is in marketplace.json
+  published: boolean;
 }
 
 /**
@@ -421,9 +423,7 @@ export class GitHubClient {
           if (pluginDir.type !== "dir") continue;
 
           const groupName = pluginDir.name;
-
-          // Only include published plugins (those in marketplace.json)
-          if (!publishedPlugins.has(groupName)) continue;
+          const isPublished = publishedPlugins.has(groupName);
           const basePath = `plugins/${groupName}`;
           const skillsDirPath = `${basePath}/skills`;
 
@@ -478,6 +478,7 @@ export class GitHubClient {
                   category: publishedInfo?.category,
                   tags: publishedInfo?.tags,
                   keywords: publishedInfo?.keywords,
+                  published: isPublished,
                 });
               } catch (e) {
                 // Skip if SKILL.md is missing or invalid

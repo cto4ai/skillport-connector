@@ -248,7 +248,7 @@ try:
     else:
         # Show raw response if no error field
         print(open('/tmp/skillport_response.json').read()[:200])
-except:
+except (json.JSONDecodeError, KeyError, TypeError):
     # JSON parse failed, show raw response
     print(open('/tmp/skillport_response.json').read()[:200])
 " 2>/dev/null) || ERROR_MSG="No response body"
@@ -577,7 +577,7 @@ try:
     else:
         # Show raw response if no error field
         print(open('/tmp/skillport_edit_response.json').read()[:200])
-except:
+except (json.JSONDecodeError, KeyError, TypeError):
     # JSON parse failed, show raw response
     print(open('/tmp/skillport_edit_response.json').read()[:200])
 " 2>/dev/null) || ERROR_MSG="No response body"

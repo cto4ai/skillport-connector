@@ -204,6 +204,7 @@ async function handleListSkills(
         category: s.category,
         tags: s.tags,
         keywords: s.keywords,
+        published: s.published,
         editable: accessControl.canWrite(s.plugin),
       })),
     });
@@ -262,6 +263,7 @@ async function handleGetSkill(
         category: skill.category,
         tags: skill.tags,
         keywords: skill.keywords,
+        published: skill.published,
       },
       skill_md: skillMd,
       files,
@@ -612,12 +614,29 @@ async function handleSaveSkill(
       const groupPath = `plugins/${groupName}`;
       const pluginJsonPath = `${groupPath}/.claude-plugin/plugin.json`;
 
+      // Try to fetch existing plugin.json
+      let existingContent: string | null = null;
       try {
-        // Fetch existing plugin.json
-        const existingContent = await github.getFileContent(pluginJsonPath);
-        const existingManifest = JSON.parse(existingContent);
+        existingContent = await github.getFileContent(pluginJsonPath);
+      } catch (error) {
+        // File doesn't exist - will create below
+        console.log(`[save_skill] plugin.json not found for ${groupName}, will create`);
+      }
 
-        // Merge provided fields
+      if (existingContent) {
+        // Parse and merge with existing manifest
+        let existingManifest: Record<string, unknown>;
+        try {
+          existingManifest = JSON.parse(existingContent);
+        } catch (parseError) {
+          console.error(`[save_skill] Invalid JSON in ${pluginJsonPath}:`, parseError);
+          return errorResponse(
+            "Invalid plugin.json",
+            `The existing plugin.json for ${groupName} contains invalid JSON`,
+            400
+          );
+        }
+
         const updatedManifest = {
           ...existingManifest,
           description: plugin_metadata.description,
@@ -626,31 +645,29 @@ async function handleSaveSkill(
           ...(plugin_metadata.license && { license: plugin_metadata.license }),
         };
 
+        logAction(user.email, "update_plugin_metadata", { plugin: groupName });
         await writeClient.upsertFile(
           pluginJsonPath,
           JSON.stringify(updatedManifest, null, 2),
           `Update ${groupName} plugin metadata\n\nRequested by: ${user.email}`
         );
-      } catch (error) {
-        // If plugin.json doesn't exist for some reason, create it
-        if (error instanceof Error && error.message.includes("not found")) {
-          const manifest = {
-            name: groupName,
-            version: "1.0.0",
-            description: plugin_metadata.description,
-            author: plugin_metadata.author || { name: user.name, email: user.email },
-            license: plugin_metadata.license || "MIT",
-            keywords: plugin_metadata.keywords || [],
-          };
+      } else {
+        // Create new plugin.json
+        const manifest = {
+          name: groupName,
+          version: "1.0.0",
+          description: plugin_metadata.description,
+          author: plugin_metadata.author || { name: user.name, email: user.email },
+          license: plugin_metadata.license || "MIT",
+          keywords: plugin_metadata.keywords || [],
+        };
 
-          await writeClient.createFile(
-            pluginJsonPath,
-            JSON.stringify(manifest, null, 2),
-            `Create ${groupName} plugin metadata\n\nRequested by: ${user.email}`
-          );
-        } else {
-          throw error;
-        }
+        logAction(user.email, "create_plugin_metadata", { plugin: groupName });
+        await writeClient.createFile(
+          pluginJsonPath,
+          JSON.stringify(manifest, null, 2),
+          `Create ${groupName} plugin metadata\n\nRequested by: ${user.email}`
+        );
       }
     }
 
