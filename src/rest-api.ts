@@ -204,6 +204,7 @@ async function handleListSkills(
         category: s.category,
         tags: s.tags,
         keywords: s.keywords,
+        published: s.published,
         editable: accessControl.canWrite(s.plugin),
       })),
     });
@@ -262,6 +263,7 @@ async function handleGetSkill(
         category: skill.category,
         tags: skill.tags,
         keywords: skill.keywords,
+        published: skill.published,
       },
       skill_md: skillMd,
       files,
@@ -435,10 +437,16 @@ async function handleSaveSkill(
     skill_group?: string;
     files: Array<{ path: string; content: string }>;
     commitMessage?: string;
+    plugin_metadata?: {
+      description: string;
+      keywords?: string[];
+      author?: { name?: string; email?: string };
+      license?: string;
+    };
   }
 ): Promise<Response> {
   try {
-    const { skill_group, files, commitMessage } = body;
+    const { skill_group, files, commitMessage, plugin_metadata } = body;
 
     if (!files || !Array.isArray(files) || files.length === 0) {
       return errorResponse(
@@ -478,6 +486,15 @@ async function handleSaveSkill(
       );
       if (!groupExists) {
         isNewGroup = true;
+
+        // Require plugin_metadata with description for new plugins
+        if (!plugin_metadata?.description) {
+          return errorResponse(
+            "Missing plugin metadata",
+            "New plugins require plugin_metadata with a description field",
+            400
+          );
+        }
       }
     }
 
@@ -573,18 +590,16 @@ async function handleSaveSkill(
       }
     }
 
-    // Create group if needed
-    if (isNewGroup) {
+    // Create group if needed (plugin_metadata.description already validated above)
+    if (isNewGroup && plugin_metadata) {
       const groupPath = `plugins/${groupName}`;
       const manifest = {
         name: groupName,
         version: "1.0.0",
-        description: skill_group
-          ? `Skill group: ${groupName}`
-          : `Skill: ${skillName}`,
-        author: { name: user.name, email: user.email },
-        license: "MIT",
-        keywords: [],
+        description: plugin_metadata.description,
+        author: plugin_metadata.author || { name: user.name, email: user.email },
+        license: plugin_metadata.license || "MIT",
+        keywords: plugin_metadata.keywords || [],
       };
 
       await writeClient.createFile(
@@ -592,6 +607,68 @@ async function handleSaveSkill(
         JSON.stringify(manifest, null, 2),
         `Create ${groupName} skill group\n\nRequested by: ${user.email}`
       );
+    }
+
+    // Update existing plugin.json if plugin_metadata provided for existing group
+    if (!isNewGroup && plugin_metadata) {
+      const groupPath = `plugins/${groupName}`;
+      const pluginJsonPath = `${groupPath}/.claude-plugin/plugin.json`;
+
+      // Try to fetch existing plugin.json
+      let existingContent: string | null = null;
+      try {
+        existingContent = await github.getFileContent(pluginJsonPath);
+      } catch (error) {
+        // File doesn't exist - will create below
+        console.log(`[save_skill] plugin.json not found for ${groupName}, will create`);
+      }
+
+      if (existingContent) {
+        // Parse and merge with existing manifest
+        let existingManifest: Record<string, unknown>;
+        try {
+          existingManifest = JSON.parse(existingContent);
+        } catch (parseError) {
+          console.error(`[save_skill] Invalid JSON in ${pluginJsonPath}:`, parseError);
+          return errorResponse(
+            "Invalid plugin.json",
+            `The existing plugin.json for ${groupName} contains invalid JSON`,
+            400
+          );
+        }
+
+        const updatedManifest = {
+          ...existingManifest,
+          description: plugin_metadata.description,
+          ...(plugin_metadata.keywords && { keywords: plugin_metadata.keywords }),
+          ...(plugin_metadata.author && { author: plugin_metadata.author }),
+          ...(plugin_metadata.license && { license: plugin_metadata.license }),
+        };
+
+        logAction(user.email, "update_plugin_metadata", { plugin: groupName });
+        await writeClient.upsertFile(
+          pluginJsonPath,
+          JSON.stringify(updatedManifest, null, 2),
+          `Update ${groupName} plugin metadata\n\nRequested by: ${user.email}`
+        );
+      } else {
+        // Create new plugin.json
+        const manifest = {
+          name: groupName,
+          version: "1.0.0",
+          description: plugin_metadata.description,
+          author: plugin_metadata.author || { name: user.name, email: user.email },
+          license: plugin_metadata.license || "MIT",
+          keywords: plugin_metadata.keywords || [],
+        };
+
+        logAction(user.email, "create_plugin_metadata", { plugin: groupName });
+        await writeClient.createFile(
+          pluginJsonPath,
+          JSON.stringify(manifest, null, 2),
+          `Create ${groupName} plugin metadata\n\nRequested by: ${user.email}`
+        );
+      }
     }
 
     const results: Array<{

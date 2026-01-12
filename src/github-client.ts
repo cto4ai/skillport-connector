@@ -52,6 +52,8 @@ export interface SkillEntry {
   category?: string;
   tags?: string[];
   keywords?: string[];
+  // Whether the skill's plugin is in marketplace.json
+  published: boolean;
 }
 
 /**
@@ -421,6 +423,7 @@ export class GitHubClient {
           if (pluginDir.type !== "dir") continue;
 
           const groupName = pluginDir.name;
+          const isPublished = publishedPlugins.has(groupName);
           const basePath = `plugins/${groupName}`;
           const skillsDirPath = `${basePath}/skills`;
 
@@ -475,6 +478,7 @@ export class GitHubClient {
                   category: publishedInfo?.category,
                   tags: publishedInfo?.tags,
                   keywords: publishedInfo?.keywords,
+                  published: isPublished,
                 });
               } catch (e) {
                 // Skip if SKILL.md is missing or invalid
@@ -543,6 +547,14 @@ export class GitHubClient {
 
     const skillMdPath = `plugins/${skill.plugin}/skills/${skill.dirName}/SKILL.md`;
     return this.fetchFile(skillMdPath);
+  }
+
+  /**
+   * Get raw file content from repository
+   * Public wrapper around fetchFile for cases where callers need to read arbitrary files
+   */
+  async getFileContent(path: string): Promise<string> {
+    return this.fetchFile(path);
   }
 
   /**
