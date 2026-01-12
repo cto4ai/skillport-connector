@@ -129,6 +129,8 @@ See `/docs/reference/` for detailed documentation:
 
 ## Git Workflow
 
+- **Branching model**: `main` is a subset of `development`. All dev work happens in feature branches based on `development`, and PRs merge back to `development`.
 - Use conventional commits
-- Use branch/PR process for code changes
+- Create branches from `development` (not `main`)
+- PRs target `development` branch
 - Direct commits to main are ok for documentation-only changes
