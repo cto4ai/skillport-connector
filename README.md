@@ -130,8 +130,9 @@ Clone, configure, deploy. Your infrastructure, your control.
 Use the [Skillport Marketplace template](https://github.com/cto4ai/skillport-marketplace):
 
 1. Click "Use this template" on GitHub
-2. Add your Skills in `plugins/your-group/skills/`
-3. The repository is ready
+2. Update `.claude-plugin/marketplace.json` with your marketplace name and owner info
+3. Add your Skills in `plugins/your-group/skills/`
+4. The repository is ready
 
 ### 2. Deploy Your Connector
 
