@@ -185,10 +185,20 @@ app.get("/callback", async (c) => {
 
   const user = (await userResponse.json()) as GoogleUserInfo;
 
-  // Optional: Verify user is from allowed domain
-  // Uncomment and set your domain to restrict access
-  if (user.hd !== "craftycto.com") {
-    return c.text("Unauthorized domain", 403);
+  // Optional: Restrict to specific Google Workspace domains
+  // Set GOOGLE_ALLOWED_DOMAINS env var to comma-separated list (e.g., "acme.com,acme.io")
+  // If not set, all authenticated Google users are allowed
+  const allowedDomains = c.env.GOOGLE_ALLOWED_DOMAINS;
+  if (allowedDomains) {
+    const domains = allowedDomains.split(",").map((d) => d.trim().toLowerCase());
+    const userDomain = user.hd?.toLowerCase();
+    if (!userDomain || !domains.includes(userDomain)) {
+      const domainList = domains.join(", ");
+      return c.text(
+        `Access restricted to these Google Workspace domains: ${domainList}`,
+        403
+      );
+    }
   }
 
   // Complete the OAuth flow

@@ -2,16 +2,19 @@
 GOOGLE_CLIENT_ID=your-client-id.apps.googleusercontent.com
 GOOGLE_CLIENT_SECRET=your-client-secret
 
+# Optional: Restrict to specific Google Workspace domains (comma-separated)
+# If not set, all authenticated Google users are allowed
+# GOOGLE_ALLOWED_DOMAINS=your-domain.com
+
 # GitHub Personal Access Token for READ operations
 # Create at: https://github.com/settings/tokens
 # Scopes needed: repo (for private) or public_repo (for public)
 GITHUB_SERVICE_TOKEN=ghp_your_read_token_here
 
 # GitHub Personal Access Token for WRITE operations (optional)
-# Only needed if you want to use editor tools (update_skill, bump_version, create_plugin)
+# Only needed if you want to use editor tools (save_skill, bump_version, publish_skill)
 # Scopes needed: repo (or contents:write for fine-grained tokens)
 GITHUB_WRITE_TOKEN=ghp_your_write_token_here
 
-# Session encryption key (generate 32+ random characters)
-# Example: openssl rand -hex 32
-COOKIE_ENCRYPTION_KEY=generate-a-random-32-char-string-here
+# Your deployed connector URL (for local dev, use localhost)
+CONNECTOR_URL=http://localhost:8787

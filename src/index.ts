@@ -36,9 +36,10 @@ const combinedMcpHandler = {
 };
 
 // Create the OAuth provider with both transports
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
 const oauthProvider = new OAuthProvider({
   apiRoute: ["/mcp", "/sse", "/sse/message"],
-  apiHandler: combinedMcpHandler,
+  apiHandler: combinedMcpHandler as any,
   defaultHandler: googleHandler,
   authorizeEndpoint: "/authorize",
   tokenEndpoint: "/token",
