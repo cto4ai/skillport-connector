@@ -2,12 +2,13 @@ interface Env {
   // KV namespace for OAuth tokens and cache
   OAUTH_KV: KVNamespace;
 
-  // KV namespace for API keys (authless mode)
-  API_KEYS: KVNamespace;
-
   // Google OAuth credentials
   GOOGLE_CLIENT_ID: string;
   GOOGLE_CLIENT_SECRET: string;
+
+  // Optional: Restrict to specific Google Workspace domains (comma-separated)
+  // If not set, all authenticated Google users are allowed
+  GOOGLE_ALLOWED_DOMAINS?: string;
 
   // GitHub service token for API access (read-only)
   GITHUB_SERVICE_TOKEN: string;
@@ -18,9 +19,6 @@ interface Env {
   // Marketplace repository (e.g., "your-org/your-marketplace")
   MARKETPLACE_REPO: string;
 
-  // Cookie encryption key (32+ characters)
-  COOKIE_ENCRYPTION_KEY: string;
-
-  // Optional: Override connector URL for install script (defaults to production URL)
+  // Your deployed connector URL (required for install script generation)
   CONNECTOR_URL?: string;
 }
