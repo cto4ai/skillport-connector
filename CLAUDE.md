@@ -71,14 +71,13 @@ The connector exposes these MCP tools:
 cp wrangler.toml.example wrangler.toml
 ```
 
-### 2. Create KV namespaces
+### 2. Create KV namespace
 
 ```bash
 npx wrangler kv namespace create OAUTH_KV
-npx wrangler kv namespace create API_KEYS
 ```
 
-Update `wrangler.toml` with the namespace IDs from the output.
+Update `wrangler.toml` with the namespace ID from the output.
 
 ### 3. Configure your marketplace
 
@@ -94,7 +93,6 @@ MARKETPLACE_REPO = "your-org/your-marketplace"
 npx wrangler secret put GOOGLE_CLIENT_ID
 npx wrangler secret put GOOGLE_CLIENT_SECRET
 npx wrangler secret put GITHUB_SERVICE_TOKEN
-npx wrangler secret put COOKIE_ENCRYPTION_KEY
 ```
 
 ## Development

@@ -4,19 +4,21 @@ compatibility_date = "2024-12-01"
 compatibility_flags = ["nodejs_compat"]
 
 [vars]
-# Configure your marketplace repo here (required)
+# Your marketplace repository (required)
 MARKETPLACE_REPO = "your-org/your-marketplace"
 
-# KV namespaces - create with wrangler and update IDs
-# wrangler kv namespace create OAUTH_KV
-# wrangler kv namespace create API_KEYS
+# Your deployed connector URL (required for install script generation)
+CONNECTOR_URL = "https://your-connector.your-domain.workers.dev"
+
+# Optional: Restrict to specific Google Workspace domains (comma-separated)
+# If not set, all authenticated Google users are allowed
+# GOOGLE_ALLOWED_DOMAINS = "your-domain.com"
+
+# KV namespace - create with wrangler and update ID
+# npx wrangler kv namespace create OAUTH_KV
 [[kv_namespaces]]
 binding = "OAUTH_KV"
 id = "YOUR_OAUTH_KV_NAMESPACE_ID"
-
-[[kv_namespaces]]
-binding = "API_KEYS"
-id = "YOUR_API_KEYS_NAMESPACE_ID"
 
 # Durable Object for MCP server
 [[durable_objects.bindings]]
@@ -27,8 +29,7 @@ class_name = "SkillportMCP"
 tag = "v1"
 new_sqlite_classes = ["SkillportMCP"]
 
-# Secrets (set via `wrangler secret put`)
-# GOOGLE_CLIENT_ID        - Google OAuth client ID (set in vars for convenience)
-# GOOGLE_CLIENT_SECRET    - Google OAuth client secret
-# GITHUB_SERVICE_TOKEN    - PAT for GitHub API access
-# COOKIE_ENCRYPTION_KEY   - 32+ char random string for session encryption
+# Secrets (set via `npx wrangler secret put <NAME>`)
+# GOOGLE_CLIENT_ID      - Google OAuth client ID
+# GOOGLE_CLIENT_SECRET  - Google OAuth client secret
+# GITHUB_SERVICE_TOKEN  - GitHub PAT for reading marketplace repo

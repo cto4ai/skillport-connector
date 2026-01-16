@@ -283,7 +283,6 @@ wrangler secret put GOOGLE_CLIENT_ID
 wrangler secret put GOOGLE_CLIENT_SECRET
 wrangler secret put GITHUB_SERVICE_TOKEN      # Read-only token
 wrangler secret put GITHUB_WRITE_TOKEN        # Write token (for editors)
-wrangler secret put COOKIE_ENCRYPTION_KEY
 ```
 
 ## Testing

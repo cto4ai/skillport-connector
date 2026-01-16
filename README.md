@@ -160,6 +160,127 @@ npm run deploy
 
 ---
 
+## Deploy Your Own Connector
+
+Complete step-by-step guide to deploying Skillport Connector for your organization.
+
+### Prerequisites
+
+- **Cloudflare account** (free tier works)
+- **Google Cloud Console** access (for OAuth credentials)
+- **GitHub** account with access to your marketplace repository
+- **Node.js v20+** installed locally
+
+### Step 1: Clone and Configure
+
+```bash
+git clone https://github.com/cto4ai/skillport-connector
+cd skillport-connector
+npm install
+
+# Copy configuration templates
+cp wrangler.toml.example wrangler.toml
+cp .dev.vars.example .dev.vars
+```
+
+### Step 2: Create Cloudflare KV Namespace
+
+```bash
+npx wrangler kv namespace create OAUTH_KV
+```
+
+Copy the namespace ID from the output and update `wrangler.toml`:
+
+```toml
+[[kv_namespaces]]
+binding = "OAUTH_KV"
+id = "YOUR_ID_FROM_OUTPUT"
+```
+
+### Step 3: Configure Google OAuth
+
+1. Go to [Google Cloud Console](https://console.cloud.google.com/)
+2. Create a new project (or select existing)
+3. Enable the **Google+ API** (or "Google People API")
+4. Go to **Credentials** → **Create Credentials** → **OAuth client ID**
+5. Select **Web application**
+6. Add authorized redirect URI: `https://your-connector.your-domain.workers.dev/callback`
+7. Copy the **Client ID** and **Client Secret**
+
+### Step 4: Create GitHub Token
+
+1. Go to [GitHub Settings → Developer settings → Personal access tokens](https://github.com/settings/tokens)
+2. Create a **Fine-grained token** or **Classic token**
+3. For read-only access: `repo` scope (private repos) or `public_repo` (public repos)
+4. For editor features: `repo` scope with write access
+
+### Step 5: Update Configuration
+
+Edit `wrangler.toml`:
+
+```toml
+[vars]
+MARKETPLACE_REPO = "your-org/your-marketplace"
+CONNECTOR_URL = "https://your-connector.your-domain.workers.dev"
+# GOOGLE_ALLOWED_DOMAINS = "your-domain.com"  # Optional: restrict access
+```
+
+### Step 6: Set Secrets
+
+```bash
+npx wrangler secret put GOOGLE_CLIENT_ID
+# Paste your Google OAuth client ID
+
+npx wrangler secret put GOOGLE_CLIENT_SECRET
+# Paste your Google OAuth client secret
+
+npx wrangler secret put GITHUB_SERVICE_TOKEN
+# Paste your GitHub token
+```
+
+**Optional:** To restrict access to specific Google Workspace domains:
+```bash
+npx wrangler secret put GOOGLE_ALLOWED_DOMAINS
+# Enter comma-separated domains: acme.com,acme.io
+```
+
+### Step 7: Deploy
+
+```bash
+npm run deploy
+```
+
+Your connector is now live at your Workers URL.
+
+### Step 8: Add to Claude
+
+1. Open Claude.ai → Settings → Connectors
+2. Click "Add Connector"
+3. Enter your connector URL
+4. Complete Google OAuth authentication
+5. Test with: *"What skills are available?"*
+
+### Troubleshooting
+
+**"Unauthorized domain" error**
+- Check `GOOGLE_ALLOWED_DOMAINS` matches your Google Workspace domain
+- Users with personal Gmail accounts won't have a domain (`hd` field)
+
+**OAuth redirect errors**
+- Verify the redirect URI in Google Cloud Console matches exactly
+- Include the `/callback` path
+
+**GitHub API errors**
+- Verify your `GITHUB_SERVICE_TOKEN` has access to the marketplace repo
+- For private repos, ensure the `repo` scope is included
+
+**View logs**
+```bash
+npx wrangler tail
+```
+
+---
+
 ## Architecture
 
 ```
