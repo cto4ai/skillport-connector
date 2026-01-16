@@ -45,7 +45,7 @@ Build an MCP connector on Cloudflare Workers that:
 |----------|--------|-----------|
 | User Auth | Google Workspace OAuth | Users have corporate accounts, no GitHub seats needed |
 | GitHub Access | Service token (PAT) | Single token for all users, stored as secret |
-| Hosting | Cloudflare Workers | Free tier, KV storage, official MCP templates |
+| Hosting | Cloudflare Workers | $5/mo paid plan, KV storage, official MCP templates |
 | Base Template | `remote-mcp-github-oauth` | Proven OAuth + MCP infrastructure |
 
 ## Implementation Phases

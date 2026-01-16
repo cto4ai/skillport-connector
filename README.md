@@ -119,7 +119,7 @@ Skillport is fully open source under the MIT license:
 | [skillport-connector](https://github.com/cto4ai/skillport-connector) | Claude Connector (deploy your own) |
 | [skillport-marketplace](https://github.com/cto4ai/skillport-marketplace) | GitHub Template for your Skills repository |
 
-Fork, configure, deploy. Your infrastructure, your control.
+Clone, configure, deploy. Your infrastructure, your control.
 
 ---
 
@@ -142,14 +142,15 @@ git clone https://github.com/cto4ai/skillport-connector
 cd skillport-connector
 npm install
 
-# Configure before deploying:
-# - Google OAuth credentials (or Microsoft Entra when available)
+# Configure before deploying (see full setup guide below):
+# - wrangler.toml with your marketplace repo
+# - Google OAuth credentials
 # - GitHub token for repository access
-# - Your marketplace repository URL
-# See the full setup guide in the repository
 
 npm run deploy
 ```
+
+Your configuration lives in untracked files (`wrangler.toml`, `.dev.vars`) and Cloudflare secrets—updates are just `git pull && npm install && npm run deploy`.
 
 ### 3. Connect Users
 
@@ -166,7 +167,7 @@ Complete step-by-step guide to deploying Skillport Connector for your organizati
 
 ### Prerequisites
 
-- **Cloudflare account** (free tier works)
+- **Cloudflare account** ($5/mo Workers Paid plan recommended)
 - **Google Cloud Console** access (for OAuth credentials)
 - **GitHub** account with access to your marketplace repository
 - **Node.js v20+** installed locally
@@ -182,6 +183,8 @@ npm install
 cp wrangler.toml.example wrangler.toml
 cp .dev.vars.example .dev.vars
 ```
+
+> **Note:** Clone directly for easiest updates (`git pull`). Your config lives in untracked files and secrets. Fork only if you need to modify the connector code itself.
 
 ### Step 2: Create Cloudflare KV Namespace
 
@@ -319,12 +322,12 @@ Claude Code users can access public repositories directly via Plugin Marketplace
 
 ## Costs
 
-Skillport runs on Cloudflare's free or $5/mo tier for most organizations:
+Skillport runs on Cloudflare's $5/mo Workers Paid plan. The free tier exists but causes intermittent errors with Durable Objects.
 
-| Resource | Free Limit | Typical Usage |
-|----------|------------|---------------|
-| Requests | 100,000/day | ~1,000/day for 50-person team |
-| KV Storage | 1GB | Minimal (OAuth tokens) |
+| Resource | Paid Plan Limit | Typical Usage |
+|----------|-----------------|---------------|
+| Requests | 10M/mo | ~30,000/mo for 50-person team |
+| KV Storage | 1GB included | Minimal (OAuth tokens) |
 
 Your primary investment is time: writing good Skills and helping your team discover them.
 
