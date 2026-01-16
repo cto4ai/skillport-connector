@@ -141,9 +141,14 @@ app.get("/callback", async (c) => {
     return c.text("OAuth session expired", 400);
   }
 
-  const { oauthReqInfo } = JSON.parse(storedData) as {
-    oauthReqInfo: AuthRequest;
-  };
+  let oauthReqInfo: AuthRequest;
+  try {
+    const parsed = JSON.parse(storedData) as { oauthReqInfo: AuthRequest };
+    oauthReqInfo = parsed.oauthReqInfo;
+  } catch (e) {
+    console.error("[AUDIT] Failed to parse stored OAuth state:", e);
+    return c.text("Invalid OAuth session data", 400);
+  }
 
   // Clean up state from KV
   await c.env.OAUTH_KV.delete(`oauth_state:${state}`);
@@ -180,6 +185,8 @@ app.get("/callback", async (c) => {
   });
 
   if (!userResponse.ok) {
+    const errorText = await userResponse.text();
+    console.error("[AUDIT] Failed to fetch user info:", userResponse.status, errorText);
     return c.text("Failed to fetch user info", 500);
   }
 
@@ -190,10 +197,11 @@ app.get("/callback", async (c) => {
   // If not set, all authenticated Google users are allowed
   const allowedDomains = c.env.GOOGLE_ALLOWED_DOMAINS;
   if (allowedDomains) {
-    const domains = allowedDomains.split(",").map((d) => d.trim().toLowerCase());
+    const domains = allowedDomains.split(",").map((d) => d.trim().toLowerCase()).filter((d) => d);
     const userDomain = user.hd?.toLowerCase();
     if (!userDomain || !domains.includes(userDomain)) {
       const domainList = domains.join(", ");
+      console.warn(`[AUDIT] Domain rejected: user=${user.email} domain=${user.hd || "none"} allowed=${domainList}`);
       return c.text(
         `Access restricted to these Google Workspace domains: ${domainList}`,
         403
@@ -202,24 +210,30 @@ app.get("/callback", async (c) => {
   }
 
   // Complete the OAuth flow
-  const { redirectTo } = await c.env.OAUTH_PROVIDER.completeAuthorization({
-    request: oauthReqInfo,
-    userId: user.id,
-    metadata: {
-      label: user.name || user.email,
-    },
-    scope: oauthReqInfo.scope,
-    props: {
-      uid: user.id, // Stable unique identifier from IdP
-      provider: "google", // For constructing full id
-      email: user.email, // For display only
-      name: user.name,
-      picture: user.picture,
-      domain: user.hd,
-    },
-  });
+  try {
+    const { redirectTo } = await c.env.OAUTH_PROVIDER.completeAuthorization({
+      request: oauthReqInfo,
+      userId: user.id,
+      metadata: {
+        label: user.name || user.email,
+      },
+      scope: oauthReqInfo.scope,
+      props: {
+        uid: user.id, // Stable unique identifier from IdP
+        provider: "google", // For constructing full id
+        email: user.email, // For display only
+        name: user.name,
+        picture: user.picture,
+        domain: user.hd,
+      },
+    });
 
-  return c.redirect(redirectTo);
+    console.log(`[AUDIT] OAuth completed: user=${user.email} domain=${user.hd || "none"}`);
+    return c.redirect(redirectTo);
+  } catch (e) {
+    console.error("[AUDIT] OAuth completion failed:", e);
+    return c.text("Failed to complete authorization", 500);
+  }
 });
 
 // Export as ExportedHandler for compatibility with OAuthProvider
