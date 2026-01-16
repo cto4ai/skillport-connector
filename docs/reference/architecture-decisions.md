@@ -82,7 +82,7 @@ This document captures the key architectural decisions made during the design of
 **Decision:** Cloudflare Workers.
 
 **Rationale:**
-- Generous free tier (100K requests/day)
+- Low cost ($5/mo paid plan; free tier has intermittent Durable Objects errors)
 - Built-in KV storage for OAuth tokens
 - Official Cloudflare MCP templates with OAuth support
 - Global edge deployment
@@ -91,7 +91,7 @@ This document captures the key architectural decisions made during the design of
 **Consequences:**
 - Must use Cloudflare's tooling (Wrangler)
 - Some Cloudflare-specific patterns in code
-- Free tier sufficient for org use
+- $5/mo minimum recommended for production reliability
 
 ## Decision 5: Skill-Centric User Experience
 

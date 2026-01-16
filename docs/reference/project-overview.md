@@ -109,7 +109,7 @@ The connector uses Google OAuth to authenticate users:
 ### Cloudflare for Hosting
 
 Cloudflare Workers provides:
-- Generous free tier (100K requests/day)
+- $5/mo paid plan (free tier has intermittent Durable Objects errors)
 - Built-in KV storage for tokens
 - Global edge deployment
 - Simple deployment
@@ -127,7 +127,7 @@ Create skills in `plugins/<group>/skills/<skill>/SKILL.md`.
 ### 3. Deploy Connector (for Claude.ai/Desktop access)
 
 ```bash
-git clone https://github.com/your-org/skillport-connector
+git clone https://github.com/cto4ai/skillport-connector
 cd skillport-connector
 npm install
 # Configure wrangler.toml with your marketplace repo
