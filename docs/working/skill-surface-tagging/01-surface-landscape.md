@@ -4,11 +4,21 @@
 
 ## Problem Statement
 
-Skills need to indicate which Claude surfaces they're compatible with. The official Plugin Marketplace spec supports `tags` (array) which we can use with a namespaced convention like `surface:claude-code`.
+Skills need to indicate which Claude surfaces they're compatible with. The official Plugin Marketplace spec supports `tags` (array) which we can use with a namespaced convention like `surface:CC`.
+
+## Surface Tags Reference
+
+| Tag | Full Name | Description |
+|-----|-----------|-------------|
+| CC | Claude Code | CLI terminal experience |
+| CD | Claude Desktop | Desktop app |
+| CAI | Claude.ai | Web interface |
+| CDAI | Claude Desktop + Claude.ai | Both chat surfaces (shared UI) |
+| CALL | All Surfaces | Works everywhere |
 
 ## Claude Surfaces
 
-### Claude Code CLI
+### CC - Claude Code (CLI)
 
 - **Environment:** Terminal/command line
 - **File access:** Full local filesystem
@@ -16,15 +26,16 @@ Skills need to indicate which Claude surfaces they're compatible with. The offic
 - **Plugins:** Full Plugin Marketplace support (commands, agents, hooks, MCP servers, LSP servers)
 - **Skills:** Full SKILL.md support with scripts/, references/, assets/
 
-### Claude Code on the Web
+### Claude Code on the Web (TBD)
 
 - **Environment:** Browser-based Claude Code experience
 - **File access:** TBD - likely sandboxed or cloud-based
 - **MCP:** TBD
 - **Plugins:** TBD - may be subset of CLI capabilities
 - **Skills:** TBD
+- **Tag:** TBD - may need CCW or similar
 
-### Claude.ai (Web)
+### CAI - Claude.ai (Web)
 
 - **Environment:** Browser at claude.ai
 - **File access:** None (upload only)
@@ -33,7 +44,7 @@ Skills need to indicate which Claude surfaces they're compatible with. The offic
 - **Skills:** Manual installation via Settings, or via MCP connector
 - **UI:** Chat-focused, artifact support
 
-### Claude Desktop
+### CD - Claude Desktop
 
 - **Environment:** Native desktop app
 - **File access:** Limited, via MCP
@@ -43,33 +54,32 @@ Skills need to indicate which Claude surfaces they're compatible with. The offic
 - **UI:** Nearly identical to Claude.ai
 - **Special features:**
   - **Cowork:** New collaborative feature - unclear how it relates to Skills/Plugins
-  - **Code tab:** New feature - may be more like CC CLI or CC Web (needs research)
+  - **Code tab:** New feature - may be more like CC or Claude Code Web (needs research)
 
 ## Key Differences
 
-| Surface | Filesystem | MCP | Plugin Marketplace | Skills Install |
-|---------|------------|-----|-------------------|----------------|
-| CC CLI | Full | Native | Full | `/plugin` command |
-| CC Web | TBD | TBD | TBD | TBD |
-| Claude.ai | None | Connectors | None | Manual / Connector |
-| Claude Desktop | Via MCP | Local servers | None | Manual |
+| Tag | Full Name | Filesystem | MCP | Plugin Marketplace | Skills Install |
+|-----|-----------|------------|-----|-------------------|----------------|
+| CC | Claude Code | Full | Native | Full | `/plugin` command |
+| CD | Claude Desktop | Via MCP | Local servers | None | Manual |
+| CAI | Claude.ai | None | Connectors | None | Manual / Connector |
 
 ## Implications for Tagging
 
-1. **Multi-surface skills are common** - Many skills work across Claude.ai and Desktop (same UI)
-2. **CC CLI is unique** - Has capabilities others don't (hooks, commands, LSP)
-3. **MCP availability varies** - Affects which skills with tool dependencies work where
-4. **Desktop has emerging features** - Cowork, Code tab may need their own surface tags
+1. **CDAI covers most skills** - Many skills work across Claude.ai and Desktop (same UI)
+2. **CC is unique** - Has capabilities others don't (hooks, commands, LSP, full filesystem)
+3. **MCP availability varies** - CD has local MCP, CAI has connectors only
+4. **Desktop has emerging features** - Cowork, Code tab may need their own tags
 
 ## Open Questions
 
-- [ ] How does Claude Desktop's Code tab relate to Claude Code?
+- [ ] How does Claude Desktop's Code tab relate to CC?
 - [ ] Does Cowork need its own surface tag?
-- [ ] What capabilities does Claude Code Web have vs CLI?
-- [ ] Should we tag by capability (`mcp-required`) or by surface (`surface:claude-desktop`)?
+- [ ] What capabilities does Claude Code Web have vs CC?
+- [ ] Default behavior when no surface tag present?
 
 ## Next Steps
 
 1. Research Claude Desktop Code tab capabilities
-2. Define tagging convention
-3. Determine default behavior (no tag = all surfaces? or explicit only?)
+2. Research Claude Code Web capabilities
+3. Determine default behavior (no tag = CALL? or explicit only?)

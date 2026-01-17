@@ -4,56 +4,52 @@
 
 ## Proposed Convention
 
-Use namespaced tags in the `tags` array field (official Plugin Marketplace spec):
+Use namespaced tags in the `tags` array field (official Plugin Marketplace spec).
+
+**Most skills need only a single surface tag.**
 
 ```json
 {
   "name": "my-skill",
-  "tags": ["surface:claude-code-cli", "surface:claude-desktop"]
+  "tags": ["surface:CALL"]
 }
 ```
 
-## Proposed Surface Tags
+## Surface Tags
 
-| Tag | Description |
-|-----|-------------|
-| `surface:claude-code-cli` | Claude Code in terminal |
-| `surface:claude-code-web` | Claude Code in browser |
-| `surface:claude-ai` | Claude.ai web interface |
-| `surface:claude-desktop` | Claude Desktop app (main chat) |
-| `surface:claude-desktop-cowork` | Claude Desktop Cowork feature (TBD if distinct) |
-| `surface:claude-desktop-code` | Claude Desktop Code tab (TBD - may align with CC CLI or CC Web) |
+| Tag | Full Name | Description |
+|-----|-----------|-------------|
+| `surface:CC` | Claude Code | CLI terminal experience |
+| `surface:CD` | Claude Desktop | Desktop app |
+| `surface:CAI` | Claude.ai | Web interface |
+| `surface:CDAI` | Claude Desktop + Claude.ai | Both chat surfaces (shared UI) |
+| `surface:CALL` | All Surfaces | Works everywhere |
+
+## Usage
+
+**Single tag is the norm:**
+```json
+{"tags": ["surface:CALL"]}     // Works everywhere
+{"tags": ["surface:CC"]}       // Claude Code only (needs filesystem, hooks, etc.)
+{"tags": ["surface:CDAI"]}     // Chat surfaces (Desktop + AI)
+```
+
+**Multiple tags only when needed:**
+```json
+{"tags": ["surface:CC", "surface:CD"]}  // Code + Desktop (has MCP)
+```
 
 ## Surface Characteristics
 
-| Surface | Filesystem | MCP | Plugin Marketplace | Hooks/Commands |
-|---------|------------|-----|-------------------|----------------|
-| `claude-code-cli` | Full | Native | Full | Yes |
-| `claude-code-web` | TBD | TBD | TBD | TBD |
-| `claude-ai` | None | Connectors only | None | No |
-| `claude-desktop` | Via MCP | Local servers | None | No |
-| `claude-desktop-cowork` | TBD | TBD | TBD | TBD |
-| `claude-desktop-code` | TBD | TBD | TBD | TBD |
-
-## Natural Groupings
-
-Some surfaces share UI or capabilities:
-
-**Chat-style UI (similar skill experience):**
-- `claude-ai` + `claude-desktop`
-
-**Code-focused (may share capabilities):**
-- `claude-code-cli` + `claude-code-web` + `claude-desktop-code` (TBD)
+| Tag | Full Name | Filesystem | MCP | Plugin Marketplace | Hooks/Commands |
+|-----|-----------|------------|-----|-------------------|----------------|
+| CC | Claude Code | Full | Native | Full | Yes |
+| CD | Claude Desktop | Via MCP | Local servers | None | No |
+| CAI | Claude.ai | None | Connectors only | None | No |
 
 ## Open Questions
 
-1. Does `claude-desktop-code` behave like `claude-code-cli` or `claude-code-web`?
-2. Is `claude-desktop-cowork` a distinct surface or just a mode?
-3. Should we have group tags like `surface:chat` or `surface:code`?
+1. Does Claude Desktop Code tab need its own tag?
+2. Does Cowork need its own tag?
+3. What about Claude Code Web?
 4. Default behavior when no surface tag present?
-
-## Decision Needed
-
-1. Research Desktop Code tab and Cowork capabilities
-2. Finalize tag list
-3. Define default behavior
