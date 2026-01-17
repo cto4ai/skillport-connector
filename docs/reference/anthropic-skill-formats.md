@@ -116,6 +116,34 @@ marketplace-repo/
 
 ### plugin.json Format
 
+The per-plugin manifest defines the plugin's identity and configuration.
+
+**Required fields:**
+| Field | Type | Description |
+|-------|------|-------------|
+| `name` | string | Plugin identifier (kebab-case) |
+| `description` | string | Brief plugin description |
+| `version` | string | Semantic version (e.g., "1.0.0") |
+
+**Optional metadata fields:**
+| Field | Type | Description |
+|-------|------|-------------|
+| `author` | object | `{name: string, email?: string}` |
+| `homepage` | string | Documentation URL |
+| `repository` | string | Source code repository URL |
+| `license` | string | SPDX license identifier (e.g., MIT) |
+| `keywords` | array | Tags for discovery |
+
+**Component configuration fields:**
+| Field | Type | Description |
+|-------|------|-------------|
+| `commands` | string\|array | Paths to command files/directories |
+| `agents` | string\|array | Paths to agent files |
+| `hooks` | string\|object | Hooks configuration or path |
+| `mcpServers` | string\|object | MCP server configurations |
+| `lspServers` | string\|object | LSP server configurations |
+
+**Example:**
 ```json
 {
   "name": "plugin-name",
@@ -125,11 +153,14 @@ marketplace-repo/
     "name": "Author Name",
     "email": "author@example.com"
   },
-  "license": "MIT"
+  "homepage": "https://docs.example.com/plugin",
+  "repository": "https://github.com/org/plugin",
+  "license": "MIT",
+  "keywords": ["workflow", "automation"]
 }
 ```
 
-### Additional Plugin Types
+### Component Configuration
 
 Beyond skills, plugins can include:
 
@@ -166,6 +197,16 @@ Note: `${CLAUDE_PLUGIN_ROOT}` references files within the plugin's installation 
 
 ### marketplace.json Format
 
+The marketplace manifest defines the registry and its plugins.
+
+**Root fields:**
+| Field | Type | Description |
+|-------|------|-------------|
+| `name` | string | Marketplace identifier (kebab-case) |
+| `owner` | object | `{name: string, email?: string}` |
+| `plugins` | array | List of plugin entries |
+| `metadata` | object | Optional: description, version, pluginRoot |
+
 ```json
 {
   "name": "my-marketplace",
@@ -173,26 +214,37 @@ Note: `${CLAUDE_PLUGIN_ROOT}` references files within the plugin's installation 
     "name": "Organization",
     "email": "contact@example.com"
   },
-  "plugins": [
-    {
-      "name": "plugin-name",
-      "source": "./plugins/plugin-name",
-      "description": "Plugin description",
-      "version": "1.0.0"
-    }
-  ]
+  "plugins": [...]
 }
 ```
 
-### Plugin Entry Metadata Fields
+### Plugin Entry Fields
 
-Plugin entries support these optional metadata fields for discovery and organization:
+Each entry in the `plugins` array supports:
 
+**Required fields:**
+| Field | Type | Description |
+|-------|------|-------------|
+| `name` | string | Plugin identifier (kebab-case) |
+| `source` | string\|object | Path or remote source config |
+
+**Metadata fields** (can override plugin.json):
+| Field | Type | Description |
+|-------|------|-------------|
+| `description` | string | Plugin description |
+| `version` | string | Semantic version |
+| `author` | object | Author info |
+| `homepage` | string | Documentation URL |
+| `repository` | string | Source code URL |
+| `license` | string | SPDX license identifier |
+| `keywords` | array | Discovery tags |
+
+**Marketplace-only fields** (NOT in plugin.json):
 | Field | Type | Description |
 |-------|------|-------------|
 | `category` | string | Plugin category for organization |
 | `tags` | array | Tags for searchability |
-| `keywords` | array | Tags for plugin discovery and categorization |
+| `strict` | boolean | Whether plugin.json is required (default: true) |
 
 **Category values** used in the official repo:
 - `development`, `productivity`, `testing`, `security`, `learning`, `database`, `deployment`, `design`, `monitoring`
