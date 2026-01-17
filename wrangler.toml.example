@@ -32,4 +32,5 @@ new_sqlite_classes = ["SkillportMCP"]
 # Secrets (set via `npx wrangler secret put <NAME>`)
 # GOOGLE_CLIENT_ID      - Google OAuth client ID
 # GOOGLE_CLIENT_SECRET  - Google OAuth client secret
-# GITHUB_SERVICE_TOKEN  - GitHub PAT for reading marketplace repo
+# GITHUB_SERVICE_TOKEN  - GitHub PAT for reading marketplace repo (read-only)
+# GITHUB_WRITE_TOKEN    - GitHub PAT for writing to marketplace repo (read-write, for editor features)
