@@ -211,12 +211,20 @@ id = "YOUR_ID_FROM_OUTPUT"
 6. Add authorized redirect URI: `https://your-connector.your-domain.workers.dev/callback`
 7. Copy the **Client ID** and **Client Secret**
 
-### Step 4: Create GitHub Token
+### Step 4: Create GitHub Tokens
 
-1. Go to [GitHub Settings → Developer settings → Personal access tokens](https://github.com/settings/tokens)
-2. Create a **Fine-grained token** or **Classic token**
-3. For read-only access: `repo` scope (private repos) or `public_repo` (public repos)
-4. For editor features: `repo` scope with write access
+The connector uses two tokens for different access levels:
+
+**Read Token** (`GITHUB_SERVICE_TOKEN`) — for browsing and installing skills:
+1. Go to [GitHub Settings → Developer settings → Fine-grained tokens](https://github.com/settings/tokens?type=beta)
+2. Create a token with:
+   - Repository access: Select your marketplace repository
+   - Permissions: **Contents → Read-only**
+
+**Write Token** (`GITHUB_WRITE_TOKEN`) — for creating and editing skills:
+1. Create a second fine-grained token with:
+   - Repository access: Select your marketplace repository
+   - Permissions: **Contents → Read and write**
 
 ### Step 5: Update Configuration
 
@@ -239,7 +247,10 @@ npx wrangler secret put GOOGLE_CLIENT_SECRET
 # Paste your Google OAuth client secret
 
 npx wrangler secret put GITHUB_SERVICE_TOKEN
-# Paste your GitHub token
+# Paste your read-only GitHub token
+
+npx wrangler secret put GITHUB_WRITE_TOKEN
+# Paste your read-write GitHub token (for editor features)
 ```
 
 **Optional:** To restrict access to specific Google Workspace domains:
@@ -258,11 +269,19 @@ Your connector is now live at your Workers URL.
 
 ### Step 8: Add to Claude
 
-1. Open Claude.ai → Settings → Connectors
-2. Click "Add Connector"
-3. Enter your connector URL
+1. Open Claude.ai → Settings → Integrations
+2. Click "Add" → MCP
+3. Enter your connector URL with the `/mcp` endpoint:
+   ```
+   https://your-connector.your-domain.workers.dev/mcp
+   ```
+   (Use `/sse` as fallback for older clients)
 4. Complete Google OAuth authentication
 5. Test with: *"What skills are available?"*
+
+**For Claude.ai Team/Enterprise:** Add these to your domain allowlist (Admin Settings → Capabilities):
+- `your-connector.your-domain.workers.dev` — for REST API calls
+- `raw.githubusercontent.com` — for fetching skill content from GitHub
 
 ### Troubleshooting
 

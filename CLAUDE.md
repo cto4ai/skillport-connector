@@ -92,7 +92,8 @@ MARKETPLACE_REPO = "your-org/your-marketplace"
 ```bash
 npx wrangler secret put GOOGLE_CLIENT_ID
 npx wrangler secret put GOOGLE_CLIENT_SECRET
-npx wrangler secret put GITHUB_SERVICE_TOKEN
+npx wrangler secret put GITHUB_SERVICE_TOKEN    # read-only token
+npx wrangler secret put GITHUB_WRITE_TOKEN      # read-write token (for editor tools)
 ```
 
 ## Development
@@ -111,8 +112,8 @@ node node_modules/wrangler/bin/wrangler.js deploy
 
 ## Testing
 
-1. **Claude.ai with connector enabled** - Add the connector in Settings, test tools in conversation
-2. **MCP Inspector** - `npx @anthropic-ai/mcp-inspector` with your SSE URL
+1. **Claude.ai with connector enabled** - Add the connector in Settings → Integrations using the `/mcp` endpoint (or `/sse` for older clients)
+2. **MCP Inspector** - `npx @anthropic-ai/mcp-inspector` with your endpoint URL
 3. **Wrangler tail for logs** - `npx wrangler tail` to see audit logs
 
 **Note:** Claude Code cannot directly call MCP tools in this project because they require Google OAuth authentication. Testing must be done via Claude.ai or Claude Desktop with the connector enabled.
