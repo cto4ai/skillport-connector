@@ -184,6 +184,32 @@ Note: `${CLAUDE_PLUGIN_ROOT}` references files within the plugin's installation 
 }
 ```
 
+### Plugin Entry Metadata Fields
+
+Plugin entries support these optional metadata fields for discovery and organization:
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `category` | string | Plugin category for organization |
+| `tags` | array | Tags for searchability |
+| `keywords` | array | Tags for plugin discovery and categorization |
+
+**Category values** used in the official repo:
+- `development`, `productivity`, `testing`, `security`, `learning`, `database`, `deployment`, `design`, `monitoring`
+
+**Example:**
+```json
+{
+  "name": "my-plugin",
+  "source": "./plugins/my-plugin",
+  "category": "productivity",
+  "tags": ["community-managed"],
+  "keywords": ["workflow", "automation"]
+}
+```
+
+*Source: [Plugin Marketplaces Documentation](https://code.claude.com/docs/en/plugin-marketplaces), [claude-plugins-official](https://github.com/anthropics/claude-plugins-official)*
+
 ### Use Case
 
 Best for: Full-featured plugin marketplaces with:
