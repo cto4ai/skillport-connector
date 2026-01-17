@@ -58,17 +58,60 @@ Skills need to indicate which Claude surfaces they're compatible with. The offic
 
 ## Key Differences
 
-| Tag | Full Name | Filesystem | MCP | Plugin Marketplace | Skills Install |
-|-----|-----------|------------|-----|-------------------|----------------|
-| CC | Claude Code | Full | Native | Full | `/plugin` command |
-| CD | Claude Desktop | Via MCP | Local servers | None | Manual |
-| CAI | Claude.ai | None | Connectors | None | Manual / Connector |
+| Tag | Full Name | Bash | Local MCPs | Connectors | Plugin Marketplace |
+|-----|-----------|------|------------|------------|-------------------|
+| CC | Claude Code | Yes | Yes | Yes | Full |
+| CD | Claude Desktop | No | Yes (optional) | Yes | None |
+| CAI | Claude.ai | No | No | Yes | None |
+
+**Key insight:** CD and CAI differ in local MCP support. CD can have local MCPs installed (like `obsidian-local`), CAI cannot.
+
+## Surface Detection Methods
+
+Research into how to detect which surface a skill is running on:
+
+| Method | Can Detect | Notes |
+|--------|-----------|-------|
+| MCP `clientInfo.name` | CC vs CDAI (maybe) | CD and CAI both report as `"claude-ai"` |
+| Tool availability | CC, CD, CAI | Most reliable - see patterns below |
+| Official `compatibility` field | None | Free-form text, not machine-readable |
+
+### Detection Patterns
+
+**Claude Code (CC):**
+- Bash tool available
+- Full filesystem access
+- Plugin Marketplace tools
+
+**Claude Desktop (CD):**
+- Local MCP tools present (e.g., `obsidian-local:*`)
+- No Bash tool
+- Manual skill installation
+
+**Claude.ai (CAI):**
+- Only remote MCP connectors (e.g., `skillport:*`)
+- No Bash tool
+- No local MCP tools
+
+### How Existing Skills Handle Detection
+
+**Obsidian skill:**
+```
+obsidian-local:* tools available → CD or CC (local MCP)
+Only obsidian-remote:* → CAI (connector only)
+```
+
+**Skillport skill:**
+```
+Bash tool available → CC (use --skill for direct install)
+No Bash → CDAI (use --package for upload)
+```
 
 ## Implications for Tagging
 
 1. **CDAI covers most skills** - Many skills work across Claude.ai and Desktop (same UI)
-2. **CC is unique** - Has capabilities others don't (hooks, commands, LSP, full filesystem)
-3. **MCP availability varies** - CD has local MCP, CAI has connectors only
+2. **CC is unique** - Has capabilities others don't (hooks, commands, LSP, full filesystem, Bash)
+3. **CD vs CAI** - CD can have local MCPs, CAI cannot - some skills may work on CD but not CAI
 4. **Desktop has emerging features** - Cowork, Code tab may need their own tags
 
 ## Open Questions
@@ -78,8 +121,8 @@ Skills need to indicate which Claude surfaces they're compatible with. The offic
 - [ ] What capabilities does Claude Code Web have vs CC?
 - [ ] Default behavior when no surface tag present?
 
-## Next Steps
+## References
 
-1. Research Claude Desktop Code tab capabilities
-2. Research Claude Code Web capabilities
-3. Determine default behavior (no tag = CALL? or explicit only?)
+- [Agent Skills Specification](https://agentskills.io/specification) - Official spec (has `compatibility` field, free-form text)
+- [Plugin Marketplaces Documentation](https://code.claude.com/docs/en/plugin-marketplaces) - Official `tags` array field
+- [apify/mcp-client-capabilities](https://github.com/apify/mcp-client-capabilities) - MCP client identification database

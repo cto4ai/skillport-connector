@@ -273,9 +273,81 @@ The trade-off is more structure (the extra `plugin.json` files), but that's mini
 
 ---
 
+## Surface Detection
+
+Skills may need to detect which Claude surface they're running on (Claude Code, Claude Desktop, Claude.ai) to adapt behavior. This section documents what's officially available and possible workarounds.
+
+### Official Spec Support
+
+**`compatibility` field** (Agent Skills Spec):
+- Free-form text, max 500 characters
+- For human documentation only, not machine-readable
+- Example: `compatibility: Designed for Claude Code (or similar products)`
+- Most skills don't need it
+
+**No structured surface detection** exists in the official spec.
+
+### MCP Protocol Detection
+
+The MCP protocol includes `clientInfo.name` in the initialize handshake:
+
+| Client | `clientInfo.name` | Notes |
+|--------|------------------|-------|
+| Claude Desktop | `"claude-ai"` | Same as Claude.ai |
+| Claude.ai | `"claude-ai"` | Same as Desktop |
+| Claude Code | TBD | Needs verification |
+
+**Limitation:** Claude Desktop and Claude.ai report the same `clientInfo.name`, making them indistinguishable via MCP protocol alone.
+
+*Source: [apify/mcp-client-capabilities](https://github.com/apify/mcp-client-capabilities)*
+
+### Tool Availability Detection
+
+The most reliable detection method is checking available tools at runtime:
+
+| Surface | Bash Tool | Local MCPs | Remote MCPs (Connectors) |
+|---------|-----------|------------|--------------------------|
+| Claude Code (CC) | Yes | Yes | Yes |
+| Claude Desktop (CD) | No | Yes (optional) | Yes |
+| Claude.ai (CAI) | No | No | Yes |
+
+**Detection logic:**
+```
+IF Bash tool available:
+  → Claude Code
+ELSE IF any *-local MCP tools available:
+  → Claude Desktop (with local MCP)
+ELSE:
+  → Claude.ai or Desktop without local MCPs
+```
+
+### How Existing Skills Handle Detection
+
+**Obsidian skill** — MCP namespace detection:
+```
+obsidian-local:* tools → CD or CC (local MCP installed)
+obsidian-remote:* only → CAI (connector)
+```
+
+**Skillport skill** — Bash detection:
+```
+Bash available → CC (direct install to ~/.claude/skills/)
+No Bash → CDAI (create .skill package for upload)
+```
+
+### Open Questions
+
+- [ ] What `clientInfo.name` does Claude Code report?
+- [ ] Can MCP servers access `clientInfo` after initialization?
+- [ ] Are there other MCP session properties useful for detection?
+- [ ] Will Anthropic add official surface detection in the future?
+
+---
+
 ## References
 
 - [Agent Skills Specification](https://agentskills.io/specification)
 - [Plugin Marketplaces Documentation](https://code.claude.com/docs/en/plugin-marketplaces)
 - [anthropics/skills](https://github.com/anthropics/skills) — Agent Skills format example
 - [anthropics/claude-plugins-official](https://github.com/anthropics/claude-plugins-official) — Plugin Marketplace format example
+- [apify/mcp-client-capabilities](https://github.com/apify/mcp-client-capabilities) — MCP client identification database
