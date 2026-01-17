@@ -52,8 +52,41 @@ export interface SkillEntry {
   category?: string;
   tags?: string[];
   keywords?: string[];
+  // Surface tags extracted from tags (e.g., ["CC", "CDAI"] from ["surface:CC", "surface:CDAI"])
+  surface_tags: string[];
   // Whether the skill's plugin is in marketplace.json
   published: boolean;
+}
+
+/**
+ * Extract surface tags from tags array
+ * e.g., ["surface:CC", "other-tag"] -> ["CC"]
+ */
+export function extractSurfaceTags(tags?: string[]): string[] {
+  if (!tags) return [];
+  return tags
+    .filter(t => t.startsWith("surface:"))
+    .map(t => t.replace("surface:", ""));
+}
+
+/**
+ * Check if a skill matches a surface filter
+ * A skill matches if:
+ * - It has surface:CALL tag (works everywhere)
+ * - It has the specific surface tag (e.g., surface:CC)
+ * - It has a combined tag that includes the surface (e.g., surface:CDAI matches CD and CAI)
+ */
+export function skillMatchesSurface(surfaceTags: string[], surface: string): boolean {
+  // CALL matches everything
+  if (surfaceTags.includes("CALL")) return true;
+
+  // Direct match
+  if (surfaceTags.includes(surface)) return true;
+
+  // CDAI matches both CD and CAI
+  if (surfaceTags.includes("CDAI") && (surface === "CD" || surface === "CAI")) return true;
+
+  return false;
 }
 
 /**
@@ -395,9 +428,10 @@ export class GitHubClient {
   /**
    * Discover all skills from all plugins (both published and unpublished)
    * Scans plugins/ directory directly to find all groups with skills
+   * @param options.surface - Filter by surface tag (CC, CD, CAI, CDAI, CALL)
    */
-  async listSkills(): Promise<SkillEntry[]> {
-    return this.fetchWithCache<SkillEntry[]>(
+  async listSkills(options?: { surface?: string }): Promise<SkillEntry[]> {
+    const allSkills = await this.fetchWithCache<SkillEntry[]>(
       `skills:${this.repo}`,
       300,
       async () => {
@@ -466,6 +500,9 @@ export class GitHubClient {
                 }
                 seenSkills.add(skillName);
 
+                const tags = publishedInfo?.tags;
+                const surfaceTags = extractSurfaceTags(tags);
+
                 result.push({
                   name: skillName,
                   dirName: dir.name,
@@ -476,8 +513,9 @@ export class GitHubClient {
                   author,
                   // Metadata inherited from parent plugin
                   category: publishedInfo?.category,
-                  tags: publishedInfo?.tags,
+                  tags,
                   keywords: publishedInfo?.keywords,
+                  surface_tags: surfaceTags,
                   published: isPublished,
                 });
               } catch (e) {
@@ -495,6 +533,13 @@ export class GitHubClient {
         return result;
       }
     );
+
+    // Apply surface filter if provided
+    if (options?.surface) {
+      return allSkills.filter(skill => skillMatchesSurface(skill.surface_tags, options.surface!));
+    }
+
+    return allSkills;
   }
 
   /**
