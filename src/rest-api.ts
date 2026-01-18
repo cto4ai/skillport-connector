@@ -974,6 +974,17 @@ async function handlePublishSkill(
       );
     }
 
+    // Require at least one surface tag
+    const validSurfaceTags = ["surface:CC", "surface:CD", "surface:CAI", "surface:CDAI", "surface:CALL"];
+    const hasSurfaceTag = tags?.some(t => validSurfaceTags.includes(t));
+    if (!hasSurfaceTag) {
+      return errorResponse(
+        "Invalid request",
+        `At least one surface tag is required: ${validSurfaceTags.join(", ")}`,
+        400
+      );
+    }
+
     const accessControl = await getAccessControl(env, user.provider, user.uid);
 
     if (!accessControl.isEditor()) {
@@ -1102,6 +1113,15 @@ export async function handleAPI(
   if (pathParts[0] === "skills" && pathParts.length === 1 && method === "GET") {
     const refresh = url.searchParams.get("refresh") === "true";
     const surface = url.searchParams.get("surface") || undefined;
+    // Validate surface parameter if provided
+    const validSurfaces = ["CC", "CD", "CAI", "CDAI", "CALL"];
+    if (surface && !validSurfaces.includes(surface)) {
+      return errorResponse(
+        "Invalid surface",
+        `surface must be one of: ${validSurfaces.join(", ")}`,
+        400
+      );
+    }
     return handleListSkills(env, user, { refresh, surface });
   }
 

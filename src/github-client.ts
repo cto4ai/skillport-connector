@@ -71,12 +71,24 @@ export function extractSurfaceTags(tags?: string[]): string[] {
 
 /**
  * Check if a skill matches a surface filter
+ *
+ * Surface tag abbreviations:
+ *   CC   = Claude Code
+ *   CD   = Claude Desktop
+ *   CAI  = Claude.ai
+ *   CDAI = Claude Desktop + Claude.ai (combined)
+ *   CALL = All surfaces (universal)
+ *
  * A skill matches if:
- * - It has surface:CALL tag (works everywhere)
- * - It has the specific surface tag (e.g., surface:CC)
- * - It has a combined tag that includes the surface (e.g., surface:CDAI matches CD and CAI)
+ * - It has no surface tags (backward compat: treated as universal)
+ * - It has CALL tag (explicit universal)
+ * - It has the specific surface tag (e.g., CC)
+ * - It has a combined tag that includes the surface (e.g., CDAI matches CD and CAI)
  */
 export function skillMatchesSurface(surfaceTags: string[], surface: string): boolean {
+  // No tags = backward compat, treat as universal (matches everything)
+  if (surfaceTags.length === 0) return true;
+
   // CALL matches everything
   if (surfaceTags.includes("CALL")) return true;
 
@@ -177,6 +189,9 @@ async function fetchWithRetry(
     }
   }
 
+  // Log final failure summary
+  const urlPath = new URL(url).pathname;
+  console.error(`[fetchWithRetry] All ${maxRetries} attempts failed for ${urlPath}:`, lastError?.message);
   throw lastError || new Error("fetchWithRetry failed");
 }
 
@@ -425,7 +440,12 @@ export class GitHubClient {
             skills: parsed.skills ?? DEFAULT_ACCESS_CONFIG.skills,
             defaults: parsed.defaults ?? DEFAULT_ACCESS_CONFIG.defaults,
           };
-        } catch {
+        } catch (err) {
+          // Log unexpected errors (not 404)
+          const errMsg = err instanceof Error ? err.message : String(err);
+          if (!errMsg.includes("404") && !errMsg.includes("Not Found")) {
+            console.warn(`[fetchAccessConfig] Unexpected error reading access.json, using defaults:`, errMsg);
+          }
           // No access.json = everyone can read, no one can write
           return DEFAULT_ACCESS_CONFIG;
         }
@@ -669,8 +689,12 @@ export class GitHubClient {
           return JSON.parse(content) as PluginManifest;
         }
       );
-    } catch {
-      // plugin.json is optional
+    } catch (err) {
+      // plugin.json is optional, but log unexpected errors
+      const errMsg = err instanceof Error ? err.message : String(err);
+      if (!errMsg.includes("404") && !errMsg.includes("Not Found")) {
+        console.warn(`[getPlugin] Unexpected error reading plugin.json for ${name}:`, errMsg);
+      }
     }
 
     return { entry, manifest };
@@ -703,16 +727,25 @@ export class GitHubClient {
       entry = result.entry;
       manifest = result.manifest;
       basePath = entry.source.replace("./", "");
-    } catch {
+    } catch (err) {
       // Plugin not in marketplace - construct path directly for unpublished groups
+      // Only log if it's not a "not found" error
+      const errMsg = err instanceof Error ? err.message : String(err);
+      if (!errMsg.includes("not found") && !errMsg.includes("Not Found")) {
+        console.warn(`[fetchSkill] Plugin ${skill.plugin} not in marketplace, using direct path:`, errMsg);
+      }
       basePath = `plugins/${skill.plugin}`;
 
       // Try to read plugin.json directly
       try {
         const manifestContent = await this.fetchFile(`${basePath}/.claude-plugin/plugin.json`);
         manifest = JSON.parse(manifestContent) as PluginManifest;
-      } catch {
-        // No manifest, that's okay
+      } catch (manifestErr) {
+        // Log unexpected errors (not 404)
+        const manifestErrMsg = manifestErr instanceof Error ? manifestErr.message : String(manifestErr);
+        if (!manifestErrMsg.includes("404") && !manifestErrMsg.includes("Not Found")) {
+          console.warn(`[fetchSkill] Unexpected error reading plugin.json for ${skill.plugin}:`, manifestErrMsg);
+        }
       }
 
       // Create a synthetic entry for unpublished plugins
@@ -1050,7 +1083,8 @@ export class GitHubClient {
         const pluginJsonContent = await this.fetchFile(`plugins/${plugin.name}/.claude-plugin/plugin.json`);
         const pluginJson = JSON.parse(pluginJsonContent) as PluginManifest;
         version = pluginJson.version;
-      } catch {
+      } catch (err) {
+        console.warn(`[upsertMarketplaceEntry] Failed to read version for ${plugin.name}, defaulting to 1.0.0:`, err instanceof Error ? err.message : err);
         version = "1.0.0";
       }
     }
