@@ -103,12 +103,14 @@ Claude.ai/Desktop can work around `/install` failures by:
 ## Status
 
 - [ ] Root cause confirmed
-- [ ] Fix implemented
-- [ ] Fix deployed
+- [x] Fix implemented (retry logic added)
+- [x] Fix deployed (7c108a1)
 - [ ] Fix verified
+- [ ] TSIP account checked for stale deployments
 
 ## Next Steps
 
-1. Add retry logic to GitHub client
-2. Consider caching access.json longer
-3. Monitor if issue persists or was deployment-related
+1. ~~Add retry logic to GitHub client~~ ✅ Done
+2. Check TSIP account for stale skillport-connector deployment
+3. Consider caching access.json longer
+4. Monitor if issue persists or was deployment-related
