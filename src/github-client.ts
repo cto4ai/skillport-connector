@@ -982,9 +982,10 @@ export class GitHubClient {
   }
 
   /**
-   * Add a new plugin to marketplace.json
+   * Add or update a plugin in marketplace.json (upsert)
+   * Returns whether this was a create (true) or update (false)
    */
-  async addToMarketplace(
+  async upsertMarketplaceEntry(
     plugin: {
       name: string;
       description: string;
@@ -994,15 +995,14 @@ export class GitHubClient {
       keywords?: string[];
     },
     userEmail?: string
-  ): Promise<void> {
+  ): Promise<{ created: boolean }> {
     const marketplacePath = ".claude-plugin/marketplace.json";
     const content = await this.fetchFile(marketplacePath);
     const marketplace = JSON.parse(content) as Marketplace;
 
     // Check if plugin already exists
-    if (marketplace.plugins.some((p) => p.name === plugin.name)) {
-      throw new Error(`Plugin already exists in marketplace: ${plugin.name}`);
-    }
+    const existingIndex = marketplace.plugins.findIndex((p) => p.name === plugin.name);
+    const isUpdate = existingIndex !== -1;
 
     // Try to read version from plugin.json if not provided
     let version = plugin.version;
@@ -1016,22 +1016,35 @@ export class GitHubClient {
       }
     }
 
-    // Add the new plugin entry
-    const newEntry: PluginEntry = {
-      name: plugin.name,
-      source: `./plugins/${plugin.name}`,
-      description: plugin.description,
-      version,
-      ...(plugin.category ? { category: plugin.category } : {}),
-      ...(plugin.tags ? { tags: plugin.tags } : {}),
-      ...(plugin.keywords ? { keywords: plugin.keywords } : {}),
-    };
+    if (isUpdate) {
+      // Update existing entry, preserving fields not provided
+      const existing = marketplace.plugins[existingIndex];
+      marketplace.plugins[existingIndex] = {
+        ...existing,
+        description: plugin.description,
+        version,
+        ...(plugin.category !== undefined ? { category: plugin.category } : {}),
+        ...(plugin.tags !== undefined ? { tags: plugin.tags } : {}),
+        ...(plugin.keywords !== undefined ? { keywords: plugin.keywords } : {}),
+      };
+    } else {
+      // Add new plugin entry
+      const newEntry: PluginEntry = {
+        name: plugin.name,
+        source: `./plugins/${plugin.name}`,
+        description: plugin.description,
+        version,
+        ...(plugin.category ? { category: plugin.category } : {}),
+        ...(plugin.tags ? { tags: plugin.tags } : {}),
+        ...(plugin.keywords ? { keywords: plugin.keywords } : {}),
+      };
+      marketplace.plugins.push(newEntry);
+    }
 
-    marketplace.plugins.push(newEntry);
-
+    const action = isUpdate ? "Update" : "Add";
     const commitMessage = userEmail
-      ? `Add ${plugin.name} to marketplace\n\nRequested by: ${userEmail}`
-      : `Add ${plugin.name} to marketplace`;
+      ? `${action} ${plugin.name} in marketplace\n\nRequested by: ${userEmail}`
+      : `${action} ${plugin.name} in marketplace`;
 
     await this.updateFile(
       marketplacePath,
@@ -1041,6 +1054,8 @@ export class GitHubClient {
 
     // Clear marketplace cache
     await this.clearCache();
+
+    return { created: !isUpdate };
   }
 
   /**

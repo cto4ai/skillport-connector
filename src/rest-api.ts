@@ -1012,7 +1012,7 @@ async function handlePublishSkill(
       );
     }
 
-    await writeClient.addToMarketplace(
+    const { created } = await writeClient.upsertMarketplaceEntry(
       { name: groupName, description, category, tags, keywords },
       user.email
     );
@@ -1021,6 +1021,7 @@ async function handlePublishSkill(
       success: true,
       skill: skillName,
       skill_group: groupName,
+      action: created ? "created" : "updated",
     });
   } catch (error) {
     return errorResponse(
