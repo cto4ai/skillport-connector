@@ -109,14 +109,15 @@ async function getAccessControl(
 function logAction(
   email: string,
   action: string,
-  opts?: { plugin?: string; skill?: string; skill_group?: string }
+  opts?: { plugin?: string; skill?: string; skill_group?: string; surface?: string }
 ): void {
   const timestamp = new Date().toISOString();
   const pluginInfo = opts?.plugin ? ` plugin=${opts.plugin}` : "";
   const skillInfo = opts?.skill ? ` skill=${opts.skill}` : "";
   const groupInfo = opts?.skill_group ? ` skill_group=${opts.skill_group}` : "";
+  const surfaceInfo = opts?.surface ? ` surface=${opts.surface}` : "";
   console.log(
-    `[AUDIT] ${timestamp} user=${email} action=api:${action}${pluginInfo}${skillInfo}${groupInfo}`
+    `[AUDIT] ${timestamp} user=${email} action=api:${action}${pluginInfo}${skillInfo}${groupInfo}${surfaceInfo}`
   );
 }
 
@@ -169,24 +170,26 @@ function validateFilePath(filePath: string): string | null {
  * GET /api/skills - List all skills
  * Query params:
  *   - refresh=true: Force cache refresh before listing
+ *   - surface=CC|CD|CAI|CDAI|CALL: Filter by surface tag
  */
 async function handleListSkills(
   env: Env,
   user: TokenData,
-  refresh: boolean = false
+  options: { refresh?: boolean; surface?: string } = {}
 ): Promise<Response> {
   try {
-    logAction(user.email, refresh ? "list_skills_refresh" : "list_skills");
+    const actionName = options.refresh ? "list_skills_refresh" : "list_skills";
+    logAction(user.email, actionName, options.surface ? { surface: options.surface } : undefined);
     const github = getGitHubClient(env);
 
     // Force cache refresh if requested
-    if (refresh) {
+    if (options.refresh) {
       await github.clearCache();
       console.log(`[list_skills] Cache cleared for user ${user.email}`);
     }
 
     const accessControl = await getAccessControl(env, user.provider, user.uid);
-    const allSkills = await github.listSkills();
+    const allSkills = await github.listSkills({ surface: options.surface });
 
     // Access control is keyed by skill name
     const visibleSkills = allSkills.filter((s) =>
@@ -195,6 +198,7 @@ async function handleListSkills(
 
     return jsonResponse({
       count: visibleSkills.length,
+      surface_filter: options.surface || null,
       skills: visibleSkills.map((s) => ({
         name: s.name,
         plugin: s.plugin,
@@ -204,6 +208,7 @@ async function handleListSkills(
         category: s.category,
         tags: s.tags,
         keywords: s.keywords,
+        surface_tags: s.surface_tags,
         published: s.published,
         editable: accessControl.canWrite(s.plugin),
       })),
@@ -263,6 +268,7 @@ async function handleGetSkill(
         category: skill.category,
         tags: skill.tags,
         keywords: skill.keywords,
+        surface_tags: skill.surface_tags,
         published: skill.published,
       },
       skill_md: skillMd,
@@ -968,6 +974,17 @@ async function handlePublishSkill(
       );
     }
 
+    // Require at least one surface tag
+    const validSurfaceTags = ["surface:CC", "surface:CD", "surface:CAI", "surface:CDAI", "surface:CALL"];
+    const hasSurfaceTag = tags?.some(t => validSurfaceTags.includes(t));
+    if (!hasSurfaceTag) {
+      return errorResponse(
+        "Invalid request",
+        `At least one surface tag is required: ${validSurfaceTags.join(", ")}`,
+        400
+      );
+    }
+
     const accessControl = await getAccessControl(env, user.provider, user.uid);
 
     if (!accessControl.isEditor()) {
@@ -1007,7 +1024,7 @@ async function handlePublishSkill(
       );
     }
 
-    await writeClient.addToMarketplace(
+    const { created } = await writeClient.upsertMarketplaceEntry(
       { name: groupName, description, category, tags, keywords },
       user.email
     );
@@ -1016,6 +1033,7 @@ async function handlePublishSkill(
       success: true,
       skill: skillName,
       skill_group: groupName,
+      action: created ? "created" : "updated",
     });
   } catch (error) {
     return errorResponse(
@@ -1094,7 +1112,17 @@ export async function handleAPI(
   // Route: GET /api/skills
   if (pathParts[0] === "skills" && pathParts.length === 1 && method === "GET") {
     const refresh = url.searchParams.get("refresh") === "true";
-    return handleListSkills(env, user, refresh);
+    const surface = url.searchParams.get("surface") || undefined;
+    // Validate surface parameter if provided
+    const validSurfaces = ["CC", "CD", "CAI", "CDAI", "CALL"];
+    if (surface && !validSurfaces.includes(surface)) {
+      return errorResponse(
+        "Invalid surface",
+        `surface must be one of: ${validSurfaces.join(", ")}`,
+        400
+      );
+    }
+    return handleListSkills(env, user, { refresh, surface });
   }
 
   // Route: GET /api/skills/:name

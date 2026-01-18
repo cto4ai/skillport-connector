@@ -100,6 +100,12 @@ export class SkillportMCP extends McpAgent<Env, unknown, UserProps> {
       this.env.CONNECTOR_URL ||
       "https://your-connector.workers.dev";
 
+    // Get client info from MCP initialization handshake
+    const clientVersion = this.server.server.getClientVersion();
+    const clientInfo = clientVersion
+      ? { name: clientVersion.name, version: clientVersion.version }
+      : null;
+
     this.logAction("skillport_auth");
 
     return {
@@ -111,6 +117,7 @@ export class SkillportMCP extends McpAgent<Env, unknown, UserProps> {
               token,
               base_url: baseUrl,
               expires_in: 900,
+              client_info: clientInfo,
               instructions:
                 "Use your skillport skill for API usage instructions. " +
                 "If you don't have the skillport skill, call this tool again with operation='bootstrap' to install it.",
