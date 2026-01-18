@@ -142,6 +142,45 @@ function isBinaryFile(filename: string): boolean {
 const GITHUB_API = "https://api.github.com";
 
 /**
+ * Retry a fetch with exponential backoff
+ * Retries on network errors and 5xx responses
+ */
+async function fetchWithRetry(
+  url: string,
+  options: RequestInit,
+  maxRetries = 3,
+  baseDelayMs = 200
+): Promise<Response> {
+  let lastError: Error | null = null;
+
+  for (let attempt = 0; attempt < maxRetries; attempt++) {
+    try {
+      const response = await fetch(url, options);
+
+      // Don't retry client errors (4xx) - those are intentional
+      if (response.ok || (response.status >= 400 && response.status < 500)) {
+        return response;
+      }
+
+      // Retry on server errors (5xx)
+      lastError = new Error(`GitHub API error: ${response.status}`);
+      console.warn(`[fetchWithRetry] Attempt ${attempt + 1} failed: ${response.status}, retrying...`);
+    } catch (err) {
+      // Network/TLS errors - retry these
+      lastError = err instanceof Error ? err : new Error(String(err));
+      console.warn(`[fetchWithRetry] Attempt ${attempt + 1} failed: ${lastError.message}, retrying...`);
+    }
+
+    // Exponential backoff: 200ms, 400ms, 800ms
+    if (attempt < maxRetries - 1) {
+      await new Promise(resolve => setTimeout(resolve, baseDelayMs * Math.pow(2, attempt)));
+    }
+  }
+
+  throw lastError || new Error("fetchWithRetry failed");
+}
+
+/**
  * Parse semver string into comparable parts
  * Handles: "1.0.0", "1.0", "1", "1.0.0-beta.1"
  */
@@ -197,7 +236,7 @@ export class GitHubClient {
    * List contents of a directory
    */
   private async listDirectory(dirPath: string): Promise<GitHubContentItem[]> {
-    const response = await fetch(
+    const response = await fetchWithRetry(
       `${GITHUB_API}/repos/${this.repo}/contents/${dirPath}`,
       {
         headers: {
@@ -291,7 +330,7 @@ export class GitHubClient {
    * Fetch a file from the repository as text
    */
   private async fetchFile(path: string): Promise<string> {
-    const response = await fetch(
+    const response = await fetchWithRetry(
       `${GITHUB_API}/repos/${this.repo}/contents/${path}`,
       {
         headers: {
@@ -319,7 +358,7 @@ export class GitHubClient {
    * Fetch a file from the repository as base64 (for binary files)
    */
   private async fetchFileBase64(path: string): Promise<string> {
-    const response = await fetch(
+    const response = await fetchWithRetry(
       `${GITHUB_API}/repos/${this.repo}/contents/${path}`,
       {
         headers: {
@@ -788,7 +827,7 @@ export class GitHubClient {
    * Check if a file exists at the given path
    */
   async fileExists(path: string): Promise<boolean> {
-    const response = await fetch(
+    const response = await fetchWithRetry(
       `${GITHUB_API}/repos/${this.repo}/contents/${path}`,
       {
         method: "HEAD",
@@ -810,7 +849,7 @@ export class GitHubClient {
    * Get file metadata including SHA (needed for updates)
    */
   private async getFileMeta(path: string): Promise<{ sha: string; content?: string }> {
-    const response = await fetch(
+    const response = await fetchWithRetry(
       `${GITHUB_API}/repos/${this.repo}/contents/${path}`,
       {
         headers: {
@@ -838,7 +877,7 @@ export class GitHubClient {
   async updateFile(path: string, content: string, message: string): Promise<void> {
     const { sha } = await this.getFileMeta(path);
 
-    const response = await fetch(
+    const response = await fetchWithRetry(
       `${GITHUB_API}/repos/${this.repo}/contents/${path}`,
       {
         method: "PUT",
@@ -866,7 +905,7 @@ export class GitHubClient {
    * Create a new file in the repository
    */
   async createFile(path: string, content: string, message: string): Promise<void> {
-    const response = await fetch(
+    const response = await fetchWithRetry(
       `${GITHUB_API}/repos/${this.repo}/contents/${path}`,
       {
         method: "PUT",
@@ -907,7 +946,7 @@ export class GitHubClient {
       }
     }
 
-    const response = await fetch(
+    const response = await fetchWithRetry(
       `${GITHUB_API}/repos/${this.repo}/contents/${path}`,
       {
         method: "PUT",
@@ -940,7 +979,7 @@ export class GitHubClient {
     // Get the file's SHA (required for deletion)
     const meta = await this.getFileMeta(path);
 
-    const response = await fetch(
+    const response = await fetchWithRetry(
       `${GITHUB_API}/repos/${this.repo}/contents/${path}`,
       {
         method: "DELETE",
