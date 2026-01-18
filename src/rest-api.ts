@@ -109,14 +109,15 @@ async function getAccessControl(
 function logAction(
   email: string,
   action: string,
-  opts?: { plugin?: string; skill?: string; skill_group?: string }
+  opts?: { plugin?: string; skill?: string; skill_group?: string; surface?: string }
 ): void {
   const timestamp = new Date().toISOString();
   const pluginInfo = opts?.plugin ? ` plugin=${opts.plugin}` : "";
   const skillInfo = opts?.skill ? ` skill=${opts.skill}` : "";
   const groupInfo = opts?.skill_group ? ` skill_group=${opts.skill_group}` : "";
+  const surfaceInfo = opts?.surface ? ` surface=${opts.surface}` : "";
   console.log(
-    `[AUDIT] ${timestamp} user=${email} action=api:${action}${pluginInfo}${skillInfo}${groupInfo}`
+    `[AUDIT] ${timestamp} user=${email} action=api:${action}${pluginInfo}${skillInfo}${groupInfo}${surfaceInfo}`
   );
 }
 
