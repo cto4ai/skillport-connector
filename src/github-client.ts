@@ -52,8 +52,53 @@ export interface SkillEntry {
   category?: string;
   tags?: string[];
   keywords?: string[];
+  // Surface tags extracted from tags (e.g., ["CC", "CDAI"] from ["surface:CC", "surface:CDAI"])
+  surface_tags: string[];
   // Whether the skill's plugin is in marketplace.json
   published: boolean;
+}
+
+/**
+ * Extract surface tags from tags array
+ * e.g., ["surface:CC", "other-tag"] -> ["CC"]
+ */
+export function extractSurfaceTags(tags?: string[]): string[] {
+  if (!tags) return [];
+  return tags
+    .filter(t => t.startsWith("surface:"))
+    .map(t => t.replace("surface:", ""));
+}
+
+/**
+ * Check if a skill matches a surface filter
+ *
+ * Surface tag abbreviations:
+ *   CC   = Claude Code
+ *   CD   = Claude Desktop
+ *   CAI  = Claude.ai
+ *   CDAI = Claude Desktop + Claude.ai (combined)
+ *   CALL = All surfaces (universal)
+ *
+ * A skill matches if:
+ * - It has no surface tags (backward compat: treated as universal)
+ * - It has CALL tag (explicit universal)
+ * - It has the specific surface tag (e.g., CC)
+ * - It has a combined tag that includes the surface (e.g., CDAI matches CD and CAI)
+ */
+export function skillMatchesSurface(surfaceTags: string[], surface: string): boolean {
+  // No tags = backward compat, treat as universal (matches everything)
+  if (surfaceTags.length === 0) return true;
+
+  // CALL matches everything
+  if (surfaceTags.includes("CALL")) return true;
+
+  // Direct match
+  if (surfaceTags.includes(surface)) return true;
+
+  // CDAI matches both CD and CAI
+  if (surfaceTags.includes("CDAI") && (surface === "CD" || surface === "CAI")) return true;
+
+  return false;
 }
 
 /**
@@ -107,6 +152,48 @@ function isBinaryFile(filename: string): boolean {
 }
 
 const GITHUB_API = "https://api.github.com";
+
+/**
+ * Retry a fetch with exponential backoff
+ * Retries on network errors and 5xx responses
+ */
+async function fetchWithRetry(
+  url: string,
+  options: RequestInit,
+  maxRetries = 3,
+  baseDelayMs = 200
+): Promise<Response> {
+  let lastError: Error | null = null;
+
+  for (let attempt = 0; attempt < maxRetries; attempt++) {
+    try {
+      const response = await fetch(url, options);
+
+      // Don't retry client errors (4xx) - those are intentional
+      if (response.ok || (response.status >= 400 && response.status < 500)) {
+        return response;
+      }
+
+      // Retry on server errors (5xx)
+      lastError = new Error(`GitHub API error: ${response.status}`);
+      console.warn(`[fetchWithRetry] Attempt ${attempt + 1} failed: ${response.status}, retrying...`);
+    } catch (err) {
+      // Network/TLS errors - retry these
+      lastError = err instanceof Error ? err : new Error(String(err));
+      console.warn(`[fetchWithRetry] Attempt ${attempt + 1} failed: ${lastError.message}, retrying...`);
+    }
+
+    // Exponential backoff: 200ms, 400ms, 800ms
+    if (attempt < maxRetries - 1) {
+      await new Promise(resolve => setTimeout(resolve, baseDelayMs * Math.pow(2, attempt)));
+    }
+  }
+
+  // Log final failure summary
+  const urlPath = new URL(url).pathname;
+  console.error(`[fetchWithRetry] All ${maxRetries} attempts failed for ${urlPath}:`, lastError?.message);
+  throw lastError || new Error("fetchWithRetry failed");
+}
 
 /**
  * Parse semver string into comparable parts
@@ -164,7 +251,7 @@ export class GitHubClient {
    * List contents of a directory
    */
   private async listDirectory(dirPath: string): Promise<GitHubContentItem[]> {
-    const response = await fetch(
+    const response = await fetchWithRetry(
       `${GITHUB_API}/repos/${this.repo}/contents/${dirPath}`,
       {
         headers: {
@@ -258,7 +345,7 @@ export class GitHubClient {
    * Fetch a file from the repository as text
    */
   private async fetchFile(path: string): Promise<string> {
-    const response = await fetch(
+    const response = await fetchWithRetry(
       `${GITHUB_API}/repos/${this.repo}/contents/${path}`,
       {
         headers: {
@@ -286,7 +373,7 @@ export class GitHubClient {
    * Fetch a file from the repository as base64 (for binary files)
    */
   private async fetchFileBase64(path: string): Promise<string> {
-    const response = await fetch(
+    const response = await fetchWithRetry(
       `${GITHUB_API}/repos/${this.repo}/contents/${path}`,
       {
         headers: {
@@ -353,7 +440,12 @@ export class GitHubClient {
             skills: parsed.skills ?? DEFAULT_ACCESS_CONFIG.skills,
             defaults: parsed.defaults ?? DEFAULT_ACCESS_CONFIG.defaults,
           };
-        } catch {
+        } catch (err) {
+          // Log unexpected errors (not 404)
+          const errMsg = err instanceof Error ? err.message : String(err);
+          if (!errMsg.includes("404") && !errMsg.includes("Not Found")) {
+            console.warn(`[fetchAccessConfig] Unexpected error reading access.json, using defaults:`, errMsg);
+          }
           // No access.json = everyone can read, no one can write
           return DEFAULT_ACCESS_CONFIG;
         }
@@ -395,9 +487,10 @@ export class GitHubClient {
   /**
    * Discover all skills from all plugins (both published and unpublished)
    * Scans plugins/ directory directly to find all groups with skills
+   * @param options.surface - Filter by surface tag (CC, CD, CAI, CDAI, CALL)
    */
-  async listSkills(): Promise<SkillEntry[]> {
-    return this.fetchWithCache<SkillEntry[]>(
+  async listSkills(options?: { surface?: string }): Promise<SkillEntry[]> {
+    const allSkills = await this.fetchWithCache<SkillEntry[]>(
       `skills:${this.repo}`,
       300,
       async () => {
@@ -466,6 +559,9 @@ export class GitHubClient {
                 }
                 seenSkills.add(skillName);
 
+                const tags = publishedInfo?.tags;
+                const surfaceTags = extractSurfaceTags(tags);
+
                 result.push({
                   name: skillName,
                   dirName: dir.name,
@@ -476,8 +572,9 @@ export class GitHubClient {
                   author,
                   // Metadata inherited from parent plugin
                   category: publishedInfo?.category,
-                  tags: publishedInfo?.tags,
+                  tags,
                   keywords: publishedInfo?.keywords,
+                  surface_tags: surfaceTags,
                   published: isPublished,
                 });
               } catch (e) {
@@ -495,6 +592,13 @@ export class GitHubClient {
         return result;
       }
     );
+
+    // Apply surface filter if provided
+    if (options?.surface) {
+      return allSkills.filter(skill => skillMatchesSurface(skill.surface_tags, options.surface!));
+    }
+
+    return allSkills;
   }
 
   /**
@@ -585,8 +689,12 @@ export class GitHubClient {
           return JSON.parse(content) as PluginManifest;
         }
       );
-    } catch {
-      // plugin.json is optional
+    } catch (err) {
+      // plugin.json is optional, but log unexpected errors
+      const errMsg = err instanceof Error ? err.message : String(err);
+      if (!errMsg.includes("404") && !errMsg.includes("Not Found")) {
+        console.warn(`[getPlugin] Unexpected error reading plugin.json for ${name}:`, errMsg);
+      }
     }
 
     return { entry, manifest };
@@ -619,16 +727,25 @@ export class GitHubClient {
       entry = result.entry;
       manifest = result.manifest;
       basePath = entry.source.replace("./", "");
-    } catch {
+    } catch (err) {
       // Plugin not in marketplace - construct path directly for unpublished groups
+      // Only log if it's not a "not found" error
+      const errMsg = err instanceof Error ? err.message : String(err);
+      if (!errMsg.includes("not found") && !errMsg.includes("Not Found")) {
+        console.warn(`[fetchSkill] Plugin ${skill.plugin} not in marketplace, using direct path:`, errMsg);
+      }
       basePath = `plugins/${skill.plugin}`;
 
       // Try to read plugin.json directly
       try {
         const manifestContent = await this.fetchFile(`${basePath}/.claude-plugin/plugin.json`);
         manifest = JSON.parse(manifestContent) as PluginManifest;
-      } catch {
-        // No manifest, that's okay
+      } catch (manifestErr) {
+        // Log unexpected errors (not 404)
+        const manifestErrMsg = manifestErr instanceof Error ? manifestErr.message : String(manifestErr);
+        if (!manifestErrMsg.includes("404") && !manifestErrMsg.includes("Not Found")) {
+          console.warn(`[fetchSkill] Unexpected error reading plugin.json for ${skill.plugin}:`, manifestErrMsg);
+        }
       }
 
       // Create a synthetic entry for unpublished plugins
@@ -743,7 +860,7 @@ export class GitHubClient {
    * Check if a file exists at the given path
    */
   async fileExists(path: string): Promise<boolean> {
-    const response = await fetch(
+    const response = await fetchWithRetry(
       `${GITHUB_API}/repos/${this.repo}/contents/${path}`,
       {
         method: "HEAD",
@@ -765,7 +882,7 @@ export class GitHubClient {
    * Get file metadata including SHA (needed for updates)
    */
   private async getFileMeta(path: string): Promise<{ sha: string; content?: string }> {
-    const response = await fetch(
+    const response = await fetchWithRetry(
       `${GITHUB_API}/repos/${this.repo}/contents/${path}`,
       {
         headers: {
@@ -793,7 +910,7 @@ export class GitHubClient {
   async updateFile(path: string, content: string, message: string): Promise<void> {
     const { sha } = await this.getFileMeta(path);
 
-    const response = await fetch(
+    const response = await fetchWithRetry(
       `${GITHUB_API}/repos/${this.repo}/contents/${path}`,
       {
         method: "PUT",
@@ -821,7 +938,7 @@ export class GitHubClient {
    * Create a new file in the repository
    */
   async createFile(path: string, content: string, message: string): Promise<void> {
-    const response = await fetch(
+    const response = await fetchWithRetry(
       `${GITHUB_API}/repos/${this.repo}/contents/${path}`,
       {
         method: "PUT",
@@ -862,7 +979,7 @@ export class GitHubClient {
       }
     }
 
-    const response = await fetch(
+    const response = await fetchWithRetry(
       `${GITHUB_API}/repos/${this.repo}/contents/${path}`,
       {
         method: "PUT",
@@ -895,7 +1012,7 @@ export class GitHubClient {
     // Get the file's SHA (required for deletion)
     const meta = await this.getFileMeta(path);
 
-    const response = await fetch(
+    const response = await fetchWithRetry(
       `${GITHUB_API}/repos/${this.repo}/contents/${path}`,
       {
         method: "DELETE",
@@ -937,9 +1054,10 @@ export class GitHubClient {
   }
 
   /**
-   * Add a new plugin to marketplace.json
+   * Add or update a plugin in marketplace.json (upsert)
+   * Returns whether this was a create (true) or update (false)
    */
-  async addToMarketplace(
+  async upsertMarketplaceEntry(
     plugin: {
       name: string;
       description: string;
@@ -949,15 +1067,14 @@ export class GitHubClient {
       keywords?: string[];
     },
     userEmail?: string
-  ): Promise<void> {
+  ): Promise<{ created: boolean }> {
     const marketplacePath = ".claude-plugin/marketplace.json";
     const content = await this.fetchFile(marketplacePath);
     const marketplace = JSON.parse(content) as Marketplace;
 
     // Check if plugin already exists
-    if (marketplace.plugins.some((p) => p.name === plugin.name)) {
-      throw new Error(`Plugin already exists in marketplace: ${plugin.name}`);
-    }
+    const existingIndex = marketplace.plugins.findIndex((p) => p.name === plugin.name);
+    const isUpdate = existingIndex !== -1;
 
     // Try to read version from plugin.json if not provided
     let version = plugin.version;
@@ -966,27 +1083,41 @@ export class GitHubClient {
         const pluginJsonContent = await this.fetchFile(`plugins/${plugin.name}/.claude-plugin/plugin.json`);
         const pluginJson = JSON.parse(pluginJsonContent) as PluginManifest;
         version = pluginJson.version;
-      } catch {
+      } catch (err) {
+        console.warn(`[upsertMarketplaceEntry] Failed to read version for ${plugin.name}, defaulting to 1.0.0:`, err instanceof Error ? err.message : err);
         version = "1.0.0";
       }
     }
 
-    // Add the new plugin entry
-    const newEntry: PluginEntry = {
-      name: plugin.name,
-      source: `./plugins/${plugin.name}`,
-      description: plugin.description,
-      version,
-      ...(plugin.category ? { category: plugin.category } : {}),
-      ...(plugin.tags ? { tags: plugin.tags } : {}),
-      ...(plugin.keywords ? { keywords: plugin.keywords } : {}),
-    };
+    if (isUpdate) {
+      // Update existing entry, preserving fields not provided
+      const existing = marketplace.plugins[existingIndex];
+      marketplace.plugins[existingIndex] = {
+        ...existing,
+        description: plugin.description,
+        version,
+        ...(plugin.category !== undefined ? { category: plugin.category } : {}),
+        ...(plugin.tags !== undefined ? { tags: plugin.tags } : {}),
+        ...(plugin.keywords !== undefined ? { keywords: plugin.keywords } : {}),
+      };
+    } else {
+      // Add new plugin entry
+      const newEntry: PluginEntry = {
+        name: plugin.name,
+        source: `./plugins/${plugin.name}`,
+        description: plugin.description,
+        version,
+        ...(plugin.category ? { category: plugin.category } : {}),
+        ...(plugin.tags ? { tags: plugin.tags } : {}),
+        ...(plugin.keywords ? { keywords: plugin.keywords } : {}),
+      };
+      marketplace.plugins.push(newEntry);
+    }
 
-    marketplace.plugins.push(newEntry);
-
+    const action = isUpdate ? "Update" : "Add";
     const commitMessage = userEmail
-      ? `Add ${plugin.name} to marketplace\n\nRequested by: ${userEmail}`
-      : `Add ${plugin.name} to marketplace`;
+      ? `${action} ${plugin.name} in marketplace\n\nRequested by: ${userEmail}`
+      : `${action} ${plugin.name} in marketplace`;
 
     await this.updateFile(
       marketplacePath,
@@ -996,6 +1127,8 @@ export class GitHubClient {
 
     // Clear marketplace cache
     await this.clearCache();
+
+    return { created: !isUpdate };
   }
 
   /**
