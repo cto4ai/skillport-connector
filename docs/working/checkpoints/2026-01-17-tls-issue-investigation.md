@@ -108,9 +108,54 @@ Claude.ai/Desktop can work around `/install` failures by:
 - [ ] Fix verified
 - [ ] TSIP account checked for stale deployments
 
+## Error Detection & Logging
+
+### Current Logging
+
+The `fetchWithRetry` helper logs warnings on retry:
+```
+[fetchWithRetry] Attempt 1 failed: <error message>, retrying...
+```
+
+Visible via `wrangler tail`, but error messages for TLS failures are often generic.
+
+### What We CAN Log (Worker → GitHub)
+
+| Option | Description |
+|--------|-------------|
+| Enhanced context | Log full URL path, error type, stack trace on final failure |
+| Error categorization | Detect TLS errors by keywords: `TLS`, `SSL`, `certificate`, `CERT` |
+| Response headers | Add `X-Skillport-Retries`, `X-Skillport-Error-Type` to responses |
+| Analytics Engine | Track error patterns over time with structured events |
+
+Example categorization:
+```typescript
+const isTlsError = msg.includes('TLS') || msg.includes('SSL') ||
+                   msg.includes('certificate') || msg.includes('CERT');
+```
+
+### What We CANNOT Log (Upstream)
+
+**Anthropic proxy → Worker TLS errors cannot be logged by our code.**
+
+These errors happen before the request reaches our Worker:
+- Only visible in Claude client UI (the error messages user sees)
+- Anthropic's MCP proxy infrastructure handles this connection
+- We have no visibility into proxy connection pools, caching, or TLS handshakes
+
+### Two Distinct Failure Points
+
+```
+Claude.ai/Desktop → [Anthropic Proxy] → [Our Worker] → [GitHub API]
+                         ↑                    ↑
+                    Can't log             Can log
+                    (upstream)         (fetchWithRetry)
+```
+
 ## Next Steps
 
 1. ~~Add retry logic to GitHub client~~ ✅ Done
 2. Check TSIP account for stale skillport-connector deployment
 3. Consider caching access.json longer
 4. Monitor if issue persists or was deployment-related
+5. Consider enhanced error logging if issues persist
