@@ -26,11 +26,14 @@ git merge main
 git push
 ```
 
-To cherry-pick specific commits from development to main:
+To cherry-pick specific commits from development to main (use worktree):
 ```bash
-git checkout main
+git worktree add ../main-sync main
+cd ../main-sync
 git cherry-pick <commit-hash>
 git push
+cd ../development
+git worktree remove ../main-sync
 ```
 
 ## Documentation (Development Branch)
@@ -68,7 +71,7 @@ User email is captured from Google OAuth and stored in `this.props.email` via th
 **Important:** Cannot test MCP tools directly from Claude Code due to OAuth requirements. Use one of these methods:
 
 1. **Claude.ai with connector enabled** - Add the connector in Settings, test tools in conversation
-2. **MCP Inspector** - `npx @anthropic-ai/mcp-inspector` with the SSE URL
+2. **MCP Inspector** - `npx @modelcontextprotocol/inspector` then connect to your endpoint URL
 3. **Wrangler tail for logs** - `node node_modules/wrangler/bin/wrangler.js tail` to see audit logs
 
 ## Wrangler Notes
@@ -84,7 +87,15 @@ node node_modules/wrangler/bin/wrangler.js tail
 
 - Use conventional commits
 - **ALWAYS use a branch/PR process for code changes** - never commit code directly to main
-- Create a feature branch before making any code changes
+- **Use worktrees for feature branches** to keep `development` worktree clean:
+  ```bash
+  # Create feature branch in new worktree
+  git worktree add ../feat-name -b feat/feature-name
+
+  # After merge, clean up
+  git worktree remove ../feat-name
+  git branch -d feat/feature-name
+  ```
 - Testing will often take place before a PR is issued for the branch
 - Updates direct to main for documentation-only changes are ok
 - "save our work" means add, commit, push
