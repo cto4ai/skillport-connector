@@ -18,10 +18,19 @@ interface UserProps extends Record<string, unknown> {
 }
 
 export class SkillportMCP extends McpAgent<Env, unknown, UserProps> {
-  server = new McpServer({
-    name: "skillport",
-    version: "1.0.0",
-  });
+  server = new McpServer(
+    {
+      name: "skillport",
+      version: "1.0.0",
+    },
+    {
+      instructions:
+        "This server provides tools for browsing and installing Claude Code skills from the Skillport marketplace. " +
+        "Use skillport_auth to get an authenticated session token for the REST API, then use your skillport skill " +
+        "to understand how to browse, install, manage, and author skills. " +
+        "Call with operation='bootstrap' if you don't have the skillport skill installed yet.",
+    }
+  );
 
   /**
    * Log user action for audit trail
