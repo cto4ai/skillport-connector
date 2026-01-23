@@ -269,7 +269,9 @@ Your connector is now live at your Workers URL.
 
 ### Step 8: Add to Claude
 
-1. Open Claude.ai → Settings → Integrations
+#### Claude.ai / Claude Desktop
+
+1. Open Settings → Integrations
 2. Click "Add" → MCP
 3. Enter your connector URL with the `/mcp` endpoint:
    ```
@@ -282,6 +284,18 @@ Your connector is now live at your Workers URL.
 **For Claude.ai Team/Enterprise:** Add these to your domain allowlist (Admin Settings → Capabilities):
 - `your-connector.your-domain.workers.dev` — for REST API calls
 - `raw.githubusercontent.com` — for fetching skill content from GitHub
+
+#### Claude Code
+
+1. Add the connector as a remote MCP:
+   ```bash
+   claude mcp add --transport http skillport https://your-connector.your-domain.workers.dev/mcp
+   ```
+2. In Claude Code, run `/mcp` → select your connector → Authenticate
+3. Complete Google OAuth in browser
+4. Test with: *"What skills are available?"*
+
+**Scope options:** Add `--scope user` to make available across all projects, or `--scope project` to share via `.mcp.json`.
 
 ### Troubleshooting
 
@@ -373,7 +387,7 @@ Yes. Skills installed via Claude.ai or Desktop sync to mobile automatically.
 
 **What about Claude Code users?**
 
-Claude Code can access public repositories directly via Plugin Marketplace. For most teams, however, the Connector provides a better experience—with support for private repositories a key consideration for enterprise use.
+Claude Code can access public repositories directly via Plugin Marketplace (`/plugin add org/repo`). For private repositories, add the Connector as a remote MCP: `claude mcp add --transport http skillport https://your-connector.workers.dev/mcp`
 
 ---
 
