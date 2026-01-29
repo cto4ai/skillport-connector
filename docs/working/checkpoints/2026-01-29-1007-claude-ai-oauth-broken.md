@@ -1,12 +1,12 @@
 # Claude.ai OAuth Connector Issue - 2026-01-29
 
-**Date:** 2026-01-29 10:07
-**Status:** BLOCKED (Anthropic bug)
+**Date:** 2026-01-29 10:07 (updated 11:15)
+**Status:** INVESTIGATING (not Anthropic bug - TSIP works)
 **Branch:** development
 
 ## Problem
 
-Claude.ai custom MCP connectors fail to connect. OAuth flow initiates but never completes token exchange.
+Claude.ai custom MCP connectors fail to connect for jack-ivers.workers.dev deployments. OAuth flow initiates but never completes token exchange.
 
 ## Symptoms
 
@@ -14,6 +14,12 @@ Claude.ai custom MCP connectors fail to connect. OAuth flow initiates but never 
 2. Google OAuth sign-in appears and completes
 3. Spinner shows, then error: "Error connecting to the MCP server"
 4. Reference IDs provided: `9d2249c260f6527a`, `40c675b95822452d`, `ddf8f4b34d751fd9`
+
+## Key Discovery
+
+**TSIP's skillport connector WORKS on Claude.ai** (`skillport-connector.jack-48f.workers.dev`).
+
+This proves it's NOT a universal Anthropic/Claude.ai bug. Something is specific to the jack-ivers.workers.dev deployment or Google OAuth client.
 
 ## Investigation
 
@@ -30,88 +36,66 @@ Watched `wrangler tail` during connection attempts:
 ❌ POST /mcp - 401 invalid_token (no Bearer token)
 ```
 
-**Key Finding:** Claude.ai completes Google sign-in but **never calls `/token`** to exchange the authorization code for an access token.
+### Deployment Comparison
 
-### Endpoints Tested
+| Deployment | Cloudflare Account | Google OAuth | Claude.ai Status |
+|------------|-------------------|--------------|------------------|
+| jack-ivers.workers.dev | Crafty | Client A (Internal) | ❌ Broken |
+| jack-48f.workers.dev (TSIP) | TSIP | Client B (Internal) | ✅ Works |
 
-| Endpoint | Response |
-|----------|----------|
-| `/.well-known/oauth-authorization-server` | ✅ Valid metadata |
-| `/.well-known/oauth-protected-resource` | ✅ Valid metadata |
-| `/register` | ✅ Client registration works |
-| `/authorize` | ✅ Redirects to Google |
-| `/callback` | ✅ Receives auth code |
-| `/token` | ❓ Never called by Claude.ai |
-| `/mcp` | 401 (expected without token) |
+### What's Identical
 
-### Transport Comparison
+- OAuth discovery metadata (verified via curl)
+- Protected resource metadata
+- Server code (same repo)
+- Google OAuth "Internal" user type setting
 
-| Transport | Endpoint | OAuth Triggered |
-|-----------|----------|-----------------|
-| SSE | `/sse` | Sometimes triggers OAuth, fails at token exchange |
-| Streamable HTTP | `/mcp` | Inconsistent - sometimes triggers, sometimes doesn't |
+### What's Different
 
-### Surface Comparison
+- Cloudflare accounts
+- Google OAuth credentials (different Google Cloud projects)
+- KV namespaces
+- Cloudflare secrets
+
+### Google Cloud Console Findings
+
+- **Audience**: Internal (same as TSIP)
+- **Errors**: None recorded
+- **Traffic**: Activity Jan 20-21, then none
+- **Token grant rate**: Well under 10,000/day limit
+
+## Surface Comparison
 
 | Surface | Auth Method | Status |
 |---------|-------------|--------|
 | Claude Code | API key via `skillport_auth` tool | ✅ Works |
-| Claude.ai | OAuth 2.0 | ❌ Broken |
-| Claude Desktop | OAuth 2.0 | ❌ Broken (same issue) |
+| Claude.ai (jack-ivers) | OAuth 2.0 | ❌ Broken |
+| Claude.ai (TSIP/jack-48f) | OAuth 2.0 | ✅ Works |
 
-## Root Cause
+## Affected Deployments
 
-**Claude.ai's MCP client is not completing the OAuth 2.0 token exchange.**
+Broken (same Google OAuth client):
+- `skillport-connector.jack-ivers.workers.dev`
+- `obsidian-oauth-mcp.jack-ivers.workers.dev`
 
-The flow breaks after step 4:
-1. ✅ Discover OAuth server metadata
-2. ✅ Register as OAuth client
-3. ✅ Redirect to `/authorize` → Google
-4. ✅ Receive callback with authorization code
-5. ❌ **Call `/token` to exchange code** ← MISSING
-6. ❌ Include Bearer token in MCP requests
-
-## Affected Connectors
-
-Tested and confirmed broken:
-- `skillport-connector` (this project)
-- `obsidian-oauth-mcp` (same OAuth pattern)
-
-## Related Issues
-
-- [anthropics/claude-ai-mcp#5](https://github.com/anthropics/claude-ai-mcp/issues/5) - "Custom Connector OAuth Broken After Claude Desktop Update (December 18, 2025)"
-- [anthropics/claude-ai-mcp#28](https://github.com/anthropics/claude-ai-mcp/issues/28) - "MCP tools/call blocked with Insufficient permissions" (Jan 27, 2026)
-
-Issue #5 was assigned to Anthropic engineer on Jan 14, 2026 but no fix deployed yet.
-
-## Workarounds
-
-### For Claude Code Users
-Claude Code works fine - uses API key auth via `skillport_auth` MCP tool, not OAuth.
-
-### For Claude.ai Users
-No workaround available. Must wait for Anthropic fix.
-
-## Verification Test
-
-To confirm issue persists:
-```bash
-# Watch server logs
-wrangler tail --format=pretty
-
-# In Claude.ai: Settings → Connectors → Connect to custom connector
-# Observe: /token is never called after /callback
-```
+Working:
+- `skillport-connector.jack-48f.workers.dev` (TSIP)
 
 ## Next Steps
 
-1. [ ] Report to Anthropic with reference IDs and log evidence
-2. [ ] Monitor [anthropics/claude-ai-mcp](https://github.com/anthropics/claude-ai-mcp/issues) for updates
-3. [x] Confirmed Claude Code still works (tested `skillport_auth` and `obsidian_auth`)
-4. [ ] Test TSIP's Claude.ai to confirm widespread issue
+1. [ ] Watch `wrangler tail --format=pretty` during connection attempt
+2. [ ] Re-set Cloudflare secrets:
+   ```bash
+   wrangler secret put GOOGLE_CLIENT_SECRET
+   wrangler secret put COOKIE_ENCRYPTION_KEY
+   ```
+3. [ ] Compare Google OAuth client configurations in detail
+4. [ ] Consider clearing KV namespace state
+5. [ ] Try creating new Google OAuth credentials
 
 ## Notes
 
-- Issue is NOT server-side - servers respond correctly to all OAuth endpoints
-- Issue is NOT configuration - same connectors worked "as recently as yesterday"
-- Issue appears to be in Anthropic's MCP proxy/client OAuth implementation
+- Issue is NOT a universal Anthropic bug (TSIP works)
+- Issue is specific to jack-ivers deployments OR the associated Google OAuth client
+- Same Google OAuth credentials used for both skillport and obsidian (both broken)
+- TSIP has separate Google OAuth credentials (works)
