@@ -1,0 +1,277 @@
+# Skillport Connector v2: Code Mode Architecture
+
+**Date:** 2026-02-28
+**Status:** Decided (see [decisions.md](decisions.md) for resolved questions)
+**Context:** [Context Mode deep analysis](../../../../claude-context-mode/docs/checkpoints/2026-02-28-1047-context-mode-deep-analysis.md)
+
+## Problem Statement
+
+Skillport Connector v1 uses a single-MCP-tool + REST API + Skill pattern inspired by Cloudflare's Code Mode. While this reduced tool schema overhead from ~10 tools to 1, it introduced a reliability problem: **the model fails ~40% on first attempt** because it must:
+
+1. Call `skillport_auth` to get a bearer token
+2. Parse the response to extract token + base URL
+3. Read the Skill doc to find the right REST endpoint
+4. Construct curl/Python with correct Bearer header and token prefix
+5. Handle three token types (`sk_api_`, `sk_install_`, `sk_edit_`) with 15-min TTLs
+
+This trades structured tool calls (which models handle reliably) for "read docs and construct HTTP requests" (which is error-prone).
+
+## Proposed Approach: Server-Side Code Mode
+
+Replace the current auth-token-then-curl pattern with Cloudflare's Code Mode executed server-side in a Worker isolate.
+
+### Architecture Overview
+
+```
+Claude                    Skillport MCP Server (CF Worker)
+  │                              │
+  │── MCP connect ──────────────►│── OAuth (Google) ──► auto on first connect
+  │                              │   auth context stored server-side
+  │                              │
+  │── execute({ code: "..." }) ─►│── Dynamic Worker isolate
+  │                              │   - typed `skillport.*` API injected
+  │                              │   - auth token injected automatically
+  │                              │   - code runs, only stdout returns
+  │                              │
+  │◄── { result: "..." } ───────│
+```
+
+### Two MCP Tools (Fixed ~1,000 Token Cost)
+
+```json
+[
+  {
+    "name": "execute",
+    "description": "Execute JavaScript against the Skillport API. Auth is automatic.",
+    "inputSchema": {
+      "properties": {
+        "code": {
+          "type": "string",
+          "description": "Async arrow function. Use skillport.* methods."
+        }
+      }
+    }
+  },
+  {
+    "name": "search",
+    "description": "Search Skillport API reference and skill authoring docs.",
+    "inputSchema": {
+      "properties": {
+        "query": {
+          "type": "string",
+          "description": "What you want to find (endpoint, workflow, best practice)."
+        }
+      }
+    }
+  }
+]
+```
+
+**Why `search` here (unlike the initial analysis):** The Skillport API is small (~10 endpoints), but the *domain knowledge* (skill authoring best practices, SKILL.md format, surface tags, naming conventions, progressive disclosure patterns) is large. `search` lets the model query that knowledge on-demand without loading the full skill into context.
+
+### Typed API Surface
+
+The `execute` tool's isolate has these declarations available:
+
+```typescript
+declare const skillport: {
+  // Discovery
+  listSkills(params?: {
+    surface?: "CC" | "CD" | "CAI" | "CDAI" | "CALL";
+    refresh?: boolean;
+  }): Promise<Skill[]>;
+
+  getSkill(name: string): Promise<SkillDetail>;
+
+  // Installation
+  installSkill(name: string, target: "skill" | "package"): Promise<InstallResult>;
+
+  checkUpdates(
+    installed: { name: string; version: string }[]
+  ): Promise<UpdateResult[]>;
+
+  // Authoring
+  saveSkill(
+    name: string,
+    payload: {
+      files: { path: string; content: string }[];
+      commitMessage: string;
+      skillGroup?: string;
+      metadata?: {
+        description: string;
+        keywords?: string[];
+        author?: { name: string; email: string };
+        license?: string;
+      };
+    }
+  ): Promise<SaveResult>;
+
+  deleteSkill(name: string): Promise<Result>;
+
+  bumpVersion(
+    name: string,
+    type: "patch" | "minor" | "major"
+  ): Promise<BumpResult>;
+
+  publishSkill(
+    name: string,
+    meta: {
+      description: string;
+      category: string;
+      tags: string[];
+      keywords?: string[];
+    }
+  ): Promise<Result>;
+
+  // Editing
+  editSkill(name: string): Promise<{ files: SkillFile[]; localPath: string }>;
+
+  // Identity
+  whoami(): Promise<UserInfo>;
+
+  // Debug
+  debugPlugins(): Promise<unknown>;
+};
+```
+
+The model writes code like:
+
+```javascript
+async () => {
+  const skills = await skillport.listSkills({ surface: "CC" });
+  return skills.map(s => `${s.name} (v${s.version}) - ${s.description}`).join("\n");
+}
+```
+
+No tokens. No curl. No headers. The isolate injects auth automatically.
+
+### Authentication Flow
+
+```
+First MCP connection:
+  Client ──► Skillport MCP Server
+         ──► Google OAuth redirect (if no cached session)
+         ──► User approves in browser
+         ──► Server stores OAuth token server-side (KV, 24h TTL)
+         ──► MCP connection established
+
+Subsequent tool calls:
+  execute({ code }) ──► Server retrieves stored OAuth token from KV
+                    ──► Spawns isolate with `skillport.*` proxy
+                    ──► Proxy intercepts skillport.* calls
+                    ──► Proxy makes REST API calls with stored token
+                    ──► Only return value enters context
+```
+
+**Key change from v1:** The model never sees, handles, or manages auth tokens. OAuth happens at connection time. The server manages token refresh internally. The 40% first-attempt failure rate from token juggling is eliminated.
+
+### What Happens to the Skill
+
+The v1 Skill has two layers:
+
+| Layer | ~Lines | v2 Treatment |
+|---|---|---|
+| API usage instructions (curl templates, token handling, endpoint reference, error patterns) | ~275 (55%) | **Eliminated.** Replaced by typed API + execute tool. |
+| Domain knowledge (authoring best practices, SKILL.md format, naming conventions, surface tags, progressive disclosure, testing methodology) | ~225 (45%) | **Moved to `search` index.** Queryable on-demand. |
+
+#### What the `search` tool indexes
+
+The domain knowledge currently in the Skill gets chunked and indexed server-side (FTS5 or simpler keyword index). The model queries it as needed:
+
+```javascript
+// Model needs to know SKILL.md frontmatter format
+await skillport.search("SKILL.md frontmatter format required fields")
+
+// Model needs naming conventions
+await skillport.search("skill naming conventions gerund form")
+
+// Model needs surface tag reference
+await skillport.search("surface tags CC CD CAI meaning")
+```
+
+This is progressive disclosure — the model loads domain knowledge only when the task requires it, instead of consuming ~225 lines of context on every Skillport interaction.
+
+#### What stays client-side
+
+Two things the model still needs to know without searching:
+
+1. **Installed version gathering** — reading `.claude-plugin/plugin.json` from `~/.claude/skills/{name}/` is a local filesystem operation. The model needs to know this path convention to call `checkUpdates`. This is ~5 lines of knowledge.
+
+2. **Post-install instructions** — "start a new conversation for Claude to see the installed skill." This is ~1 line.
+
+These could live in the `execute` tool description or a minimal 10-line skill.
+
+### Install Workflow
+
+Installation is the most complex workflow because it involves client-side file operations. In v2:
+
+```javascript
+async () => {
+  // Server-side: get install payload
+  const result = await skillport.installSkill("my-skill", "skill");
+  // result contains: { files: [...], installPath: "~/.claude/skills/my-skill/" }
+  return result;
+}
+```
+
+The execute tool returns the file contents and target path. The model then uses standard file tools (Write) to place them. This is simpler than the current shell-script-download approach and works across all surfaces.
+
+**Alternative:** The server could return a self-contained install script that the model pipes to bash, similar to v1 but without the token complexity.
+
+### What This Eliminates
+
+| v1 Pain Point | v2 Resolution |
+|---|---|
+| 40% first-attempt failure on auth | OAuth at connection time, invisible to model |
+| Three token types (sk_api_, sk_install_, sk_edit_) | No model-visible tokens at all |
+| 15-min TTL requiring re-auth | Server manages token lifecycle internally |
+| curl construction errors | Typed `skillport.*` API, no HTTP construction |
+| Skill doc context load (~500 lines) | ~10 lines + on-demand search |
+| Token variable parsing errors | No variables to parse |
+
+### What This Preserves
+
+- Google OAuth identity (same auth provider)
+- All existing REST API endpoints (server-side, unchanged)
+- Access control model (.skillport/access.json)
+- Skill authoring knowledge (reindexed, not removed)
+- Multi-surface support (CC, CD, CAI)
+- Version management via bump API
+
+### Resolved Questions
+
+See [decisions.md](decisions.md) for full rationale on each.
+
+1. **Code execution:** In-worker `new Function()` eval — no Workers for Platforms needed ($0 extra cost).
+2. **`search` implementation:** In-memory keyword map bundled in worker source (~5KB corpus).
+3. **Install on non-CC surfaces:** Model detects its surface and passes `mode: "skill"` (CC) or `mode: "package"` (CAI/CD). Server returns appropriate format.
+4. **Backward compatibility:** Versioned endpoints — `/mcp` stays v1, `/v2/mcp` serves v2. Both in same worker.
+5. **Skillport skill:** Eliminated in v2. Bring back minimal (<20 lines) only if gaps appear.
+6. **Surface detection:** Model-side only (tool name inspection). No dependency on Skillport MCP tools.
+
+## Implementation Phases
+
+### Phase 1: Core execute tool
+- New `src/mcp-server-v2.ts` with `execute` tool
+- New `src/skillport-proxy.ts` — typed `skillport.*` proxy wrapping existing REST handlers
+- Route `/v2/mcp` in `src/index.ts`
+- In-worker eval via `new Function("skillport", ...)` — no Workers for Platforms
+- OAuth at connection time (shared with v1)
+
+### Phase 2: Search + domain knowledge
+- New `src/search-index.ts` — in-memory chunks with keyword matching
+- Add `search` tool to v2 MCP server
+- Port domain knowledge from v1 Skill into search index
+
+### Phase 3: Multi-surface install
+- `installSkill(name, { mode: "skill" | "package" })` — model passes mode
+- `mode: "skill"` returns files array for direct Write (CC)
+- `mode: "package"` returns `.skill` package for `present_files` (CAI/CD)
+- Deprecate v1 token-based install flow
+
+## References
+
+- [Cloudflare Code Mode blog (Feb 2026)](https://blog.cloudflare.com/code-mode-mcp/)
+- [Cloudflare Code Mode SDK docs](https://developers.cloudflare.com/agents/api-reference/codemode/)
+- [Context Mode deep analysis checkpoint](../../../../claude-context-mode/docs/checkpoints/2026-02-28-1047-context-mode-deep-analysis.md)
+- [v1 single-tool architecture](../working/single-tool-connector-plus-skill/README.md)
