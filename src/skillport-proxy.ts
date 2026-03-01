@@ -175,16 +175,25 @@ export function createSkillportProxy(env: Env, user: UserContext) {
 
       if (mode === "package") {
         const pkg = packageSkill(skill.name, files);
+
+        // Decode base64 to raw bytes and store in KV with short TTL
+        const raw = Uint8Array.from(atob(pkg.content_base64), (c) => c.charCodeAt(0));
+        const id = crypto.randomUUID();
+        await env.OAUTH_KV.put(`skill-pkg:${id}`, raw, { expirationTtl: 900 });
+
+        const connectorUrl = env.CONNECTOR_URL || "https://your-connector.workers.dev";
+        const downloadUrl = `${connectorUrl}/v2/download/${id}/${pkg.filename}`;
+
         return {
           type: "package" as const,
           name: skill.name,
           version: skill.version,
           filename: pkg.filename,
-          content_base64: pkg.content_base64,
+          download_url: downloadUrl,
           instructions:
-            "Write content_base64 to /tmp/" + pkg.filename + " using the code execution tool: " +
-            "import base64; open('/tmp/" + pkg.filename + "','wb').write(base64.b64decode(content_base64)). " +
-            "Then call present_files with that path. " +
+            "Download the .skill file: " +
+            "curl -sf -o /tmp/" + pkg.filename + " '" + downloadUrl + "'. " +
+            "Then call present_files with /tmp/" + pkg.filename + ". " +
             "Tell the user to click 'Copy to your skills' then start a new conversation.",
         };
       }

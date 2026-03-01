@@ -731,6 +731,34 @@ export default {
       return handleEditToken(token, env);
     }
 
+    // Serve .skill package downloads (short-lived, UUID-gated)
+    if (url.pathname.startsWith("/v2/download/")) {
+      const segments = url.pathname.split("/");
+      // /v2/download/:id/:filename
+      const id = segments[3];
+      const filename = segments[4] || "skill.skill";
+
+      if (!id) {
+        return Response.json({ error: "Missing download ID" }, { status: 400 });
+      }
+
+      const data = await env.OAUTH_KV.get(`skill-pkg:${id}`, "arrayBuffer");
+      if (!data) {
+        return Response.json(
+          { error: "Download not found or expired" },
+          { status: 404 }
+        );
+      }
+
+      return new Response(data, {
+        headers: {
+          "Content-Type": "application/zip",
+          "Content-Disposition": `attachment; filename="${filename}"`,
+          "Cache-Control": "no-store",
+        },
+      });
+    }
+
     // Delegate to OAuth provider for MCP routes
     const response = await oauthProvider.fetch(request, env, ctx);
 
