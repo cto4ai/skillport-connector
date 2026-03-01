@@ -3,15 +3,15 @@
  *
  * Replaces the v1 single-tool + REST API + Skill pattern with:
  * - `execute` tool: dispatches `{ method, args }` to a typed `skillport.*` proxy
+ * - `search` tool: on-demand domain knowledge queries (skill authoring, best practices)
  * - Auth is invisible — OAuth at connection time, tokens managed server-side
- *
- * Phase 2 will add a `search` tool for domain knowledge queries.
  */
 
 import { McpAgent } from "agents/mcp";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
 import { createSkillportProxy } from "./skillport-proxy";
+import { search, listTopics } from "./search-index";
 
 interface UserProps extends Record<string, unknown> {
   uid: string;
@@ -82,7 +82,9 @@ export class SkillportMCPv2 extends McpAgent<Env, unknown, UserProps> {
       instructions:
         "Execute Skillport API methods via structured dispatch. " +
         "Auth is automatic — no tokens needed. " +
-        "Use the execute tool with { method, args } to browse, install, and manage skills.",
+        "Use the execute tool with { method, args } to browse, install, and manage skills. " +
+        "Use the search tool to look up skill authoring knowledge " +
+        "(SKILL.md format, naming conventions, surface tags, best practices, etc.).",
     }
   );
 
@@ -175,6 +177,62 @@ export class SkillportMCPv2 extends McpAgent<Env, unknown, UserProps> {
             isError: true,
           };
         }
+      }
+    );
+
+    // ============================================================
+    // Tool: search
+    // ============================================================
+
+    this.server.tool(
+      "search",
+      "Search Skillport domain knowledge — SKILL.md format, naming conventions, " +
+        "surface tags, authoring workflows, best practices, and more. " +
+        "Query by topic to get self-contained reference chunks.",
+      {
+        query: z
+          .string()
+          .describe("What you want to find (e.g. 'frontmatter required fields', 'naming conventions', 'surface tags')"),
+        limit: z
+          .number()
+          .int()
+          .min(1)
+          .max(5)
+          .optional()
+          .describe("Max results to return (1-5, default 3)"),
+      },
+      async ({ query, limit }) => {
+        this.logAction(`search:${query}`);
+
+        const results = search(query, limit);
+
+        if (results.length === 0) {
+          const topics = listTopics();
+          const topicList = topics
+            .map((t) => `- **${t.id}**: ${t.title} _(${t.category})_`)
+            .join("\n");
+
+          return {
+            content: [
+              {
+                type: "text" as const,
+                text:
+                  `No results for "${query}". Try one of these topics:\n\n${topicList}`,
+              },
+            ],
+          };
+        }
+
+        const formatted = results
+          .map(
+            (chunk) =>
+              `## ${chunk.title}\n*${chunk.category}*\n\n${chunk.content}`
+          )
+          .join("\n\n---\n\n");
+
+        return {
+          content: [{ type: "text" as const, text: formatted }],
+        };
       }
     );
   }

@@ -212,8 +212,8 @@ See [decisions.md](decisions.md) for full rationale on each.
 - Structured `{ method, args }` dispatch — server-side method resolution, no eval
 - OAuth at connection time (shared with v1)
 
-### Phase 2: Search + domain knowledge
-- New `src/search-index.ts` — in-memory chunks with keyword matching
+### Phase 2: Search + domain knowledge ✅
+- New `src/search-index.ts` — in-memory chunks with keyword matching (15 chunks, ~5KB)
 - Add `search` tool to v2 MCP server
 - Port domain knowledge from v1 Skill into search index
 
