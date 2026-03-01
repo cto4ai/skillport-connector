@@ -3,15 +3,15 @@
  *
  * Replaces the v1 single-tool + REST API + Skill pattern with:
  * - `execute` tool: dispatches `{ method, args }` to a typed `skillport.*` proxy
+ * - `search` tool: on-demand domain knowledge queries (skill authoring, best practices)
  * - Auth is invisible — OAuth at connection time, tokens managed server-side
- *
- * Phase 2 will add a `search` tool for domain knowledge queries.
  */
 
 import { McpAgent } from "agents/mcp";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
 import { createSkillportProxy } from "./skillport-proxy";
+import { search, listTopics } from "./search-index";
 
 interface UserProps extends Record<string, unknown> {
   uid: string;
@@ -82,7 +82,13 @@ export class SkillportMCPv2 extends McpAgent<Env, unknown, UserProps> {
       instructions:
         "Execute Skillport API methods via structured dispatch. " +
         "Auth is automatic — no tokens needed. " +
-        "Use the execute tool with { method, args } to browse, install, and manage skills.",
+        "Two tools available:\n" +
+        "- execute: Call Skillport API methods ({ method, args }) to browse, install, and manage skills.\n" +
+        "- search: Query Skillport domain knowledge on-demand. " +
+        "IMPORTANT: Before answering questions about SKILL.md format, naming conventions, " +
+        "surface tags, publishing, installation, version management, marketplace structure, " +
+        "testing, or best practices, ALWAYS call the search tool first. " +
+        "Do not rely on general knowledge — the search index contains the authoritative reference.",
     }
   );
 
@@ -170,6 +176,77 @@ export class SkillportMCPv2 extends McpAgent<Env, unknown, UserProps> {
               {
                 type: "text" as const,
                 text: `Error in ${method}: ${message}`,
+              },
+            ],
+            isError: true,
+          };
+        }
+      }
+    );
+
+    // ============================================================
+    // Tool: search
+    // ============================================================
+
+    this.server.tool(
+      "search",
+      "Search Skillport domain knowledge — SKILL.md format, naming conventions, " +
+        "surface tags, authoring workflows, installation, version management, " +
+        "marketplace structure, testing, and best practices. " +
+        "Query by topic to get self-contained reference chunks.",
+      {
+        query: z
+          .string()
+          .describe("What you want to find (e.g. 'frontmatter required fields', 'naming conventions', 'surface tags')"),
+        limit: z
+          .number()
+          .int()
+          .min(1)
+          .max(5)
+          .optional()
+          .describe("Max results to return (1-5, default 3)"),
+      },
+      async ({ query, limit }) => {
+        this.logAction(`search:${query}`);
+
+        try {
+          const results = search(query, limit);
+
+          if (results.length === 0) {
+            const topicList = listTopics()
+              .map((t) => `- **${t.id}**: ${t.title} _(${t.category})_`)
+              .join("\n");
+
+            return {
+              content: [
+                {
+                  type: "text" as const,
+                  text:
+                    `No results for "${query}". Try one of these topics:\n\n${topicList}`,
+                },
+              ],
+            };
+          }
+
+          const formatted = results
+            .map(
+              (chunk) =>
+                `## ${chunk.title}\n*${chunk.category}*\n\n${chunk.content}`
+            )
+            .join("\n\n---\n\n");
+
+          return {
+            content: [{ type: "text" as const, text: formatted }],
+          };
+        } catch (err) {
+          const message =
+            err instanceof Error ? err.message : String(err);
+          console.error(`[v2:search] query="${query}" error:`, message);
+          return {
+            content: [
+              {
+                type: "text" as const,
+                text: `Error searching for "${query}": ${message}`,
               },
             ],
             isError: true,

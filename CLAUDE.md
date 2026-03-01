@@ -63,6 +63,12 @@ The connector exposes these MCP tools:
 | `publish_skill` | Make a skill discoverable in the marketplace |
 | `bump_version` | Bump version for a skill's group |
 
+### v2 Tools (`/v2/mcp` endpoint)
+| Tool | Purpose |
+|------|---------|
+| `execute` | Dispatch typed `{ method, args }` calls to the Skillport API (auth is automatic) |
+| `search` | Query domain knowledge on-demand (SKILL.md format, naming, surface tags, best practices) |
+
 ## Setup
 
 ### 1. Copy configuration template

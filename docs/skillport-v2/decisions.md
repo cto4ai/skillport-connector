@@ -39,11 +39,13 @@
 **Decision:** `installSkill(name, { mode: "skill" | "package" })` — model detects its own environment and passes the right mode.
 
 - `mode: "skill"` → returns `{ files: [...], installPath: "~/.claude/skills/{name}/" }` — model writes files directly (CC)
-- `mode: "package"` → returns `{ filename: "{name}.skill", content: "..." }` — model uses `present_files` for download (CAI/CD)
+- `mode: "package"` → server zips skill files into a `.skill` package (zip with `.skill` extension), returns `{ filename: "{name}.skill", content: "<base64>" }` — model calls `present_files` to offer download (CAI/CD)
 
 **Rationale:** The server cannot reliably detect the client surface. `client_info` from the MCP handshake returns the same value for Claude Desktop, Claude.ai, and Cowork. The real detection signals (tool name patterns like `-local`, `mcp__cowork__*`, `present_files`) are only visible model-side. The existing `surface-detect` skill handles this independently.
 
-**Rejected:** Server-side surface detection (unreliable — `client_info` is identical across CD/CAI/CW).
+**Updated (2026-03-01):** `mode: "package"` now specifies server-side zip packaging rather than returning raw files. This matches Anthropic's skill-creator pattern (`package_skill.py` produces a `.skill` zip) but moves packaging server-side so the model only needs one `present_files` call. Avoids multi-step client-side packaging that's error-prone across surfaces.
+
+**Rejected:** Server-side surface detection (unreliable — `client_info` is identical across CD/CAI/CW). Client-side packaging (model would need to write temp files, zip, then present — too many failure points on CAI/CD). Download URL (adds auth complexity, user leaves chat).
 
 ### 5. Skillport skill: Eliminate, bring back small if needed
 
