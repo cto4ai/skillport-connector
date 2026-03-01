@@ -20,14 +20,22 @@ CONNECTOR_URL = "https://your-connector.your-domain.workers.dev"
 binding = "OAUTH_KV"
 id = "YOUR_OAUTH_KV_NAMESPACE_ID"
 
-# Durable Object for MCP server
+# Durable Objects for MCP servers
 [[durable_objects.bindings]]
 name = "MCP_OBJECT"
 class_name = "SkillportMCP"
 
+[[durable_objects.bindings]]
+name = "MCP_V2_OBJECT"
+class_name = "SkillportMCPv2"
+
 [[migrations]]
 tag = "v1"
 new_sqlite_classes = ["SkillportMCP"]
+
+[[migrations]]
+tag = "v2"
+new_sqlite_classes = ["SkillportMCPv2"]
 
 # Secrets (set via `npx wrangler secret put <NAME>`)
 # GOOGLE_CLIENT_ID      - Google OAuth client ID

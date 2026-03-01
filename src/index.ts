@@ -14,20 +14,34 @@
 import { OAuthProvider } from "@cloudflare/workers-oauth-provider";
 import googleHandler from "./google-handler";
 import { SkillportMCP } from "./mcp-server";
+import { SkillportMCPv2 } from "./mcp-server-v2";
 import { GitHubClient } from "./github-client";
 import { handleAPI } from "./rest-api";
 
-// Export the MCP server class for Durable Objects
-export { SkillportMCP };
+// Export MCP server classes for Durable Objects
+export { SkillportMCP, SkillportMCPv2 };
 
-// Create handlers for both transports
+// v1 handlers (existing)
 const sseHandler = SkillportMCP.mount("/sse");  // SSE for Claude.ai/Desktop/Inspector
 const httpHandler = SkillportMCP.serve("/mcp"); // Streamable HTTP for Claude Code
+
+// v2 handlers (execute tool, no tokens)
+// Must specify binding explicitly — default is "MCP_OBJECT" (v1)
+const v2SseHandler = SkillportMCPv2.mount("/v2/sse", { binding: "MCP_V2_OBJECT" });
+const v2HttpHandler = SkillportMCPv2.serve("/v2/mcp", { binding: "MCP_V2_OBJECT" });
 
 // Combined handler that routes based on path
 const combinedMcpHandler = {
   fetch: (request: Request, env: Env, ctx: ExecutionContext) => {
     const url = new URL(request.url);
+    // v2 routes
+    if (url.pathname.startsWith("/v2/sse")) {
+      return v2SseHandler.fetch(request, env, ctx);
+    }
+    if (url.pathname.startsWith("/v2/mcp")) {
+      return v2HttpHandler.fetch(request, env, ctx);
+    }
+    // v1 routes
     if (url.pathname.startsWith("/sse")) {
       return sseHandler.fetch(request, env, ctx);
     }
@@ -35,10 +49,10 @@ const combinedMcpHandler = {
   }
 };
 
-// Create the OAuth provider with both transports
+// Create the OAuth provider with both v1 and v2 transports
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 const oauthProvider = new OAuthProvider({
-  apiRoute: ["/mcp", "/sse", "/sse/message"],
+  apiRoute: ["/mcp", "/sse", "/sse/message", "/v2/mcp", "/v2/sse", "/v2/sse/message"],
   apiHandler: combinedMcpHandler as any,
   defaultHandler: googleHandler,
   authorizeEndpoint: "/authorize",

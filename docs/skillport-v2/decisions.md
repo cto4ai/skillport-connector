@@ -6,13 +6,17 @@
 
 ## Decisions
 
-### 1. Code execution: In-worker eval (not Workers for Platforms)
+### 1. Code execution: Structured dispatch (not eval, not Workers for Platforms)
 
-**Decision:** Use `new Function("skillport", ...)` directly in the worker. No dynamic isolate spawning.
+**Decision:** The `execute` tool takes `{ method, args }` and dispatches to the proxy. No dynamic code evaluation.
 
-**Rationale:** Workers for Platforms costs $25/mo and is designed for multi-tenant platforms running untrusted third-party code. Our use case is single-user, model-generated code calling a fixed API proxy. The model's code is always short (2-10 lines) and scoped to `skillport.*` methods. Security is enforced by only passing `skillport` into the function scope — `fetch`, `env`, and worker APIs are simply not available.
+**Original plan:** Use `new Function("skillport", ...)` for in-worker eval. This was blocked — Cloudflare Workers disables `new Function()` and `eval()` in production. The `cloudflare:unsafe-eval` module only works in local dev (workerd with `--experimental`). There is no compatibility flag that enables runtime eval on the $5 Workers Paid plan.
 
-**Rejected:** Workers for Platforms ($25/mo), Cloudflare Code Mode SDK (requires Workers for Platforms).
+**Why this still solves the v1 problems:** The core value of v2 was never the JS code execution itself — it was eliminating token handling, curl construction, and skill doc dependency. Structured dispatch achieves all three: the model picks a method name and passes arguments, the server handles auth internally, no tokens enter context.
+
+**Trade-off vs code mode:** The model can't chain multiple API calls in a single tool invocation. In practice this rarely matters — most interactions are single calls, and the model can make multiple `execute` calls if needed.
+
+**Rejected:** `new Function()` eval (blocked by CF Workers runtime), Workers for Platforms ($25/mo), `cloudflare:unsafe-eval` (local dev only).
 
 ### 2. Search implementation: In-memory keyword map
 
@@ -59,16 +63,11 @@
 
 The `client_info` null check (step 1) currently requires calling `skillport_auth`. In v2, this can be dropped — CC is equally detectable as the fallback when no other signals match.
 
-### 7. Security: Scope restriction via function parameters
+### 7. Security: Server-side dispatch, no user code execution
 
-**Decision:** The `execute` function receives only `skillport` as a parameter. No `fetch`, `env`, `caches`, `crypto`, or other worker APIs are passed in.
+**Decision:** The `execute` tool dispatches to a fixed set of proxy methods. The model specifies `{ method, args }` — no arbitrary code runs in the worker.
 
-```typescript
-const fn = new Function("skillport", `return (async () => { ${code} })()`);
-const result = await fn(skillportProxy);
-```
-
-**Rationale:** No allowlist/blocklist needed. If it's not passed in, it's not accessible. The model's code can only call `skillport.*` methods, which internally make authenticated REST API calls. Standard JS builtins (String, Array, JSON, Math) remain available, which is fine.
+**Rationale:** This is inherently more secure than the original eval approach. The server only executes known methods with validated arguments. No allowlist/blocklist needed because there's no code to evaluate — just method dispatch.
 
 ## File Plan
 
