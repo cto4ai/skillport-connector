@@ -282,14 +282,17 @@ const CHUNKS: SearchChunk[] = [
       "desktop", "copy-to-skills",
     ],
     content:
-      "Installation varies by surface:\n\n" +
+      "Installation varies by surface. Default mode is 'package'.\n\n" +
+      "**Claude.ai / Desktop (default):** `installSkill({ name })` or " +
+      "`installSkill({ name, mode: 'package' })` returns a `.skill` file as base64. " +
+      "Decode it to `/tmp/{name}.skill` using the code execution tool " +
+      "(e.g. `import base64; open('/tmp/name.skill','wb').write(base64.b64decode(content_base64))`), " +
+      "then call `present_files` with that path. User clicks 'Copy to your skills' " +
+      "then starts a new conversation.\n\n" +
       "**Claude Code (CC):** `installSkill({ name, mode: 'skill' })` " +
       "returns files + installPath. Write files directly to `~/.claude/skills/{name}/`.\n\n" +
-      "**Claude.ai / Desktop:** `installSkill({ name, mode: 'package' })` " +
-      "returns a `.skill` file (base64 zip). Call `present_files` to share it. " +
-      "User clicks 'Copy to your skills' then starts a new conversation.\n\n" +
-      "**Surface detection:** Use the surface-detect skill or check available tools " +
-      "to determine which mode to use. Default to 'package' if unsure.",
+      "**Surface detection:** Default mode ('package') works on all surfaces. " +
+      "Only pass mode 'skill' if you are certain you're on Claude Code with filesystem access.",
   },
 ];
 

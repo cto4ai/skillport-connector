@@ -218,16 +218,14 @@ See [decisions.md](decisions.md) for full rationale on each.
 - Port domain knowledge from v1 Skill into search index
 
 ### Phase 3: Multi-surface install ✅
-- `installSkill(name, { mode: "skill" | "package" })` — model passes mode
-- `mode: "skill"` returns files array for direct Write (CC) — straightforward
-- `mode: "package"` — server builds `.skill` zip via `fflate`, returns base64; model calls `present_files` to offer download
+- `installSkill(name, { mode: "skill" | "package" })` — default is `"package"`
+- `mode: "package"` (default) — server builds `.skill` zip via `fflate`, returns base64. Model writes to `/tmp/{name}.skill` using code execution tool, then calls `present_files` with the path. User clicks "Copy to your skills".
+- `mode: "skill"` — returns files array for direct Write (CC only)
 - Deprecate v1 token-based install flow
 
-**Design: server-side `.skill` packaging.** A `.skill` file is a zip with a `.skill` extension (see Anthropic's `skill-creator` plugin — `package_skill.py`). The server already has all the files; it zips them and returns `{ filename: "{name}.skill", content: "<base64>" }`. The model's only job is to pass the blob to `present_files` — one tool call, no client-side packaging logic.
+**Design: server-side `.skill` packaging.** A `.skill` file is a zip with a `.skill` extension (see Anthropic's `skill-creator` plugin — `package_skill.py`). The server already has all the files; it zips them and returns `{ filename: "{name}.skill", content_base64: "<base64>" }`. The model decodes the base64 to `/tmp/{name}.skill` via Claude.ai's code execution sandbox, then calls `present_files` to offer the download.
 
-This matches the existing skill-creator workflow (init → edit → `package_skill.py` → present `.skill` to user) but moves the packaging server-side so it works on any surface with `present_files`.
-
-**Open question:** Whether `present_files` accepts base64 binary from an MCP tool response is untested — that's a Claude.ai platform capability outside our control. Fallback: return a short-lived download URL instead of inline content. See [installation research](../research/skillport-installation-optimization-across-surfaces.md) for full surface analysis.
+**Delivery mechanism (resolved):** `present_files` requires a file path on disk, not inline base64. Claude.ai provides a sandboxed Ubuntu container with code execution (Python/Node.js). The model writes the base64 to `/tmp/` using Python, then passes the path to `present_files`. This matches the v1 install script pattern. See [installation research](../research/skillport-installation-optimization-across-surfaces.md) for full surface analysis.
 
 ## References
 

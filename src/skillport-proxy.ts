@@ -165,7 +165,7 @@ export function createSkillportProxy(env: Env, user: UserContext) {
       if (!access.canRead(name)) throw new Error("Access denied");
 
       const { skill, files } = await github.fetchSkill(name);
-      const mode = options?.mode || "skill";
+      const mode = options?.mode || "package";
 
       const fileData = files.map((f) => ({
         path: f.path,
@@ -182,8 +182,10 @@ export function createSkillportProxy(env: Env, user: UserContext) {
           filename: pkg.filename,
           content_base64: pkg.content_base64,
           instructions:
-            "Use present_files to share this .skill file with the user. " +
-            "They should click 'Copy to your skills' then start a new conversation.",
+            "Write content_base64 to /tmp/" + pkg.filename + " using the code execution tool: " +
+            "import base64; open('/tmp/" + pkg.filename + "','wb').write(base64.b64decode(content_base64)). " +
+            "Then call present_files with that path. " +
+            "Tell the user to click 'Copy to your skills' then start a new conversation.",
         };
       }
 
