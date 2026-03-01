@@ -9,7 +9,6 @@
 import {
   GitHubClient,
   parseSkillFrontmatter,
-  type SkillFile,
 } from "./github-client";
 import { AccessControl } from "./access-control";
 
@@ -66,8 +65,11 @@ export function createSkillportProxy(env: Env, user: UserContext) {
   }
 
   function getWriteGitHub(): GitHubClient {
+    if (!env.GITHUB_WRITE_TOKEN) {
+      throw new Error("GITHUB_WRITE_TOKEN is not configured — write operations are unavailable");
+    }
     return new GitHubClient(
-      env.GITHUB_WRITE_TOKEN || env.GITHUB_SERVICE_TOKEN,
+      env.GITHUB_WRITE_TOKEN,
       env.MARKETPLACE_REPO,
       env.OAUTH_KV
     );
@@ -264,8 +266,12 @@ export function createSkillportProxy(env: Env, user: UserContext) {
       try {
         const { entry } = await github.getPlugin(groupName);
         basePath = entry.source.replace("./", "");
-      } catch {
-        basePath = `plugins/${groupName}`;
+      } catch (err) {
+        if (err instanceof Error && err.message.toLowerCase().includes("not found")) {
+          basePath = `plugins/${groupName}`;
+        } else {
+          throw err;
+        }
       }
 
       // Validate and categorize files
@@ -344,8 +350,10 @@ export function createSkillportProxy(env: Env, user: UserContext) {
         let existingContent: string | null = null;
         try {
           existingContent = await github.getFileContent(pluginJsonPath);
-        } catch {
-          // File doesn't exist
+        } catch (err) {
+          if (!(err instanceof Error && err.message.toLowerCase().includes("not found"))) {
+            throw err;
+          }
         }
 
         if (existingContent) {
@@ -512,10 +520,13 @@ export function createSkillportProxy(env: Env, user: UserContext) {
         const result = await github.getPlugin(groupName);
         entry = result.entry;
         manifest = result.manifest;
-      } catch {
-        throw new Error(
-          `Skill "${name}" is not published. Use publishSkill first.`
-        );
+      } catch (err) {
+        if (err instanceof Error && err.message.toLowerCase().includes("not found")) {
+          throw new Error(
+            `Skill "${name}" is not published. Use publishSkill first.`
+          );
+        }
+        throw err;
       }
 
       const currentVersion = manifest?.version || entry.version || "1.0.0";
@@ -644,13 +655,6 @@ export function createSkillportProxy(env: Env, user: UserContext) {
         name: user.name,
         provider: user.provider,
       };
-    },
-
-    async clientInfo() {
-      // In v2, client_info comes from the MCP handshake.
-      // This is passed through from the MCP server, not available here.
-      // Return null — surface detection should use model-side tool inspection.
-      return null;
     },
 
     async debugPlugins() {

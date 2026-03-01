@@ -25,28 +25,47 @@ interface UserProps extends Record<string, unknown> {
 type SkillportProxy = ReturnType<typeof createSkillportProxy>;
 
 const DISPATCH: Record<
-  string,
+  keyof SkillportProxy,
   (proxy: SkillportProxy, args: Record<string, unknown>) => Promise<unknown>
 > = {
   listSkills: (p, a) => p.listSkills(a as { surface?: string; refresh?: boolean }),
-  getSkill: (p, a) => p.getSkill(a.name as string),
-  installSkill: (p, a) =>
-    p.installSkill(a.name as string, { mode: a.mode as "skill" | "package" }),
-  checkUpdates: (p, a) =>
-    p.checkUpdates(a.installed as Array<{ name: string; version: string }>),
+  getSkill: (p, a) => {
+    if (typeof a.name !== "string") throw new Error("getSkill requires a 'name' string argument");
+    return p.getSkill(a.name);
+  },
+  installSkill: (p, a) => {
+    if (typeof a.name !== "string") throw new Error("installSkill requires a 'name' string argument");
+    return p.installSkill(a.name, { mode: a.mode as "skill" | "package" });
+  },
+  checkUpdates: (p, a) => {
+    if (!Array.isArray(a.installed)) throw new Error("checkUpdates requires an 'installed' array argument");
+    return p.checkUpdates(a.installed as Array<{ name: string; version: string }>);
+  },
   saveSkill: (p, a) => {
+    if (typeof a.name !== "string") throw new Error("saveSkill requires a 'name' string argument");
     const { name, ...payload } = a;
-    return p.saveSkill(name as string, payload as Parameters<SkillportProxy["saveSkill"]>[1]);
+    return p.saveSkill(name, payload as Parameters<SkillportProxy["saveSkill"]>[1]);
   },
-  deleteSkill: (p, a) =>
-    p.deleteSkill(a.name as string, { confirm: a.confirm as boolean }),
-  bumpVersion: (p, a) =>
-    p.bumpVersion(a.name as string, a.type as "patch" | "minor" | "major"),
+  deleteSkill: (p, a) => {
+    if (typeof a.name !== "string") throw new Error("deleteSkill requires a 'name' string argument");
+    return p.deleteSkill(a.name, { confirm: a.confirm as boolean });
+  },
+  bumpVersion: (p, a) => {
+    if (typeof a.name !== "string") throw new Error("bumpVersion requires a 'name' string argument");
+    const validTypes = ["patch", "minor", "major"];
+    if (typeof a.type !== "string" || !validTypes.includes(a.type))
+      throw new Error("bumpVersion requires a 'type' argument: 'patch', 'minor', or 'major'");
+    return p.bumpVersion(a.name, a.type as "patch" | "minor" | "major");
+  },
   publishSkill: (p, a) => {
+    if (typeof a.name !== "string") throw new Error("publishSkill requires a 'name' string argument");
     const { name, ...meta } = a;
-    return p.publishSkill(name as string, meta as Parameters<SkillportProxy["publishSkill"]>[1]);
+    return p.publishSkill(name, meta as Parameters<SkillportProxy["publishSkill"]>[1]);
   },
-  editSkill: (p, a) => p.editSkill(a.name as string),
+  editSkill: (p, a) => {
+    if (typeof a.name !== "string") throw new Error("editSkill requires a 'name' string argument");
+    return p.editSkill(a.name);
+  },
   whoami: (p) => p.whoami(),
   debugPlugins: (p) => p.debugPlugins(),
 };
@@ -107,7 +126,9 @@ export class SkillportMCPv2 extends McpAgent<Env, unknown, UserProps> {
       async ({ method, args }) => {
         this.logAction(`execute:${method}`);
 
-        const handler = DISPATCH[method];
+        const handler = method in DISPATCH
+          ? DISPATCH[method as keyof typeof DISPATCH]
+          : undefined;
         if (!handler) {
           return {
             content: [
@@ -143,11 +164,12 @@ export class SkillportMCPv2 extends McpAgent<Env, unknown, UserProps> {
         } catch (err) {
           const message =
             err instanceof Error ? err.message : String(err);
+          console.error(`[v2:execute] method=${method} error:`, message);
           return {
             content: [
               {
                 type: "text" as const,
-                text: `Error: ${message}`,
+                text: `Error in ${method}: ${message}`,
               },
             ],
             isError: true,
