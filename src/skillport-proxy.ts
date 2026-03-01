@@ -11,6 +11,7 @@ import {
   parseSkillFrontmatter,
 } from "./github-client";
 import { AccessControl } from "./access-control";
+import { packageSkill } from "./skill-packager";
 
 // User context from MCP OAuth handshake
 interface UserContext {
@@ -173,15 +174,16 @@ export function createSkillportProxy(env: Env, user: UserContext) {
       }));
 
       if (mode === "package") {
+        const pkg = packageSkill(skill.name, files);
         return {
           type: "package" as const,
           name: skill.name,
           version: skill.version,
-          files: fileData,
+          filename: pkg.filename,
+          content_base64: pkg.content_base64,
           instructions:
-            "Create a zip containing these files in a directory named after the skill. " +
-            "Use present_files to share the .skill zip with the user. " +
-            "User should click 'Copy to your skills' then start a new conversation.",
+            "Use present_files to share this .skill file with the user. " +
+            "They should click 'Copy to your skills' then start a new conversation.",
         };
       }
 

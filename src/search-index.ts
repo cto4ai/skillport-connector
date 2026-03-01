@@ -272,6 +272,25 @@ const CHUNKS: SearchChunk[] = [
       "- [ ] No Windows-style paths\n" +
       "- [ ] Validation steps for critical ops",
   },
+  {
+    id: "installing-skills",
+    title: "Installing Skills Across Surfaces",
+    category: "authoring",
+    keywords: [
+      "install", "installation", "download", "package", "skill-file",
+      "present_files", "mode", "direct", "claude-code", "claude-ai",
+      "desktop", "copy-to-skills",
+    ],
+    content:
+      "Installation varies by surface:\n\n" +
+      "**Claude Code (CC):** `installSkill({ name, mode: 'skill' })` " +
+      "returns files + installPath. Write files directly to `~/.claude/skills/{name}/`.\n\n" +
+      "**Claude.ai / Desktop:** `installSkill({ name, mode: 'package' })` " +
+      "returns a `.skill` file (base64 zip). Call `present_files` to share it. " +
+      "User clicks 'Copy to your skills' then starts a new conversation.\n\n" +
+      "**Surface detection:** Use the surface-detect skill or check available tools " +
+      "to determine which mode to use. Default to 'package' if unsure.",
+  },
 ];
 
 // Build keyword → chunk ID lookup for fast matching

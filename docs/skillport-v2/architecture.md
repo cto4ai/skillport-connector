@@ -217,10 +217,10 @@ See [decisions.md](decisions.md) for full rationale on each.
 - Add `search` tool to v2 MCP server
 - Port domain knowledge from v1 Skill into search index
 
-### Phase 3: Multi-surface install
+### Phase 3: Multi-surface install ✅
 - `installSkill(name, { mode: "skill" | "package" })` — model passes mode
 - `mode: "skill"` returns files array for direct Write (CC) — straightforward
-- `mode: "package"` — server builds `.skill` zip, returns base64; model calls `present_files` to offer download
+- `mode: "package"` — server builds `.skill` zip via `fflate`, returns base64; model calls `present_files` to offer download
 - Deprecate v1 token-based install flow
 
 **Design: server-side `.skill` packaging.** A `.skill` file is a zip with a `.skill` extension (see Anthropic's `skill-creator` plugin — `package_skill.py`). The server already has all the files; it zips them and returns `{ filename: "{name}.skill", content: "<base64>" }`. The model's only job is to pass the blob to `present_files` — one tool call, no client-side packaging logic.

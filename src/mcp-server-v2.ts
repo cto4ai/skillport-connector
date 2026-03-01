@@ -109,7 +109,7 @@ export class SkillportMCPv2 extends McpAgent<Env, unknown, UserProps> {
         "Available methods:\n" +
         "  listSkills({ surface?, refresh? }) - List all skills\n" +
         "  getSkill({ name }) - Get skill details and SKILL.md\n" +
-        "  installSkill({ name, mode?: 'skill'|'package' }) - Get install payload\n" +
+        "  installSkill({ name, mode?: 'skill'|'package' }) - Install a skill ('skill' for CC file write, 'package' for .skill zip download)\n" +
         "  checkUpdates({ installed: [{ name, version }] }) - Check for updates\n" +
         "  saveSkill({ name, files, commitMessage?, skillGroup?, metadata? }) - Save skill files\n" +
         "  deleteSkill({ name, confirm: true }) - Delete a skill\n" +
