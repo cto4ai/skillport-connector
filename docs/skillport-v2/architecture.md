@@ -219,9 +219,15 @@ See [decisions.md](decisions.md) for full rationale on each.
 
 ### Phase 3: Multi-surface install
 - `installSkill(name, { mode: "skill" | "package" })` — model passes mode
-- `mode: "skill"` returns files array for direct Write (CC)
-- `mode: "package"` returns `.skill` package for `present_files` (CAI/CD)
+- `mode: "skill"` returns files array for direct Write (CC) — straightforward
+- `mode: "package"` — server builds `.skill` zip, returns base64; model calls `present_files` to offer download
 - Deprecate v1 token-based install flow
+
+**Design: server-side `.skill` packaging.** A `.skill` file is a zip with a `.skill` extension (see Anthropic's `skill-creator` plugin — `package_skill.py`). The server already has all the files; it zips them and returns `{ filename: "{name}.skill", content: "<base64>" }`. The model's only job is to pass the blob to `present_files` — one tool call, no client-side packaging logic.
+
+This matches the existing skill-creator workflow (init → edit → `package_skill.py` → present `.skill` to user) but moves the packaging server-side so it works on any surface with `present_files`.
+
+**Open question:** Whether `present_files` accepts base64 binary from an MCP tool response is untested — that's a Claude.ai platform capability outside our control. Fallback: return a short-lived download URL instead of inline content. See [installation research](../research/skillport-installation-optimization-across-surfaces.md) for full surface analysis.
 
 ## References
 

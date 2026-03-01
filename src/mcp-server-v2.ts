@@ -82,9 +82,13 @@ export class SkillportMCPv2 extends McpAgent<Env, unknown, UserProps> {
       instructions:
         "Execute Skillport API methods via structured dispatch. " +
         "Auth is automatic — no tokens needed. " +
-        "Use the execute tool with { method, args } to browse, install, and manage skills. " +
-        "Use the search tool to look up skill authoring knowledge " +
-        "(SKILL.md format, naming conventions, surface tags, best practices, etc.).",
+        "Two tools available:\n" +
+        "- execute: Call Skillport API methods ({ method, args }) to browse, install, and manage skills.\n" +
+        "- search: Query Skillport domain knowledge on-demand. " +
+        "IMPORTANT: Before answering questions about SKILL.md format, naming conventions, " +
+        "surface tags, publishing, installation, version management, marketplace structure, " +
+        "testing, or best practices, ALWAYS call the search tool first. " +
+        "Do not rely on general knowledge — the search index contains the authoritative reference.",
     }
   );
 
@@ -187,7 +191,8 @@ export class SkillportMCPv2 extends McpAgent<Env, unknown, UserProps> {
     this.server.tool(
       "search",
       "Search Skillport domain knowledge — SKILL.md format, naming conventions, " +
-        "surface tags, authoring workflows, best practices, and more. " +
+        "surface tags, authoring workflows, installation, version management, " +
+        "marketplace structure, testing, and best practices. " +
         "Query by topic to get self-contained reference chunks.",
       {
         query: z
