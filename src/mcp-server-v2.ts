@@ -209,35 +209,49 @@ export class SkillportMCPv2 extends McpAgent<Env, unknown, UserProps> {
       async ({ query, limit }) => {
         this.logAction(`search:${query}`);
 
-        const results = search(query, limit);
+        try {
+          const results = search(query, limit);
 
-        if (results.length === 0) {
-          const topics = listTopics();
-          const topicList = topics
-            .map((t) => `- **${t.id}**: ${t.title} _(${t.category})_`)
-            .join("\n");
+          if (results.length === 0) {
+            const topicList = listTopics()
+              .map((t) => `- **${t.id}**: ${t.title} _(${t.category})_`)
+              .join("\n");
 
+            return {
+              content: [
+                {
+                  type: "text" as const,
+                  text:
+                    `No results for "${query}". Try one of these topics:\n\n${topicList}`,
+                },
+              ],
+            };
+          }
+
+          const formatted = results
+            .map(
+              (chunk) =>
+                `## ${chunk.title}\n*${chunk.category}*\n\n${chunk.content}`
+            )
+            .join("\n\n---\n\n");
+
+          return {
+            content: [{ type: "text" as const, text: formatted }],
+          };
+        } catch (err) {
+          const message =
+            err instanceof Error ? err.message : String(err);
+          console.error(`[v2:search] query="${query}" error:`, message);
           return {
             content: [
               {
                 type: "text" as const,
-                text:
-                  `No results for "${query}". Try one of these topics:\n\n${topicList}`,
+                text: `Error searching for "${query}": ${message}`,
               },
             ],
+            isError: true,
           };
         }
-
-        const formatted = results
-          .map(
-            (chunk) =>
-              `## ${chunk.title}\n*${chunk.category}*\n\n${chunk.content}`
-          )
-          .join("\n\n---\n\n");
-
-        return {
-          content: [{ type: "text" as const, text: formatted }],
-        };
       }
     );
   }

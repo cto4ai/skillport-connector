@@ -134,17 +134,17 @@ The v1 Skill has two layers:
 
 #### What the `search` tool indexes
 
-The domain knowledge currently in the Skill gets chunked and indexed server-side (FTS5 or simpler keyword index). The model queries it as needed:
+The domain knowledge currently in the Skill gets chunked and indexed server-side (in-memory keyword map, ~5KB corpus). The model queries it as needed via the standalone `search` tool:
 
 ```json
 // Model needs to know SKILL.md frontmatter format
-execute({ "method": "search", "args": { "query": "SKILL.md frontmatter format required fields" } })
+search({ "query": "SKILL.md frontmatter format required fields" })
 
 // Model needs naming conventions
-execute({ "method": "search", "args": { "query": "skill naming conventions gerund form" } })
+search({ "query": "skill naming conventions gerund form" })
 
 // Model needs surface tag reference
-execute({ "method": "search", "args": { "query": "surface tags CC CD CAI meaning" } })
+search({ "query": "surface tags CC CD CAI meaning" })
 ```
 
 This is progressive disclosure — the model loads domain knowledge only when the task requires it, instead of consuming ~225 lines of context on every Skillport interaction.

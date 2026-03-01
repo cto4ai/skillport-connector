@@ -297,7 +297,7 @@ const CHUNK_MAP = new Map<string, SearchChunk>(
 function tokenize(query: string): string[] {
   const tokens = query
     .toLowerCase()
-    .split(/[\s,.;:!?()[\]{}"'`]+/)
+    .split(/[\s,.;:!?()[\]{}"'`/]+/)
     .filter((t) => t.length > 0);
   return [...new Set(tokens)];
 }
@@ -338,11 +338,16 @@ export function search(query: string, limit?: number): SearchChunk[] {
   }
 
   return [...scores.entries()]
-    .filter(([, score]) => score > 0)
     .sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))
     .slice(0, maxResults)
-    .map(([id]) => CHUNK_MAP.get(id)!)
-    .filter(Boolean);
+    .map(([id]) => {
+      const chunk = CHUNK_MAP.get(id);
+      if (!chunk) {
+        console.error(`[search-index] CHUNK_MAP missing entry for scored id="${id}"`);
+      }
+      return chunk;
+    })
+    .filter((c): c is SearchChunk => c !== undefined);
 }
 
 /**
