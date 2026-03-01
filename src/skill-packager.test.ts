@@ -20,17 +20,18 @@ describe("packageSkill", () => {
     expect(strFromU8(unzipped["my-skill/SKILL.md"])).toBe("# My Skill");
   });
 
-  it("filters out .claude-plugin/plugin.json", () => {
+  it("includes .claude-plugin/plugin.json for version tracking", () => {
+    const manifest = JSON.stringify({ name: "test", version: "1.2.0" });
     const pkg = packageSkill("test", [
       { path: "SKILL.md", content: "# Test" },
-      { path: ".claude-plugin/plugin.json", content: "{}" },
+      { path: ".claude-plugin/plugin.json", content: manifest },
     ]);
 
     const bytes = Uint8Array.from(atob(pkg.content_base64), c => c.charCodeAt(0));
     const unzipped = unzipSync(bytes);
 
-    expect(Object.keys(unzipped)).not.toContain("test/.claude-plugin/plugin.json");
-    expect(Object.keys(unzipped)).toContain("test/SKILL.md");
+    expect(Object.keys(unzipped)).toContain("test/.claude-plugin/plugin.json");
+    expect(strFromU8(unzipped["test/.claude-plugin/plugin.json"])).toBe(manifest);
   });
 
   it("handles base64-encoded binary files", () => {
