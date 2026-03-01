@@ -1,4 +1,4 @@
-# Skillport Connector v2: Code Mode Architecture
+# Skillport Connector v2: Structured Dispatch Architecture
 
 **Date:** 2026-02-28
 **Status:** Decided (see [decisions.md](decisions.md) for resolved questions)
@@ -16,9 +16,11 @@ Skillport Connector v1 uses a single-MCP-tool + REST API + Skill pattern inspire
 
 This trades structured tool calls (which models handle reliably) for "read docs and construct HTTP requests" (which is error-prone).
 
-## Proposed Approach: Server-Side Code Mode
+## Proposed Approach: Structured Method Dispatch
 
-Replace the current auth-token-then-curl pattern with Cloudflare's Code Mode executed server-side in a Worker isolate.
+Replace the current auth-token-then-curl pattern with a single `execute` tool that dispatches to typed `skillport.*` methods server-side. The model specifies `{ method, args }` — the server handles auth, routing, and execution.
+
+> **Note:** The original design used `new Function("skillport", ...)` for in-worker JS eval. This was blocked — Cloudflare Workers disables `new Function()` and `eval()` in production. See [decisions.md](decisions.md) for full rationale.
 
 ### Architecture Overview
 
@@ -28,10 +30,10 @@ Claude                    Skillport MCP Server (CF Worker)
   │── MCP connect ──────────────►│── OAuth (Google) ──► auto on first connect
   │                              │   auth context stored server-side
   │                              │
-  │── execute({ code: "..." }) ─►│── Dynamic Worker isolate
-  │                              │   - typed `skillport.*` API injected
+  │── execute({ method, args }) ►│── Server-side dispatch
+  │                              │   - resolves method on skillport.* proxy
   │                              │   - auth token injected automatically
-  │                              │   - code runs, only stdout returns
+  │                              │   - method runs, result returns
   │                              │
   │◄── { result: "..." } ───────│
 ```
@@ -42,14 +44,19 @@ Claude                    Skillport MCP Server (CF Worker)
 [
   {
     "name": "execute",
-    "description": "Execute JavaScript against the Skillport API. Auth is automatic.",
+    "description": "Execute a Skillport API method. Auth is automatic.",
     "inputSchema": {
       "properties": {
-        "code": {
+        "method": {
           "type": "string",
-          "description": "Async arrow function. Use skillport.* methods."
+          "description": "The skillport.* method to call (e.g. 'listSkills', 'installSkill')."
+        },
+        "args": {
+          "type": "object",
+          "description": "Arguments to pass to the method. See method signatures below."
         }
-      }
+      },
+      "required": ["method"]
     }
   },
   {
@@ -71,79 +78,31 @@ Claude                    Skillport MCP Server (CF Worker)
 
 ### Typed API Surface
 
-The `execute` tool's isolate has these declarations available:
+The `execute` tool dispatches to these methods on the server-side `skillport.*` proxy:
 
-```typescript
-declare const skillport: {
-  // Discovery
-  listSkills(params?: {
-    surface?: "CC" | "CD" | "CAI" | "CDAI" | "CALL";
-    refresh?: boolean;
-  }): Promise<Skill[]>;
+| Method | Args | Description |
+|--------|------|-------------|
+| `listSkills` | `{ surface?, refresh? }` | List all skills |
+| `getSkill` | `{ name }` | Get skill details and SKILL.md |
+| `installSkill` | `{ name, mode?: "skill"\|"package" }` | Get install payload |
+| `checkUpdates` | `{ installed: [{ name, version }] }` | Check for updates |
+| `saveSkill` | `{ name, files, commitMessage?, skillGroup?, metadata? }` | Save skill files |
+| `deleteSkill` | `{ name, confirm: true }` | Delete a skill |
+| `bumpVersion` | `{ name, type: "patch"\|"minor"\|"major" }` | Bump version |
+| `publishSkill` | `{ name, description, category?, tags?, keywords? }` | Publish |
+| `editSkill` | `{ name }` | Fetch skill files for editing |
+| `whoami` | _(none)_ | Get your identity |
+| `debugPlugins` | _(none)_ | Debug plugin listing |
 
-  getSkill(name: string): Promise<SkillDetail>;
+Example calls:
 
-  // Installation
-  installSkill(name: string, target: "skill" | "package"): Promise<InstallResult>;
-
-  checkUpdates(
-    installed: { name: string; version: string }[]
-  ): Promise<UpdateResult[]>;
-
-  // Authoring
-  saveSkill(
-    name: string,
-    payload: {
-      files: { path: string; content: string }[];
-      commitMessage: string;
-      skillGroup?: string;
-      metadata?: {
-        description: string;
-        keywords?: string[];
-        author?: { name: string; email: string };
-        license?: string;
-      };
-    }
-  ): Promise<SaveResult>;
-
-  deleteSkill(name: string): Promise<Result>;
-
-  bumpVersion(
-    name: string,
-    type: "patch" | "minor" | "major"
-  ): Promise<BumpResult>;
-
-  publishSkill(
-    name: string,
-    meta: {
-      description: string;
-      category: string;
-      tags: string[];
-      keywords?: string[];
-    }
-  ): Promise<Result>;
-
-  // Editing
-  editSkill(name: string): Promise<{ files: SkillFile[]; localPath: string }>;
-
-  // Identity
-  whoami(): Promise<UserInfo>;
-
-  // Debug
-  debugPlugins(): Promise<unknown>;
-};
+```json
+execute({ "method": "listSkills", "args": { "surface": "CC" } })
+execute({ "method": "getSkill", "args": { "name": "my-skill" } })
+execute({ "method": "whoami" })
 ```
 
-The model writes code like:
-
-```javascript
-async () => {
-  const skills = await skillport.listSkills({ surface: "CC" });
-  return skills.map(s => `${s.name} (v${s.version}) - ${s.description}`).join("\n");
-}
-```
-
-No tokens. No curl. No headers. The isolate injects auth automatically.
+No tokens. No curl. No headers. The server dispatches to the proxy and injects auth automatically.
 
 ### Authentication Flow
 
@@ -156,11 +115,10 @@ First MCP connection:
          ──► MCP connection established
 
 Subsequent tool calls:
-  execute({ code }) ──► Server retrieves stored OAuth token from KV
-                    ──► Spawns isolate with `skillport.*` proxy
-                    ──► Proxy intercepts skillport.* calls
-                    ──► Proxy makes REST API calls with stored token
-                    ──► Only return value enters context
+  execute({ method, args }) ──► Server retrieves stored OAuth token from KV
+                             ──► Dispatches to skillport.* proxy method
+                             ──► Proxy makes REST API calls with stored token
+                             ──► Only return value enters context
 ```
 
 **Key change from v1:** The model never sees, handles, or manages auth tokens. OAuth happens at connection time. The server manages token refresh internally. The 40% first-attempt failure rate from token juggling is eliminated.
@@ -178,15 +136,15 @@ The v1 Skill has two layers:
 
 The domain knowledge currently in the Skill gets chunked and indexed server-side (FTS5 or simpler keyword index). The model queries it as needed:
 
-```javascript
+```json
 // Model needs to know SKILL.md frontmatter format
-await skillport.search("SKILL.md frontmatter format required fields")
+execute({ "method": "search", "args": { "query": "SKILL.md frontmatter format required fields" } })
 
 // Model needs naming conventions
-await skillport.search("skill naming conventions gerund form")
+execute({ "method": "search", "args": { "query": "skill naming conventions gerund form" } })
 
 // Model needs surface tag reference
-await skillport.search("surface tags CC CD CAI meaning")
+execute({ "method": "search", "args": { "query": "surface tags CC CD CAI meaning" } })
 ```
 
 This is progressive disclosure — the model loads domain knowledge only when the task requires it, instead of consuming ~225 lines of context on every Skillport interaction.
@@ -205,13 +163,9 @@ These could live in the `execute` tool description or a minimal 10-line skill.
 
 Installation is the most complex workflow because it involves client-side file operations. In v2:
 
-```javascript
-async () => {
-  // Server-side: get install payload
-  const result = await skillport.installSkill("my-skill", "skill");
-  // result contains: { files: [...], installPath: "~/.claude/skills/my-skill/" }
-  return result;
-}
+```json
+execute({ "method": "installSkill", "args": { "name": "my-skill", "mode": "skill" } })
+// Returns: { type: "direct", name, version, installPath: "~/.claude/skills/my-skill/", files: [...] }
 ```
 
 The execute tool returns the file contents and target path. The model then uses standard file tools (Write) to place them. This is simpler than the current shell-script-download approach and works across all surfaces.
@@ -242,7 +196,7 @@ The execute tool returns the file contents and target path. The model then uses 
 
 See [decisions.md](decisions.md) for full rationale on each.
 
-1. **Code execution:** In-worker `new Function()` eval — no Workers for Platforms needed ($0 extra cost).
+1. **Dispatch mechanism:** Structured `{ method, args }` dispatch — no `new Function()` or Workers for Platforms needed ($0 extra cost).
 2. **`search` implementation:** In-memory keyword map bundled in worker source (~5KB corpus).
 3. **Install on non-CC surfaces:** Model detects its surface and passes `mode: "skill"` (CC) or `mode: "package"` (CAI/CD). Server returns appropriate format.
 4. **Backward compatibility:** Versioned endpoints — `/mcp` stays v1, `/v2/mcp` serves v2. Both in same worker.
@@ -255,7 +209,7 @@ See [decisions.md](decisions.md) for full rationale on each.
 - New `src/mcp-server-v2.ts` with `execute` tool
 - New `src/skillport-proxy.ts` — typed `skillport.*` proxy wrapping existing REST handlers
 - Route `/v2/mcp` in `src/index.ts`
-- In-worker eval via `new Function("skillport", ...)` — no Workers for Platforms
+- Structured `{ method, args }` dispatch — server-side method resolution, no eval
 - OAuth at connection time (shared with v1)
 
 ### Phase 2: Search + domain knowledge
@@ -271,7 +225,6 @@ See [decisions.md](decisions.md) for full rationale on each.
 
 ## References
 
-- [Cloudflare Code Mode blog (Feb 2026)](https://blog.cloudflare.com/code-mode-mcp/)
-- [Cloudflare Code Mode SDK docs](https://developers.cloudflare.com/agents/api-reference/codemode/)
 - [Context Mode deep analysis checkpoint](../../../../claude-context-mode/docs/checkpoints/2026-02-28-1047-context-mode-deep-analysis.md)
 - [v1 single-tool architecture](../working/single-tool-connector-plus-skill/README.md)
+- [decisions.md](decisions.md) — resolved questions including eval rejection rationale
