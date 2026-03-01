@@ -223,9 +223,9 @@ See [decisions.md](decisions.md) for full rationale on each.
 - `mode: "skill"` — returns files array for direct Write (CC only)
 - Deprecate v1 token-based install flow
 
-**Design: server-side `.skill` packaging.** A `.skill` file is a zip with a `.skill` extension (see Anthropic's `skill-creator` plugin — `package_skill.py`). The server already has all the files; it zips them and returns `{ filename: "{name}.skill", content_base64: "<base64>" }`. The model decodes the base64 to `/tmp/{name}.skill` via Claude.ai's code execution sandbox, then calls `present_files` to offer the download.
+**Design: server-side `.skill` packaging.** A `.skill` file is a zip with a `.skill` extension (see Anthropic's `skill-creator` plugin — `package_skill.py`). The server builds the zip from source files, stores the raw bytes in KV under a random UUID key (15-min TTL), and returns `{ filename: "{name}.skill", download_url: "https://.../v2/download/{uuid}/{name}.skill" }`. The model downloads the file using `curl -sf -o /tmp/{name}.skill '{download_url}'` in Claude.ai's code execution sandbox, then calls `present_files` to offer the download.
 
-**Delivery mechanism (resolved):** `present_files` requires a file path on disk, not inline base64. Claude.ai provides a sandboxed Ubuntu container with code execution (Python/Node.js). The model writes the base64 to `/tmp/` using Python, then passes the path to `present_files`. This matches the v1 install script pattern. See [installation research](../research/skillport-installation-optimization-across-surfaces.md) for full surface analysis.
+**Delivery mechanism (resolved):** Inline base64 transfer was rejected — the model embeds base64 in a `python3 -c` command which corrupts bytes during transcription. Instead, the server stores the zip in Cloudflare KV and returns a short-lived download URL. The model runs `curl` in the sandbox to fetch the binary-safe file. The `/v2/download/:id/:filename` endpoint requires no OAuth — the UUID is unguessable and expires after 15 minutes. See [installation research](../research/skillport-installation-optimization-across-surfaces.md) for full surface analysis.
 
 ## References
 

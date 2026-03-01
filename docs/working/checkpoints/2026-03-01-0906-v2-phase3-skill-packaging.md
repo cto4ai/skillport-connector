@@ -57,15 +57,53 @@ This is the **open risk** identified in the plan. `present_files` accepting base
 - **Data URI approach** — Return the content as a data URI that the model can present as a clickable link.
 - **Hybrid instructions** — Update instructions to guide the model step-by-step on how to use `present_files`, with fallback to describing manual download if `present_files` isn't available.
 
+## Iteration 1 (commit `fa7f6cd`)
+
+Both issues above resolved:
+- **Default flipped** to `"package"` — model now gets `.skill` zip without specifying mode
+- **`present_files` delivery resolved** — `present_files` needs a file path, not inline base64. Claude.ai has a sandboxed Ubuntu container (code execution tool). Instructions updated to tell model to decode base64 to `/tmp/{name}.skill` via Python, then call `present_files`.
+
+## Issue 3: Slow base64 decode on Claude.ai
+
+Claude.ai smoke test showed the model writing the base64 string line-by-line into a Python command via bash — extremely slow for large skill packages. The code execution sandbox is processing the entire blob inline in the `python3 -c` command string.
+
+**Optimization ideas:**
+1. **Two-step write** — `echo '<b64>' > /tmp/name.b64` then `python3 -c "import base64; open('/tmp/name.skill','wb').write(base64.b64decode(open('/tmp/name.b64').read()))"` — separates the data transfer from the decode step
+2. **Chunked content** — Split `content_base64` into smaller chunks in the response so the model can write them incrementally
+3. **Download URL instead of inline** — Store the `.skill` zip in R2/KV with a short-lived pre-signed URL. Return the URL; model uses `curl` or `wget` in the sandbox to fetch it, then `present_files`. Eliminates inline base64 entirely — fastest option but adds infrastructure (R2 bucket or KV storage with TTL)
+4. **Smaller test skill** — `validating-json-schemas` has 5 files including scripts. Try with a minimal skill (just SKILL.md) to see if the speed is acceptable for small packages
+
+## Issue 4: SKILL.md corrupt in downloaded .skill file
+
+Claude.ai test completed the full flow — `present_files` worked, skill card appeared with "Copy to your skills" button. But clicking it failed: "Failed to extract file contents."
+
+Downloaded file to `/Users/jackivers/Downloads/validating-json-schemas.skill`. Analysis:
+- `file` reports valid zip
+- `unzip -l` shows correct structure (5 files under `validating-json-schemas/`)
+- `unzip -t` shows **SKILL.md has corrupt compressed data** ("incomplete l-tree, invalid compressed data to inflate"). Other 4 files pass.
+- Our packager's unit tests pass (round-trip decode works). Corruption happens during the model's base64 transfer in the sandbox — likely truncation or mangling of the base64 string when the model writes it via `python3 -c`.
+
+**Root cause:** The model is embedding the entire base64 string inline in a `python3 -c` command. Long strings get truncated or corrupted during the slow line-by-line write. SKILL.md is the first file in the zip — its compressed bytes are at the start of the base64 string, most vulnerable to truncation.
+
+**Fix:** The download URL approach (Issue 3, option 3) solves both the speed AND corruption problems. Store the `.skill` zip in R2/KV with a short-lived URL. Model just runs `curl -o /tmp/name.skill <url>` in the sandbox — fast, no inline base64, no corruption risk.
+
 ## Next Steps
 
-1. Fix Issue 1: Flip default mode to `"package"` + stronger tool description
-2. Research `present_files` API to understand delivery mechanism
-3. If `present_files` won't work over MCP, implement pre-signed URL fallback
-4. Re-test on Claude.ai after fixes
+1. **Implement download URL approach** — Store `.skill` in R2 or KV with TTL, return URL instead of inline base64. Model uses `curl` in sandbox, then `present_files`.
+2. Re-test on Claude.ai after implementing download URL
+3. If R2 is too heavy, consider KV (max 25MB value, plenty for skill zips)
 
 ## Notes
 
 - `fflate` works perfectly in CF Workers with `nodejs_compat` — zip creation is fast and correct
-- The server-side packaging itself is solid — the gap is purely in the last-mile delivery to the user
+- The server-side packaging itself is solid — the gap is in last-mile delivery performance
 - `validating-json-schemas` skill in `v2-test-skills` group used as test fixture (surface:CALL)
+- MCP reconnect required after deploy for Claude.ai to pick up new tool descriptions
+- **The full `present_files` flow WORKS** — skill card with "Copy to your skills" appeared. Just need uncorrupted data.
+
+## Notes
+
+- `fflate` works perfectly in CF Workers with `nodejs_compat` — zip creation is fast and correct
+- The server-side packaging itself is solid — the gap is in last-mile delivery performance
+- `validating-json-schemas` skill in `v2-test-skills` group used as test fixture (surface:CALL)
+- MCP reconnect required after deploy for Claude.ai to pick up new tool descriptions

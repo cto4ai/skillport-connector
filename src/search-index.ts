@@ -284,11 +284,11 @@ const CHUNKS: SearchChunk[] = [
     content:
       "Installation varies by surface. Default mode is 'package'.\n\n" +
       "**Claude.ai / Desktop (default):** `installSkill({ name })` or " +
-      "`installSkill({ name, mode: 'package' })` returns a `.skill` file as base64. " +
-      "Decode it to `/tmp/{name}.skill` using the code execution tool " +
-      "(e.g. `import base64; open('/tmp/name.skill','wb').write(base64.b64decode(content_base64))`), " +
+      "`installSkill({ name, mode: 'package' })` returns a `download_url` for the `.skill` file. " +
+      "Download it using the code execution tool: " +
+      "`curl -sf -o /tmp/{name}.skill '{download_url}'`, " +
       "then call `present_files` with that path. User clicks 'Copy to your skills' " +
-      "then starts a new conversation.\n\n" +
+      "then starts a new conversation. The download URL expires after 15 minutes.\n\n" +
       "**Claude Code (CC):** `installSkill({ name, mode: 'skill' })` " +
       "returns files + installPath. Write files directly to `~/.claude/skills/{name}/`.\n\n" +
       "**Surface detection:** Default mode ('package') works on all surfaces. " +
