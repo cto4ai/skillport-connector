@@ -733,30 +733,41 @@ export default {
 
     // Serve .skill package downloads (short-lived, UUID-gated)
     if (url.pathname.startsWith("/v2/download/")) {
-      const segments = url.pathname.split("/");
-      // /v2/download/:id/:filename
-      const id = segments[3];
-      const filename = segments[4] || "skill.skill";
+      try {
+        const segments = url.pathname.split("/");
+        // /v2/download/:id/:filename
+        const id = segments[3];
 
-      if (!id) {
-        return Response.json({ error: "Missing download ID" }, { status: 400 });
-      }
+        const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+        if (!id || !UUID_RE.test(id)) {
+          return Response.json({ error: "Invalid download ID" }, { status: 400 });
+        }
 
-      const data = await env.OAUTH_KV.get(`skill-pkg:${id}`, "arrayBuffer");
-      if (!data) {
+        const safeFilename = (segments[4] || "skill.skill").replace(/[^a-zA-Z0-9._-]/g, "_");
+
+        const data = await env.OAUTH_KV.get(`skill-pkg:${id}`, "arrayBuffer");
+        if (!data) {
+          return Response.json(
+            { error: "Download not found or expired", message: "Download links expire after 15 minutes. Run the install command again to get a fresh link." },
+            { status: 404 }
+          );
+        }
+
+        return new Response(data, {
+          headers: {
+            "Content-Type": "application/zip",
+            "Content-Disposition": `attachment; filename="${safeFilename}"`,
+            "Cache-Control": "no-store",
+          },
+        });
+      } catch (err) {
+        const detail = err instanceof Error ? err.message : String(err);
+        console.error("[v2/download] Failed to serve download:", detail);
         return Response.json(
-          { error: "Download not found or expired" },
-          { status: 404 }
+          { error: "Server error while serving download. Please try again." },
+          { status: 500 }
         );
       }
-
-      return new Response(data, {
-        headers: {
-          "Content-Type": "application/zip",
-          "Content-Disposition": `attachment; filename="${filename}"`,
-          "Cache-Control": "no-store",
-        },
-      });
     }
 
     // Delegate to OAuth provider for MCP routes

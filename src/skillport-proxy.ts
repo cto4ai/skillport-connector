@@ -179,10 +179,18 @@ export function createSkillportProxy(env: Env, user: UserContext) {
         // Decode base64 to raw bytes and store in KV with short TTL
         const raw = Uint8Array.from(atob(pkg.content_base64), (c) => c.charCodeAt(0));
         const id = crypto.randomUUID();
-        await env.OAUTH_KV.put(`skill-pkg:${id}`, raw, { expirationTtl: 900 });
+        try {
+          await env.OAUTH_KV.put(`skill-pkg:${id}`, raw, { expirationTtl: 900 });
+        } catch (err) {
+          const detail = err instanceof Error ? err.message : String(err);
+          console.error(`[installSkill] KV put failed for skill-pkg:${id} (${raw.byteLength} bytes):`, detail);
+          throw new Error("Failed to prepare skill package for download. This is a temporary server issue — please try again.");
+        }
 
-        const connectorUrl = env.CONNECTOR_URL || "https://your-connector.workers.dev";
-        const downloadUrl = `${connectorUrl}/v2/download/${id}/${pkg.filename}`;
+        if (!env.CONNECTOR_URL) {
+          throw new Error("Server configuration error: CONNECTOR_URL is not set. Contact the Skillport administrator.");
+        }
+        const downloadUrl = `${env.CONNECTOR_URL}/v2/download/${id}/${pkg.filename}`;
 
         return {
           type: "package" as const,
@@ -191,8 +199,9 @@ export function createSkillportProxy(env: Env, user: UserContext) {
           filename: pkg.filename,
           download_url: downloadUrl,
           instructions:
-            "Download the .skill file: " +
-            "curl -sf -o /tmp/" + pkg.filename + " '" + downloadUrl + "'. " +
+            "Download the .skill file using the code execution tool: " +
+            "curl -sS --fail-with-body -o /tmp/" + pkg.filename + " '" + downloadUrl + "'. " +
+            "If the download fails, the response body contains the error details. " +
             "Then call present_files with /tmp/" + pkg.filename + ". " +
             "Tell the user to click 'Copy to your skills' then start a new conversation.",
         };
