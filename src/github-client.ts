@@ -803,12 +803,23 @@ export class GitHubClient {
     }>
   > {
     const marketplace = await this.getMarketplace();
-    const allSkills = await this.listSkills();
 
     // Build skill name → plugin group name map so callers can pass
     // either skill names (e.g. "validating-json-schemas") or group
     // names (e.g. "v2-test-skills") and both resolve correctly.
-    const skillToGroup = new Map(allSkills.map((s) => [s.name, s.plugin]));
+    // If listSkills fails, fall back to treating input names as group names
+    // (pre-existing behavior, correct when skill name == group name).
+    let skillToGroup = new Map<string, string>();
+    try {
+      const allSkills = await this.listSkills();
+      skillToGroup = new Map(allSkills.map((s) => [s.name, s.plugin]));
+    } catch (err) {
+      const detail = err instanceof Error ? err.message : String(err);
+      console.warn(
+        `[checkUpdates] Failed to load skill list for name resolution, ` +
+        `falling back to direct name matching: ${detail}`
+      );
+    }
 
     const updates: Array<{
       name: string;

@@ -429,10 +429,11 @@ const CHUNKS: SearchChunk[] = [
       "`curl -sf -o /tmp/{name}.skill '{download_url}'`, " +
       "then call `present_files` with that path. User clicks 'Copy to your skills' " +
       "then starts a new conversation. The download URL expires after 15 minutes.\n\n" +
-      "**Claude Code (CC):** `installSkill({ name, mode: 'skill' })` " +
-      "returns files + installPath. Write files directly to `~/.claude/skills/{name}/`.\n\n" +
-      "**Surface detection:** Default mode ('package') works on all surfaces. " +
-      "Only pass mode 'skill' if you are certain you're on Claude Code with filesystem access.\n\n" +
+      "**Claude Code (CC) only:** `installSkill({ name, mode: 'skill' })` " +
+      "returns files + installPath. Write files directly to `~/.claude/skills/{name}/`. " +
+      "Do NOT use this mode on Claude.ai or Desktop — it will not persist.\n\n" +
+      "**Default to 'package'.** Unless you are certain you're on Claude Code with " +
+      "confirmed filesystem access, always use mode 'package'.\n\n" +
       "After installing, check for future updates with `checkUpdates`. " +
       "Search 'checking updates' for details.",
   },
@@ -462,9 +463,10 @@ const CHUNKS: SearchChunk[] = [
       "Do NOT try to read SKILL.md or guess versions.\n\n" +
       "**Call the API:**\n" +
       "```\ncheckUpdates({ installed: [\n  { name: \"my-skill\", version: \"1.0.0\" },\n  { name: \"other-skill\", version: \"2.1.0\" }\n] })\n```\n\n" +
-      "**Response:** Array of `{ name, installedVersion, latestVersion, hasUpdate }`.\n\n" +
-      "**To update outdated skills:** Call `installSkill({ name })` for each skill where " +
-      "`hasUpdate` is true. Same flow as initial installation.",
+      "**Response:** Array of `{ name, installedVersion, availableVersion }` — only skills " +
+      "with a newer version are included. If a skill is in the array, it has an update.\n\n" +
+      "**To update outdated skills:** Call `installSkill({ name })` for each skill in the response. " +
+      "Same flow as initial installation.",
   },
   {
     id: "browsing-skills",
@@ -483,8 +485,8 @@ const CHUNKS: SearchChunk[] = [
       "to get the latest listings.\n\n" +
       "**View details:** `getSkill({ name })` returns the full SKILL.md content " +
       "and metadata for a specific skill.\n\n" +
-      "**Note:** `listSkills` only returns **published** skills. Saved but unpublished " +
-      "skills are not visible in listings.",
+      "**Note:** `listSkills` returns all skills the user has access to, both published " +
+      "and unpublished. Each result includes a `published` field indicating marketplace status.",
   },
   {
     id: "saving-skills",
