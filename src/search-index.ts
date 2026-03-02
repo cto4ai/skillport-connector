@@ -496,10 +496,11 @@ const CHUNKS: SearchChunk[] = [
     ],
     content:
       "**Payload:**\n" +
-      "```\nsaveSkill({\n  name: \"my-skill\",\n  files: [\n    { path: \"SKILL.md\", content: \"---\\nname: my-skill\\n...\" },\n    { path: \"references/guide.md\", content: \"...\" }\n  ],\n  commitMessage: \"feat: add my-skill\",\n  skillGroup: \"my-plugin\",       // optional, defaults to skill name\n  metadata: { description: \"...\" } // required for new groups\n})\n```\n\n" +
+      "```\nsaveSkill({\n  name: \"my-skill\",\n  files: [\n    { path: \"SKILL.md\", content: \"---\\nname: my-skill\\n...\" },\n    { path: \"references/guide.md\", content: \"...\" }\n  ],\n  commitMessage: \"feat: add my-skill\",\n  metadata: { description: \"...\" } // required for new groups\n})\n```\n\n" +
       "**Requirements:**\n" +
       "- SKILL.md with `name` and `description` frontmatter is required for new skills.\n" +
-      "- Skill groups: defaults to skill name if omitted. Use `skillGroup` to place under an existing group.\n" +
+      "- A new skill group is auto-created with the same name as the skill.\n" +
+      "- To add a skill to an *existing* group (multi-skill plugin), pass `skillGroup: \"existing-group\"`.\n" +
       "- New groups need `metadata: { description }` at minimum.\n\n" +
       "**Deleting a file:** Pass `content: \"\"` (empty string) for the file path. Cannot delete SKILL.md.\n\n" +
       "**Never set the version by editing plugin.json** — after saving, use " +
