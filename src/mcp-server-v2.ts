@@ -133,7 +133,8 @@ export class SkillportMCPv2 extends McpAgent<Env, unknown, UserProps> {
           .describe(
             "Method arguments. " +
             "checkUpdates: { installed: [{ name, version }] } — version is from .claude-plugin/plugin.json, NOT SKILL.md. " +
-            "getSkill/installSkill/editSkill/deleteSkill: { name }. " +
+            "installSkill: { name, mode: \"package\" } — ALWAYS use mode \"package\" (returns .skill zip; download with curl, then call present_files). " +
+            "getSkill/editSkill/deleteSkill: { name }. " +
             "saveSkill: { name, files: [{ path, content }] }. " +
             "bumpVersion: { name, type: \"patch\"|\"minor\"|\"major\" }. " +
             "For full details, call the search tool."
