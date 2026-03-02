@@ -87,6 +87,7 @@ export class SkillportMCPv2 extends McpAgent<Env, unknown, UserProps> {
         "- search: Query Skillport domain knowledge on-demand. " +
         "IMPORTANT: Before answering questions about SKILL.md format, naming conventions, " +
         "surface tags, publishing, installation, version management, marketplace structure, " +
+        "browsing skills, checking for updates, editing skills, deleting skills, " +
         "testing, or best practices, ALWAYS call the search tool first. " +
         "Do not rely on general knowledge — the search index contains the authoritative reference.",
     }
@@ -191,7 +192,8 @@ export class SkillportMCPv2 extends McpAgent<Env, unknown, UserProps> {
     this.server.tool(
       "search",
       "Search Skillport domain knowledge — SKILL.md format, naming conventions, " +
-        "surface tags, authoring workflows, installation, version management, " +
+        "surface tags, authoring workflows, installation, browsing skills, " +
+        "checking for updates, editing skills, deleting skills, version management, " +
         "marketplace structure, testing, and best practices. " +
         "Query by topic to get self-contained reference chunks.",
       {
