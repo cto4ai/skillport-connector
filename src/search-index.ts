@@ -447,10 +447,16 @@ const CHUNKS: SearchChunk[] = [
     content:
       "**Where versions live:** `~/.claude/skills/{name}/.claude-plugin/plugin.json` — " +
       "NOT in SKILL.md frontmatter. The `version` field in plugin.json is the source of truth.\n\n" +
-      "**On Claude Code:** Read plugin.json files directly from `~/.claude/skills/*/` " +
-      "to get installed skill names and versions.\n\n" +
-      "**On Claude.ai / Desktop:** Ask the user for their installed skill names and versions " +
-      "(they can find these in Settings → Skills or by checking plugin.json).\n\n" +
+      "**IMPORTANT — Only check Skillport-installed skills.** Built-in/example skills " +
+      "(e.g. `skill-creator`, `mcp-builder`, `slack-gif-creator`) do NOT have " +
+      "`.claude-plugin/plugin.json` and are NOT in the Skillport marketplace. " +
+      "Skip any skill that has no plugin.json — do not guess or fabricate a version. " +
+      "Only include skills where you can actually read a version from plugin.json.\n\n" +
+      "**On Claude Code:** Read plugin.json files from `~/.claude/skills/*/`. " +
+      "If a skill directory has no `.claude-plugin/plugin.json`, it is not a Skillport skill — skip it.\n\n" +
+      "**On Claude.ai / Desktop:** Ask the user for their installed Skillport skill names and versions " +
+      "(they can find these in Settings → Skills or by checking plugin.json). " +
+      "Exclude built-in example skills.\n\n" +
       "**Call the API:**\n" +
       "```\ncheckUpdates({ installed: [\n  { name: \"my-skill\", version: \"1.0.0\" },\n  { name: \"other-skill\", version: \"2.1.0\" }\n] })\n```\n\n" +
       "**Response:** Array of `{ name, installedVersion, latestVersion, hasUpdate }`.\n\n" +
