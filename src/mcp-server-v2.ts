@@ -85,11 +85,13 @@ export class SkillportMCPv2 extends McpAgent<Env, unknown, UserProps> {
         "Two tools available:\n" +
         "- execute: Call Skillport API methods ({ method, args }) to browse, install, and manage skills.\n" +
         "- search: Query Skillport domain knowledge on-demand. " +
-        "IMPORTANT: Before answering questions about SKILL.md format, naming conventions, " +
-        "surface tags, publishing, installation, version management, marketplace structure, " +
-        "browsing skills, checking for updates, editing skills, deleting skills, " +
-        "testing, or best practices, ALWAYS call the search tool first. " +
-        "Do not rely on general knowledge — the search index contains the authoritative reference.",
+        "IMPORTANT: Before answering questions OR executing any workflow involving " +
+        "SKILL.md format, naming conventions, surface tags, publishing, installation, " +
+        "version management, marketplace structure, browsing skills, checking for updates, " +
+        "editing skills, deleting skills, testing, or best practices, " +
+        "ALWAYS call the search tool first. " +
+        "Do not rely on general knowledge or assumptions about where data is stored — " +
+        "the search index contains the authoritative reference for how each workflow works.",
     }
   );
 

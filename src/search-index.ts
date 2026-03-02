@@ -445,18 +445,21 @@ const CHUNKS: SearchChunk[] = [
       "version-check", "installed", "current-version",
     ],
     content:
-      "**Where versions live:** `~/.claude/skills/{name}/.claude-plugin/plugin.json` — " +
-      "NOT in SKILL.md frontmatter. The `version` field in plugin.json is the source of truth.\n\n" +
-      "**IMPORTANT — Only check Skillport-installed skills.** Built-in/example skills " +
-      "(e.g. `skill-creator`, `mcp-builder`, `slack-gif-creator`) do NOT have " +
-      "`.claude-plugin/plugin.json` and are NOT in the Skillport marketplace. " +
-      "Skip any skill that has no plugin.json — do not guess or fabricate a version. " +
-      "Only include skills where you can actually read a version from plugin.json.\n\n" +
-      "**On Claude Code:** Read plugin.json files from `~/.claude/skills/*/`. " +
-      "If a skill directory has no `.claude-plugin/plugin.json`, it is not a Skillport skill — skip it.\n\n" +
-      "**On Claude.ai / Desktop:** Ask the user for their installed Skillport skill names and versions " +
-      "(they can find these in Settings → Skills or by checking plugin.json). " +
-      "Exclude built-in example skills.\n\n" +
+      "**CRITICAL: Versions are ONLY in `.claude-plugin/plugin.json`.** " +
+      "NEVER look at SKILL.md frontmatter for versions — versions are not stored there. " +
+      "The ONLY source of truth is `~/.claude/skills/{name}/.claude-plugin/plugin.json`.\n\n" +
+      "**Skip built-in/example skills.** Skills like `skill-creator`, `mcp-builder`, " +
+      "`slack-gif-creator` do NOT have `.claude-plugin/plugin.json` and are NOT in " +
+      "Skillport. If a skill has no plugin.json, skip it — do not guess or fabricate a version.\n\n" +
+      "**On Claude Code:** Read `.claude-plugin/plugin.json` (NOT SKILL.md) from each " +
+      "`~/.claude/skills/*/` directory. Example:\n" +
+      "```\ncat ~/.claude/skills/my-skill/.claude-plugin/plugin.json\n" +
+      "# Look for: { \"version\": \"1.2.0\", ... }\n```\n" +
+      "If `.claude-plugin/plugin.json` does not exist, skip that skill.\n\n" +
+      "**On Claude.ai / Desktop:** You cannot read plugin.json from the sandbox. " +
+      "You MUST ask the user: \"What Skillport skills do you have installed, and what " +
+      "are their versions? Check `.claude-plugin/plugin.json` in each skill folder.\" " +
+      "Do NOT try to read SKILL.md or guess versions.\n\n" +
       "**Call the API:**\n" +
       "```\ncheckUpdates({ installed: [\n  { name: \"my-skill\", version: \"1.0.0\" },\n  { name: \"other-skill\", version: \"2.1.0\" }\n] })\n```\n\n" +
       "**Response:** Array of `{ name, installedVersion, latestVersion, hasUpdate }`.\n\n" +
