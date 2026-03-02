@@ -125,12 +125,19 @@ export class SkillportMCPv2 extends McpAgent<Env, unknown, UserProps> {
         method: z
           .string()
           .describe(
-            `The skillport method to call. One of: ${AVAILABLE_METHODS}`
+            `The skillport method to call. One of: ${AVAILABLE_METHODS}. For method signatures and workflows, call the search tool first.`
           ),
         args: z
           .record(z.unknown())
           .optional()
-          .describe("Arguments to pass to the method. See method signatures above."),
+          .describe(
+            "Method arguments. " +
+            "checkUpdates: { installed: [{ name, version }] } — version is from .claude-plugin/plugin.json, NOT SKILL.md. " +
+            "getSkill/installSkill/editSkill/deleteSkill: { name }. " +
+            "saveSkill: { name, files: [{ path, content }] }. " +
+            "bumpVersion: { name, type: \"patch\"|\"minor\"|\"major\" }. " +
+            "For full details, call the search tool."
+          ),
       },
       async ({ method, args }) => {
         this.logAction(`execute:${method}`);
@@ -201,7 +208,7 @@ export class SkillportMCPv2 extends McpAgent<Env, unknown, UserProps> {
       {
         query: z
           .string()
-          .describe("What you want to find (e.g. 'frontmatter required fields', 'naming conventions', 'surface tags')"),
+          .describe("What you want to find (e.g. 'how to check for updates', 'how to create a skill', 'surface tags')"),
         limit: z
           .number()
           .int()
