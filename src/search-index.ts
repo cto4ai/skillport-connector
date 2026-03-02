@@ -1,15 +1,15 @@
 /**
  * Search index for Skillport domain knowledge.
  *
- * In-memory keyword map bundled in worker source (~5KB corpus).
+ * In-memory keyword map bundled in worker source (all chunks loaded at startup).
  * Each chunk is a self-contained piece of domain knowledge about
- * skill authoring, publishing, and best practices.
+ * skill authoring, publishing, consumer workflows, and best practices.
  *
  * Uses Porter stemming for improved recall (e.g. "updates" matches "update").
  */
 
 // ---------------------------------------------------------------------------
-// Porter Stemmer (pure JS, ~60 lines)
+// Porter Stemmer (pure JS, stem() + 6 helpers)
 // Reduces English words to their stem so that inflected forms match:
 //   "updates" → "updat", "checking" → "check", "installed" → "instal"
 // ---------------------------------------------------------------------------
@@ -24,6 +24,11 @@ const step2map: Record<string, string> = {
 const step3map: Record<string, string> = {
   icate: "ic", ative: "", alize: "al", iciti: "ic", ical: "ic", ful: "", ness: "",
 };
+
+const step4suffixes = [
+  "al", "ance", "ence", "er", "ic", "able", "ible", "ant", "ement",
+  "ment", "ent", "ion", "ou", "ism", "ate", "iti", "ous", "ive", "ize",
+];
 
 function consonant(w: string, i: number): boolean {
   const c = w[i];
@@ -50,7 +55,7 @@ function hasVowel(w: string): boolean {
   return false;
 }
 
-function endsWith(w: string, s: string): string | null {
+function removeSuffix(w: string, s: string): string | null {
   return w.endsWith(s) ? w.slice(0, -s.length) : null;
 }
 
@@ -82,11 +87,11 @@ export function stem(word: string): string {
   // Step 1b
   let flag1b = false;
   let s: string | null;
-  if ((s = endsWith(w, "eed")) !== null) {
+  if ((s = removeSuffix(w, "eed")) !== null) {
     if (measure(s) > 0) w = w.slice(0, -1);
-  } else if ((s = endsWith(w, "ed")) !== null && hasVowel(s)) {
+  } else if ((s = removeSuffix(w, "ed")) !== null && hasVowel(s)) {
     w = s; flag1b = true;
-  } else if ((s = endsWith(w, "ing")) !== null && hasVowel(s)) {
+  } else if ((s = removeSuffix(w, "ing")) !== null && hasVowel(s)) {
     w = s; flag1b = true;
   }
   if (flag1b) {
@@ -101,21 +106,17 @@ export function stem(word: string): string {
 
   // Step 2
   for (const [suffix, replacement] of Object.entries(step2map)) {
-    if ((s = endsWith(w, suffix)) !== null && measure(s) > 0) { w = s + replacement; break; }
+    if ((s = removeSuffix(w, suffix)) !== null && measure(s) > 0) { w = s + replacement; break; }
   }
 
   // Step 3
   for (const [suffix, replacement] of Object.entries(step3map)) {
-    if ((s = endsWith(w, suffix)) !== null && measure(s) > 0) { w = s + replacement; break; }
+    if ((s = removeSuffix(w, suffix)) !== null && measure(s) > 0) { w = s + replacement; break; }
   }
 
   // Step 4
-  const step4suffixes = [
-    "al", "ance", "ence", "er", "ic", "able", "ible", "ant", "ement",
-    "ment", "ent", "ion", "ou", "ism", "ate", "iti", "ous", "ive", "ize",
-  ];
   for (const suffix of step4suffixes) {
-    if ((s = endsWith(w, suffix)) !== null) {
+    if ((s = removeSuffix(w, suffix)) !== null) {
       if (suffix === "ion") {
         if (measure(s) > 1 && s.length > 0 && (s[s.length - 1] === "s" || s[s.length - 1] === "t"))
           w = s;
@@ -234,7 +235,6 @@ const CHUNKS: SearchChunk[] = [
       "└── assets/               # Output-ready files (templates, fonts)\n    └── template.docx\n```\n\n" +
       "Only `SKILL.md` is required. Supporting files are optional.",
   },
-  // --- Modified: surface-tags ---
   {
     id: "surface-tags",
     title: "Surface Tags Reference",
@@ -255,7 +255,6 @@ const CHUNKS: SearchChunk[] = [
       "Use `surface:CALL` if your skill works everywhere.\n\n" +
       "Filter skills by surface: `listSkills({ surface: 'CAI' })`.",
   },
-  // --- Modified: authoring-workflow ---
   {
     id: "authoring-workflow",
     title: "Save, Test, Publish Workflow",
@@ -275,7 +274,6 @@ const CHUNKS: SearchChunk[] = [
       "For payload details, search 'saving skills'. For editing, search 'editing skills'. " +
       "For publishing requirements, search 'publishing details'.",
   },
-  // --- Modified: version-management ---
   {
     id: "version-management",
     title: "Bumping Skill Versions",
@@ -414,7 +412,6 @@ const CHUNKS: SearchChunk[] = [
       "- [ ] No Windows-style paths\n" +
       "- [ ] Validation steps for critical ops",
   },
-  // --- Modified: installing-skills ---
   {
     id: "installing-skills",
     title: "Installing Skills Across Surfaces",
@@ -439,7 +436,6 @@ const CHUNKS: SearchChunk[] = [
       "After installing, check for future updates with `checkUpdates`. " +
       "Search 'checking updates' for details.",
   },
-  // --- NEW: checking-updates ---
   {
     id: "checking-updates",
     title: "Checking for Skill Updates",
@@ -461,7 +457,6 @@ const CHUNKS: SearchChunk[] = [
       "**To update outdated skills:** Call `installSkill({ name })` for each skill where " +
       "`hasUpdate` is true. Same flow as initial installation.",
   },
-  // --- NEW: browsing-skills ---
   {
     id: "browsing-skills",
     title: "Browsing & Discovering Skills",
@@ -482,7 +477,6 @@ const CHUNKS: SearchChunk[] = [
       "**Note:** `listSkills` only returns **published** skills. Saved but unpublished " +
       "skills are not visible in listings.",
   },
-  // --- NEW: saving-skills ---
   {
     id: "saving-skills",
     title: "Saving & Creating Skills",
@@ -503,7 +497,6 @@ const CHUNKS: SearchChunk[] = [
       "`bumpVersion({ name, type })` to increment the version.\n\n" +
       "**User confirmation required** before any write operation.",
   },
-  // --- NEW: editing-skills ---
   {
     id: "editing-skills",
     title: "Editing Existing Skills",
@@ -523,7 +516,6 @@ const CHUNKS: SearchChunk[] = [
       "to increment the version. Never manually edit `.claude-plugin/plugin.json`.\n\n" +
       "**Access control:** `editSkill` checks write access — the user must have editor permissions.",
   },
-  // --- NEW: deleting-skills ---
   {
     id: "deleting-skills",
     title: "Deleting Skills",
@@ -539,7 +531,6 @@ const CHUNKS: SearchChunk[] = [
       "the entire group directory is removed.\n\n" +
       "**Always confirm with the user first** before calling deleteSkill.",
   },
-  // --- NEW: publishing-details ---
   {
     id: "publishing-details",
     title: "Publishing Requirements & Details",
