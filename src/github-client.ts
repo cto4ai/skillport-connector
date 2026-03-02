@@ -803,6 +803,13 @@ export class GitHubClient {
     }>
   > {
     const marketplace = await this.getMarketplace();
+    const allSkills = await this.listSkills();
+
+    // Build skill name → plugin group name map so callers can pass
+    // either skill names (e.g. "validating-json-schemas") or group
+    // names (e.g. "v2-test-skills") and both resolve correctly.
+    const skillToGroup = new Map(allSkills.map((s) => [s.name, s.plugin]));
+
     const updates: Array<{
       name: string;
       installedVersion: string;
@@ -810,7 +817,8 @@ export class GitHubClient {
     }> = [];
 
     for (const inst of installed) {
-      const plugin = marketplace.plugins.find((p) => p.name === inst.name);
+      const groupName = skillToGroup.get(inst.name) || inst.name;
+      const plugin = marketplace.plugins.find((p) => p.name === groupName);
       // Use semver comparison: only report update if available > installed
       if (plugin && plugin.version && compareSemver(plugin.version, inst.version) > 0) {
         updates.push({
