@@ -429,10 +429,11 @@ const CHUNKS: SearchChunk[] = [
       "`curl -sf -o /tmp/{name}.skill '{download_url}'`, " +
       "then call `present_files` with that path. User clicks 'Copy to your skills' " +
       "then starts a new conversation. The download URL expires after 15 minutes.\n\n" +
-      "**Claude Code (CC):** `installSkill({ name, mode: 'skill' })` " +
-      "returns files + installPath. Write files directly to `~/.claude/skills/{name}/`.\n\n" +
-      "**Surface detection:** Default mode ('package') works on all surfaces. " +
-      "Only pass mode 'skill' if you are certain you're on Claude Code with filesystem access.\n\n" +
+      "**Claude Code (CC) only:** `installSkill({ name, mode: 'skill' })` " +
+      "returns files + installPath. Write files directly to `~/.claude/skills/{name}/`. " +
+      "Do NOT use this mode on Claude.ai or Desktop — it will not persist.\n\n" +
+      "**Default to 'package'.** Unless you are certain you're on Claude Code with " +
+      "confirmed filesystem access, always use mode 'package'.\n\n" +
       "After installing, check for future updates with `checkUpdates`. " +
       "Search 'checking updates' for details.",
   },
@@ -445,17 +446,27 @@ const CHUNKS: SearchChunk[] = [
       "version-check", "installed", "current-version",
     ],
     content:
-      "**Where versions live:** `~/.claude/skills/{name}/.claude-plugin/plugin.json` — " +
-      "NOT in SKILL.md frontmatter. The `version` field in plugin.json is the source of truth.\n\n" +
-      "**On Claude Code:** Read plugin.json files directly from `~/.claude/skills/*/` " +
-      "to get installed skill names and versions.\n\n" +
-      "**On Claude.ai / Desktop:** Ask the user for their installed skill names and versions " +
-      "(they can find these in Settings → Skills or by checking plugin.json).\n\n" +
+      "**CRITICAL: Versions are ONLY in `.claude-plugin/plugin.json`.** " +
+      "NEVER look at SKILL.md frontmatter for versions — versions are not stored there. " +
+      "The ONLY source of truth is `~/.claude/skills/{name}/.claude-plugin/plugin.json`.\n\n" +
+      "**Skip built-in/example skills.** Skills like `skill-creator`, `mcp-builder`, " +
+      "`slack-gif-creator` do NOT have `.claude-plugin/plugin.json` and are NOT in " +
+      "Skillport. If a skill has no plugin.json, skip it — do not guess or fabricate a version.\n\n" +
+      "**On Claude Code:** Read `.claude-plugin/plugin.json` (NOT SKILL.md) from each " +
+      "`~/.claude/skills/*/` directory. Example:\n" +
+      "```\ncat ~/.claude/skills/my-skill/.claude-plugin/plugin.json\n" +
+      "# Look for: { \"version\": \"1.2.0\", ... }\n```\n" +
+      "If `.claude-plugin/plugin.json` does not exist, skip that skill.\n\n" +
+      "**On Claude.ai / Desktop:** You cannot read plugin.json from the sandbox. " +
+      "You MUST ask the user: \"What Skillport skills do you have installed, and what " +
+      "are their versions? Check `.claude-plugin/plugin.json` in each skill folder.\" " +
+      "Do NOT try to read SKILL.md or guess versions.\n\n" +
       "**Call the API:**\n" +
       "```\ncheckUpdates({ installed: [\n  { name: \"my-skill\", version: \"1.0.0\" },\n  { name: \"other-skill\", version: \"2.1.0\" }\n] })\n```\n\n" +
-      "**Response:** Array of `{ name, installedVersion, latestVersion, hasUpdate }`.\n\n" +
-      "**To update outdated skills:** Call `installSkill({ name })` for each skill where " +
-      "`hasUpdate` is true. Same flow as initial installation.",
+      "**Response:** Array of `{ name, installedVersion, availableVersion }` — only skills " +
+      "with a newer version are included. If a skill is in the array, it has an update.\n\n" +
+      "**To update outdated skills:** Call `installSkill({ name })` for each skill in the response. " +
+      "Same flow as initial installation.",
   },
   {
     id: "browsing-skills",
@@ -474,8 +485,8 @@ const CHUNKS: SearchChunk[] = [
       "to get the latest listings.\n\n" +
       "**View details:** `getSkill({ name })` returns the full SKILL.md content " +
       "and metadata for a specific skill.\n\n" +
-      "**Note:** `listSkills` only returns **published** skills. Saved but unpublished " +
-      "skills are not visible in listings.",
+      "**Note:** `listSkills` returns all skills the user has access to, both published " +
+      "and unpublished. Each result includes a `published` field indicating marketplace status.",
   },
   {
     id: "saving-skills",
@@ -487,10 +498,11 @@ const CHUNKS: SearchChunk[] = [
     ],
     content:
       "**Payload:**\n" +
-      "```\nsaveSkill({\n  name: \"my-skill\",\n  files: [\n    { path: \"SKILL.md\", content: \"---\\nname: my-skill\\n...\" },\n    { path: \"references/guide.md\", content: \"...\" }\n  ],\n  commitMessage: \"feat: add my-skill\",\n  skillGroup: \"my-plugin\",       // optional, defaults to skill name\n  metadata: { description: \"...\" } // required for new groups\n})\n```\n\n" +
+      "```\nsaveSkill({\n  name: \"my-skill\",\n  files: [\n    { path: \"SKILL.md\", content: \"---\\nname: my-skill\\n...\" },\n    { path: \"references/guide.md\", content: \"...\" }\n  ],\n  commitMessage: \"feat: add my-skill\",\n  metadata: { description: \"...\" } // required for new groups\n})\n```\n\n" +
       "**Requirements:**\n" +
       "- SKILL.md with `name` and `description` frontmatter is required for new skills.\n" +
-      "- Skill groups: defaults to skill name if omitted. Use `skillGroup` to place under an existing group.\n" +
+      "- A new skill group is auto-created with the same name as the skill.\n" +
+      "- To add a skill to an *existing* group (multi-skill plugin), pass `skillGroup: \"existing-group\"`.\n" +
       "- New groups need `metadata: { description }` at minimum.\n\n" +
       "**Deleting a file:** Pass `content: \"\"` (empty string) for the file path. Cannot delete SKILL.md.\n\n" +
       "**Never set the version by editing plugin.json** — after saving, use " +

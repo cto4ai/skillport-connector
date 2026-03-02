@@ -803,6 +803,24 @@ export class GitHubClient {
     }>
   > {
     const marketplace = await this.getMarketplace();
+
+    // Build skill name → plugin group name map so callers can pass
+    // either skill names (e.g. "validating-json-schemas") or group
+    // names (e.g. "v2-test-skills") and both resolve correctly.
+    // If listSkills fails, fall back to treating input names as group names
+    // (pre-existing behavior, correct when skill name == group name).
+    let skillToGroup = new Map<string, string>();
+    try {
+      const allSkills = await this.listSkills();
+      skillToGroup = new Map(allSkills.map((s) => [s.name, s.plugin]));
+    } catch (err) {
+      const detail = err instanceof Error ? err.message : String(err);
+      console.warn(
+        `[checkUpdates] Failed to load skill list for name resolution, ` +
+        `falling back to direct name matching: ${detail}`
+      );
+    }
+
     const updates: Array<{
       name: string;
       installedVersion: string;
@@ -810,7 +828,8 @@ export class GitHubClient {
     }> = [];
 
     for (const inst of installed) {
-      const plugin = marketplace.plugins.find((p) => p.name === inst.name);
+      const groupName = skillToGroup.get(inst.name) || inst.name;
+      const plugin = marketplace.plugins.find((p) => p.name === groupName);
       // Use semver comparison: only report update if available > installed
       if (plugin && plugin.version && compareSemver(plugin.version, inst.version) > 0) {
         updates.push({

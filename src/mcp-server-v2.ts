@@ -85,11 +85,13 @@ export class SkillportMCPv2 extends McpAgent<Env, unknown, UserProps> {
         "Two tools available:\n" +
         "- execute: Call Skillport API methods ({ method, args }) to browse, install, and manage skills.\n" +
         "- search: Query Skillport domain knowledge on-demand. " +
-        "IMPORTANT: Before answering questions about SKILL.md format, naming conventions, " +
-        "surface tags, publishing, installation, version management, marketplace structure, " +
-        "browsing skills, checking for updates, editing skills, deleting skills, " +
-        "testing, or best practices, ALWAYS call the search tool first. " +
-        "Do not rely on general knowledge — the search index contains the authoritative reference.",
+        "IMPORTANT: Before answering questions OR executing any workflow involving " +
+        "SKILL.md format, naming conventions, surface tags, publishing, installation, " +
+        "version management, marketplace structure, browsing skills, checking for updates, " +
+        "editing skills, deleting skills, testing, or best practices, " +
+        "ALWAYS call the search tool first. " +
+        "Do not rely on general knowledge or assumptions about where data is stored — " +
+        "the search index contains the authoritative reference for how each workflow works.",
     }
   );
 
@@ -123,12 +125,20 @@ export class SkillportMCPv2 extends McpAgent<Env, unknown, UserProps> {
         method: z
           .string()
           .describe(
-            `The skillport method to call. One of: ${AVAILABLE_METHODS}`
+            `The skillport method to call. One of: ${AVAILABLE_METHODS}. For method signatures and workflows, call the search tool first.`
           ),
         args: z
           .record(z.unknown())
           .optional()
-          .describe("Arguments to pass to the method. See method signatures above."),
+          .describe(
+            "Method arguments. " +
+            "checkUpdates: { installed: [{ name, version }] } — version is from .claude-plugin/plugin.json, NOT SKILL.md. " +
+            "installSkill: { name, mode: \"package\" } — ALWAYS use mode \"package\" (returns .skill zip; download with curl, then call present_files). " +
+            "getSkill/editSkill/deleteSkill: { name }. " +
+            "saveSkill: { name, files: [{ path, content }] }. " +
+            "bumpVersion: { name, type: \"patch\"|\"minor\"|\"major\" }. " +
+            "For full details, call the search tool."
+          ),
       },
       async ({ method, args }) => {
         this.logAction(`execute:${method}`);
@@ -199,7 +209,7 @@ export class SkillportMCPv2 extends McpAgent<Env, unknown, UserProps> {
       {
         query: z
           .string()
-          .describe("What you want to find (e.g. 'frontmatter required fields', 'naming conventions', 'surface tags')"),
+          .describe("What you want to find (e.g. 'how to check for updates', 'how to create a skill', 'surface tags')"),
         limit: z
           .number()
           .int()
