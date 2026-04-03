@@ -1,7 +1,7 @@
 # Alternative: Skillport Pivot (not retirement)
 
-**Date:** 2026-04-01
-**Status:** Under consideration
+**Date:** 2026-04-02
+**Status:** Under consideration → **Leaning pivot**
 
 ## The Pivot
 
@@ -9,9 +9,9 @@ Instead of retiring Skillport, evolve its purpose:
 
 | | Old Skillport | New Skillport |
 |---|---|---|
-| **Purpose** | Bridge the gap where Anthropic had no native infrastructure | Management layer + packaging service the native system doesn't provide |
-| **Core problem** | Cross-surface distribution | Marketplace maintenance + ready-to-install packaging |
-| **Value** | Unique when built, now subsumed | Fills gaps nobody else has addressed |
+| **Purpose** | Bridge the gap where Anthropic had no native infrastructure | Authenticated backend + multi-client marketplace management |
+| **Core problem** | Cross-surface distribution | Marketplace maintenance + packaging + auth |
+| **Value** | Unique when built, now subsumed | Backend/auth infrastructure nobody else has built |
 
 ## Why This Might Make Sense
 
