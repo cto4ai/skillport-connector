@@ -204,16 +204,17 @@ where no native infrastructure existed — is largely subsumed.
 So why build v3? Because native tooling has specific gaps that v3 fills. And critically,
 v3 operates on **full plugins** — not just skills. v1 and v2 managed single SKILL.md files.
 The ecosystem has moved to plugins (skills + agents + hooks + commands + MCP/LSP configs +
-scripts), which are richer and harder to manage manually. Every gap below is amplified by
-the complexity of managing multi-component plugins versus single-file skills.
+scripts) as the unit of distribution. Every gap below applies to both plugins and skills,
+and is amplified by the complexity of managing multi-component plugins versus single files.
 
-### Gap 1: Private marketplace management
+### Gap 1: Plugin marketplace management
 
 **The problem:** Every plugin marketplace in the Claude ecosystem maintains
 `.claude-plugin/marketplace.json` by hand. Anthropic provides `claude plugin validate`
 but no tooling to create, sync, or manage marketplace entries. Adding a plugin means
 manually editing JSON in two files (plugin.json and marketplace.json), keeping versions
-in sync, and hoping you don't drift.
+in sync, and hoping you don't drift. This applies to all marketplaces — public, private,
+personal, or organizational.
 
 **Existing solutions:** None that auto-generate marketplace.json.
 [ivan-magda/claude-code-plugin-template](https://github.com/ivan-magda/claude-code-plugin-template)
@@ -224,29 +225,35 @@ built TypeScript validation/bump scripts but marketplace.json is still the sourc
 **What v3 provides:**
 - `skillport sync` — generate marketplace.json from plugin.json files (plugin.json is
   the single source of truth)
-- `skillport create my-plugin` — scaffold the correct directory structure, create
-  plugin.json, update marketplace.json
+- `skillport create my-plugin` — scaffold the correct directory structure (plugin.json,
+  skills/, agents/, hooks/, etc.), create plugin.json, update marketplace.json
 - `skillport bump my-plugin patch` — increment version in plugin.json (marketplace.json
   auto-syncs on next `skillport sync` or pre-commit hook)
 - `skillport validate` — check consistency beyond what `claude plugin validate` covers
 
 This is genuinely novel. Nobody has built the "marketplace.json as derived file" pattern.
 
-### Gap 2: Authenticated remote repo operations without git
+### Gap 2: Direct remote repo operations
 
 **The problem:** Native Claude Code marketplace support works great for consuming plugins
-(auto-update, install, browse). But authoring — creating skills, editing files, bumping
-versions, publishing — requires direct git operations: clone, edit, commit, push. On
-surfaces without git (Claude.ai, Desktop Chat, Cowork sandboxes), authoring is impossible.
+(auto-update, install, browse). But authoring — creating plugins, editing files, bumping
+versions, publishing — requires either direct git operations (clone, edit, commit, push)
+or manual GitHub web UI workflows. On surfaces without git (Claude.ai, Desktop Chat,
+Cowork sandboxes), programmatic authoring is impossible.
 
 **What v3 provides:**
-- `skillport save my-skill` — reads local files, commits to GitHub via API (no git needed)
-- `skillport bump` — updates version on GitHub directly
-- `skillport publish` — adds/updates marketplace.json entry on GitHub
-- All authenticated through the Cloudflare Worker, which holds GitHub credentials
 
-The model can author skills from any surface with a shell — even ephemeral sandboxes that
-don't have git installed or configured.
+The CLI talks to the Cloudflare Worker, which authenticates and proxies to GitHub. No git
+binary needed on the surface. No GitHub credentials stored locally.
+
+- `skillport save my-plugin` — reads local files, commits to GitHub via API
+- `skillport bump my-plugin` — updates version on GitHub directly
+- `skillport publish my-plugin` — adds/updates marketplace.json entry on GitHub
+- OAuth handled by the MCP → CLI pairing code flow (no browser needed in sandbox)
+- Credential multiplexing: operate on multiple repos/accounts without switching git configs
+
+The model can author plugins from any surface with a shell — even ephemeral sandboxes that
+have neither git installed nor GitHub credentials configured.
 
 ### Gap 3: Cross-surface packaging
 
@@ -298,43 +305,41 @@ sandboxes that have never seen git.
 - Version is authoritative in plugin.json (single source of truth), flows to marketplace.json
   automatically, and is stamped into `.skill`/`.plugin` packages for Claude.ai/Desktop/Cowork
 
-### Gap 5: Auth + knowledge bridge between MCP and CLI
+### Gap 5: CLI support (auth bootstrapping + distribution + documentation)
 
-**The problem:** MCP connectors provide seamless OAuth on Claude surfaces. CLIs need their
-own auth flow. Running an OAuth flow from an ephemeral sandbox is awkward — there's no
-browser to redirect to. And the model needs to know how to use the CLI before it's installed.
+**The problem:** The CLI needs three things to work on ephemeral surfaces: a way to
+authenticate without a browser, a way to install quickly, and a way for the model to
+learn how to use it before it's installed.
 
-**What v3's MCP provides:**
-- **OAuth front door** — Google OAuth handled natively by the MCP protocol. User connects
-  once, auth is automatic thereafter.
-- **`execute` tool** — small set of auth methods: `get_cli_token` (issues pairing code for
-  CLI auth), `account.connect` / `account.list` / `account.set_default` (credential
-  multiplexing for multiple GitHub accounts / marketplaces).
-- **`search` tool** — CLI documentation as a queryable knowledge index. The model's first
-  call on encountering Skillport. Returns CLI install instructions, command usage (mirrors
-  `--help` content), auth flow walkthrough, and workflow guidance. Available before the CLI
-  is installed — solves the v1 chicken-and-egg problem.
-- **Pairing code flow** — MCP issues a short-lived code via `execute({ method: "get_cli_token" })`.
-  Model runs `skillport auth --code ABC123` in the sandbox. No browser needed. Auth bootstraps
-  from the MCP session to the CLI.
+**Auth bootstrapping:**
 
-### Gap 6: CLI distribution from the same infrastructure
+MCP connectors provide seamless OAuth on Claude surfaces. CLIs need their own auth flow.
+Running a browser-based OAuth flow from an ephemeral sandbox is impossible. v3 solves this
+with a pairing code: MCP issues a short-lived code via `execute({ method: "get_cli_token" })`,
+model runs `skillport auth --code ABC123` in the sandbox. Auth bootstraps from the MCP
+session to the CLI — no browser needed.
 
-**The problem:** Ephemeral sandboxes (Claude.ai, Desktop Chat, Cowork) need to install the
-CLI each session. This needs to be fast and the download source needs to be reachable.
+**CLI distribution (proven by testing on 2026-04-02):**
 
-**What v3 provides (proven by testing on 2026-04-02):**
-- The Cloudflare Worker serves the CLI binary/package (same domain, already allowlisted)
+- The Cloudflare Worker serves the CLI package (same domain, already allowlisted)
 - `npm install -g` works in all tested sandboxes (Claude.ai, Desktop Chat, Cowork)
-- Worker domain (`skillport-connector.*.workers.dev`) is already in the user's domain
-  allowlist for code execution sandboxes
+- Worker domain (`skillport-connector.*.workers.dev`) is already in user domain allowlists
+  for code execution sandboxes
 - Install time: a lean CLI with minimal dependencies takes 2-5 seconds
 
-**Test results from Claude.ai sandbox:**
-- `npm install -g tldr` — 91 packages in 14 seconds (bloated package; lean CLI would be faster)
+Test results from Claude.ai sandbox:
+- `npm install -g tldr` — 91 packages in 14 seconds (bloated; lean CLI would be faster)
 - `apt-get install jq` — works, Ubuntu repos accessible
 - `curl https://skillport-connector.jack-48f.workers.dev/api/skills` — worker is reachable,
   returns proper 401 (auth required, not network blocked)
+
+**Pre-install documentation via MCP search:**
+
+The MCP `search` tool serves as the CLI's documentation layer, available before the CLI is
+installed. The model calls `search("how to install a plugin")` and gets back the exact CLI
+command and flags. This solves the v1 chicken-and-egg problem (needed the skill installed to
+learn how to install skills) and mirrors `--help` content for surfaces where the CLI isn't
+installed yet.
 
 ### What v3 does NOT try to do
 
@@ -351,19 +356,18 @@ CLI each session. This needs to be fast and the download source needs to be reac
 
 ### Summary: is it worth the effort?
 
-| Gap | How painful without v3 | How many people have this problem |
+| Gap | How painful without v3 | Who has this problem |
 |---|---|---|
-| Marketplace management | Manual JSON editing, dual-write, easy to drift | Everyone running a custom marketplace |
-| Remote repo authoring | Impossible without git on the surface | Anyone authoring from Claude.ai/Cowork |
-| Cross-surface packaging | Manual ZIP creation per surface per plugin | Anyone with cross-surface plugins |
-| No repo-based versioning outside CC | Upload-and-overwrite, no history/rollback | Everyone shipping skills to non-CC surfaces |
-| Auth + knowledge bridge (MCP → CLI) | No clean path for auth or pre-install docs | Novel |
-| CLI distribution from worker | N/A (enables everything above) | N/A |
+| Plugin marketplace management | Manual JSON editing, dual-write, easy to drift | Everyone running a custom marketplace |
+| Direct remote repo operations | Impossible without git on the surface | Anyone authoring from Claude.ai/Cowork |
+| Cross-surface packaging | Manual ZIP creation per surface per plugin | Anyone with cross-surface plugins/skills |
+| No repo-based versioning outside CC | Upload-and-overwrite, no history/rollback | Everyone shipping plugins/skills to non-CC surfaces |
+| CLI support (auth + distribution + docs) | No clean auth in sandboxes, no pre-install docs | Foundational — enables all gaps above |
 
-The marketplace management gap alone affects the entire Claude Code plugin ecosystem.
-The auth bridge pattern (MCP OAuth bootstrapping CLI auth in ephemeral sandboxes) is novel
-and potentially reusable beyond Skillport. The remote authoring gap is unique to private
-marketplaces but real.
+The marketplace management gap affects the entire Claude Code plugin ecosystem — anyone
+running a custom marketplace, public or private. The versioning gap affects everyone shipping
+plugins or skills to non-CC surfaces. The auth bootstrapping pattern (MCP OAuth → CLI
+pairing code in ephemeral sandboxes) is novel and potentially reusable beyond Skillport.
 
 The effort is justified if v3 is built lean: a CLI (~500 lines), a thin MCP layer with
 `execute` (auth methods) + `search` (CLI documentation index), and the existing Cloudflare
