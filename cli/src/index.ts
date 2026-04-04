@@ -176,6 +176,31 @@ if (isMain) {
         await runGet(args, api);
         break;
       }
+      case "save": {
+        const { runSave } = await import("./commands/save");
+        await runSave(args, api);
+        break;
+      }
+      case "deactivate": {
+        const { runDeactivate } = await import("./commands/lifecycle");
+        await runDeactivate(args, api);
+        break;
+      }
+      case "reactivate": {
+        const { runReactivate } = await import("./commands/lifecycle");
+        await runReactivate(args, api);
+        break;
+      }
+      case "delete": {
+        const { runDelete } = await import("./commands/lifecycle");
+        await runDelete(args, api);
+        break;
+      }
+      case "sync": {
+        const { runSync } = await import("./commands/sync");
+        await runSync(args, api);
+        break;
+      }
       default:
         console.error(`Command '${args.command}' is not yet implemented.`);
         process.exit(1);
