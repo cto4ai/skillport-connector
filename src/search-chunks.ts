@@ -125,4 +125,60 @@ export const SEARCH_CHUNKS: SearchChunk[] = [
     category: "commands",
     keywords: ["create", "scaffold", "new", "template", "plugin", "skill", "init", "start"],
   },
+  {
+    id: "save-command",
+    title: "skillport save",
+    content:
+      "Push local skill files to the marketplace and bump version.\n\n" +
+      "```\n" +
+      "skillport save <name> <patch|minor|major> --code <CODE>\n" +
+      "```\n\n" +
+      "Reads all files from `./<name>/`, uploads to the marketplace, " +
+      "and bumps the version. Always specify a bump type.\n\n" +
+      "Workflow: `skillport create <name>` → edit SKILL.md → `skillport save <name> patch`",
+    category: "commands",
+    keywords: ["save", "push", "publish", "upload", "bump", "version", "patch", "minor", "major"],
+  },
+  {
+    id: "deactivate-command",
+    title: "skillport deactivate / reactivate",
+    content:
+      "Remove a plugin from the marketplace (deactivate) or restore it (reactivate).\n\n" +
+      "```\n" +
+      "skillport deactivate <name> --code <CODE>\n" +
+      "skillport reactivate <name> --code <CODE>\n" +
+      "```\n\n" +
+      "Deactivate sets a flag in plugin.json and removes from marketplace.json. " +
+      "The plugin files remain on GitHub. Reactivate reverses this.\n\n" +
+      "To permanently delete: deactivate first, then `skillport delete <name> --confirm`.",
+    category: "commands",
+    keywords: ["deactivate", "reactivate", "remove", "restore", "disable", "enable", "lifecycle"],
+  },
+  {
+    id: "delete-command",
+    title: "skillport delete",
+    content:
+      "Permanently delete a plugin or skill from the marketplace.\n\n" +
+      "```\n" +
+      "skillport delete <name> --confirm --code <CODE>\n" +
+      "```\n\n" +
+      "Requires `--confirm` flag. For plugins, must deactivate first. " +
+      "Removes all files from GitHub. This cannot be undone.",
+    category: "commands",
+    keywords: ["delete", "remove", "destroy", "permanent", "confirm"],
+  },
+  {
+    id: "sync-command",
+    title: "skillport sync",
+    content:
+      "Regenerate marketplace.json from all plugin.json files on GitHub.\n\n" +
+      "```\n" +
+      "skillport sync --code <CODE>              # write changes\n" +
+      "skillport sync --dry-run --code <CODE>     # preview only\n" +
+      "```\n\n" +
+      "Scans all plugin directories, skips deactivated plugins, " +
+      "and rebuilds the marketplace index. Use `--dry-run` to preview changes.",
+    category: "commands",
+    keywords: ["sync", "regenerate", "marketplace", "rebuild", "index", "dry-run", "validate"],
+  },
 ];
