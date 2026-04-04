@@ -89,4 +89,40 @@ export const SEARCH_CHUNKS: SearchChunk[] = [
     category: "commands",
     keywords: ["whoami", "identity", "user", "account", "email", "who"],
   },
+  {
+    id: "get-command",
+    title: "skillport get",
+    content:
+      "Download a skill from the marketplace.\n\n" +
+      "```\n" +
+      "skillport get <name> --code <CODE>                        # unpacked files\n" +
+      "skillport get <name> --format skill --code <CODE>          # .skill ZIP\n" +
+      "```\n\n" +
+      "Files are written to `./<name>/` (unpacked) or `./<name>.skill` (ZIP).\n\n" +
+      "Future flags (not yet implemented):\n" +
+      "- `--skill <name>` — target a specific skill within a plugin\n" +
+      "- `--skills-only` — get all skills as standalone\n" +
+      "- `--format plugin` — download as .plugin ZIP",
+    category: "commands",
+    keywords: ["get", "download", "install", "fetch", "skill", "plugin", "zip", "format"],
+  },
+  {
+    id: "create-command",
+    title: "skillport create",
+    content:
+      "Scaffold a new plugin or skill directory locally. No auth required.\n\n" +
+      "```\n" +
+      "skillport create <name>              # new plugin with one skill\n" +
+      "skillport create --skill <name>       # standalone skill\n" +
+      "```\n\n" +
+      "Plugin scaffold creates:\n" +
+      "- `.claude-plugin/plugin.json`\n" +
+      "- `skills/<name>/SKILL.md`\n\n" +
+      "Skill scaffold creates:\n" +
+      "- `SKILL.md`\n" +
+      "- `.claude-plugin/plugin.json`\n\n" +
+      "After creating, edit SKILL.md and use `skillport save` to publish.",
+    category: "commands",
+    keywords: ["create", "scaffold", "new", "template", "plugin", "skill", "init", "start"],
+  },
 ];
