@@ -9,7 +9,34 @@ export class ApiError extends Error {
   }
 }
 
+/**
+ * Get a proxy-aware fetch function.
+ * Node's native fetch ignores https_proxy env var.
+ * When a proxy is detected, use undici's ProxyAgent (ships with Node 18+).
+ */
+async function getProxyFetch(): Promise<typeof fetch> {
+  const proxyUrl =
+    process.env.https_proxy ||
+    process.env.HTTPS_PROXY ||
+    process.env.http_proxy ||
+    process.env.HTTP_PROXY;
+
+  if (!proxyUrl) return fetch;
+
+  try {
+    const undici = await import("undici");
+    const dispatcher = new undici.ProxyAgent(proxyUrl);
+    return (input: string | URL | Request, init?: RequestInit) =>
+      undici.fetch(input, { ...init, dispatcher } as any) as Promise<Response>;
+  } catch {
+    // undici not available — fall back to native fetch
+    return fetch;
+  }
+}
+
 export class ApiClient {
+  private proxyFetch: typeof fetch | null = null;
+
   constructor(
     private baseUrl: string,
     private code: string,
@@ -20,6 +47,13 @@ export class ApiClient {
       Authorization: `Bearer ${this.code}`,
       "Content-Type": "application/json",
     };
+  }
+
+  private async getFetch(): Promise<typeof fetch> {
+    if (!this.proxyFetch) {
+      this.proxyFetch = await getProxyFetch();
+    }
+    return this.proxyFetch;
   }
 
   async get<T = unknown>(
@@ -50,9 +84,10 @@ export class ApiClient {
   }
 
   private async request<T>(url: string, init: RequestInit): Promise<T> {
+    const doFetch = await this.getFetch();
     let response: Response;
     try {
-      response = await fetch(url, init);
+      response = await doFetch(url, init);
     } catch (error) {
       throw new ApiError(
         `Network error: ${error instanceof Error ? error.message : String(error)}`,

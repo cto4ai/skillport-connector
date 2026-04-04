@@ -10,6 +10,7 @@ await build({
   target: "node18",
   outfile: "dist/skillport.js",
   format: "esm",
+  external: ["undici"],
   banner: {
     js: "#!/usr/bin/env node",
   },
