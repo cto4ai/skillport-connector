@@ -2,7 +2,7 @@
  * REST API Handler for Skillport
  *
  * Exposes all Skillport operations as HTTP endpoints.
- * Authentication is via Bearer token obtained from the `skillport_auth` MCP tool.
+ * Authentication is via Bearer code obtained from `auth.get_code` via the MCP execute tool.
  *
  * This enables the "single-tool + skill" architecture where:
  * - MCP provides only authentication (skillport_auth tool)
@@ -13,8 +13,8 @@
 import { GitHubClient, parseSkillFrontmatter } from "./github-client";
 import { AccessControl } from "./access-control";
 
-// Token data stored in KV
-interface TokenData {
+// Code data stored in KV (from MCP auth.get_code)
+export interface CodeData {
   uid: string;
   provider: string;
   email: string;
@@ -23,28 +23,26 @@ interface TokenData {
 }
 
 /**
- * Validate Bearer token from Authorization header
+ * Validate CLI code from Authorization header.
+ * The code is issued by MCP execute({ method: "auth.get_code" })
+ * and stored in KV as cli_code:{code}.
  */
-async function validateToken(
+export async function validateCode(
   request: Request,
-  env: Env
-): Promise<TokenData | null> {
+  env: Env,
+): Promise<CodeData | null> {
   const authHeader = request.headers.get("Authorization");
   if (!authHeader?.startsWith("Bearer ")) {
     return null;
   }
 
-  const token = authHeader.slice(7);
-  if (!token.startsWith("sk_api_")) {
-    return null;
-  }
-
-  const data = await env.OAUTH_KV.get(`api_token:${token}`);
+  const code = authHeader.slice(7);
+  const data = await env.OAUTH_KV.get(`cli_code:${code}`);
   if (!data) {
     return null;
   }
 
-  return JSON.parse(data) as TokenData;
+  return JSON.parse(data) as CodeData;
 }
 
 /**
@@ -174,7 +172,7 @@ function validateFilePath(filePath: string): string | null {
  */
 async function handleListSkills(
   env: Env,
-  user: TokenData,
+  user: CodeData,
   options: { refresh?: boolean; surface?: string } = {}
 ): Promise<Response> {
   try {
@@ -227,7 +225,7 @@ async function handleListSkills(
  */
 async function handleGetSkill(
   env: Env,
-  user: TokenData,
+  user: CodeData,
   skillName: string
 ): Promise<Response> {
   try {
@@ -290,7 +288,7 @@ async function handleGetSkill(
  */
 async function handleInstallSkill(
   env: Env,
-  user: TokenData,
+  user: CodeData,
   skillName: string
 ): Promise<Response> {
   try {
@@ -362,7 +360,7 @@ async function handleInstallSkill(
  */
 async function handleEditSkill(
   env: Env,
-  user: TokenData,
+  user: CodeData,
   skillName: string
 ): Promise<Response> {
   try {
@@ -437,7 +435,7 @@ async function handleEditSkill(
  */
 async function handleSaveSkill(
   env: Env,
-  user: TokenData,
+  user: CodeData,
   skillName: string,
   body: {
     skill_group?: string;
@@ -754,7 +752,7 @@ async function handleSaveSkill(
  */
 async function handleDeleteSkill(
   env: Env,
-  user: TokenData,
+  user: CodeData,
   skillName: string,
   confirm: boolean
 ): Promise<Response> {
@@ -855,7 +853,7 @@ async function handleDeleteSkill(
  */
 async function handleBumpVersion(
   env: Env,
-  user: TokenData,
+  user: CodeData,
   skillName: string,
   type: "major" | "minor" | "patch"
 ): Promise<Response> {
@@ -954,7 +952,7 @@ async function handleBumpVersion(
  */
 async function handlePublishSkill(
   env: Env,
-  user: TokenData,
+  user: CodeData,
   skillName: string,
   body: {
     description: string;
@@ -1049,7 +1047,7 @@ async function handlePublishSkill(
  */
 async function handleCheckUpdates(
   env: Env,
-  user: TokenData,
+  user: CodeData,
   installed: Array<{ name: string; version: string }>
 ): Promise<Response> {
   try {
@@ -1073,7 +1071,7 @@ async function handleCheckUpdates(
 /**
  * GET /api/whoami - Get user identity
  */
-async function handleWhoami(user: TokenData): Promise<Response> {
+async function handleWhoami(user: CodeData): Promise<Response> {
   return jsonResponse({
     id: `${user.provider}:${user.uid}`,
     email: user.email,
@@ -1097,11 +1095,11 @@ export async function handleAPI(
   const method = request.method;
 
   // Validate token
-  const user = await validateToken(request, env);
+  const user = await validateCode(request, env);
   if (!user) {
     return errorResponse(
       "Unauthorized",
-      "Invalid or expired token. Call skillport_auth to get a new token.",
+      "Invalid or expired code. Call auth.get_code via MCP to get a new code.",
       401
     );
   }
