@@ -40,4 +40,53 @@ export const SEARCH_CHUNKS: SearchChunk[] = [
     category: "commands",
     keywords: ["commands", "list", "overview", "help", "cli"],
   },
+  {
+    id: "list-command",
+    title: "skillport list",
+    content:
+      "List all skills in the marketplace.\n\n" +
+      "```\nskillport list --code <CODE>\n" +
+      "skillport list --surface CC --code <CODE>\n```\n\n" +
+      "Options:\n" +
+      "- `--surface <tag>` — Filter by surface: CC (Claude Code), CD (Claude Desktop), " +
+      "CAI (Claude.ai), CDAI (Claude Desktop AI), CALL (all surfaces)\n\n" +
+      "Output: table with name, plugin, version, and surface tags for each skill.",
+    category: "commands",
+    keywords: ["list", "browse", "marketplace", "skills", "plugins", "surface", "filter"],
+  },
+  {
+    id: "info-command",
+    title: "skillport info",
+    content:
+      "Show details for a specific skill or plugin.\n\n" +
+      "```\nskillport info <name> --code <CODE>\n```\n\n" +
+      "Shows: name, version, plugin, description, category, tags, surface tags, " +
+      "publish status, edit permissions, and file list.\n\n" +
+      "The `<name>` is the skill name as shown in `skillport list`.",
+    category: "commands",
+    keywords: ["info", "details", "show", "describe", "skill", "plugin", "metadata"],
+  },
+  {
+    id: "updates-command",
+    title: "skillport updates",
+    content:
+      "Check if installed skills have newer versions in the marketplace.\n\n" +
+      "```\nskillport updates --installed '<json>' --code <CODE>\n```\n\n" +
+      "The `--installed` flag takes a JSON array of `{ \"name\": \"...\", \"version\": \"...\" }` objects.\n" +
+      "The model should construct this from local `.claude-plugin/plugin.json` files.\n\n" +
+      "Output: table of skills with available updates (installed vs latest version).",
+    category: "commands",
+    keywords: ["updates", "check", "version", "upgrade", "outdated", "installed"],
+  },
+  {
+    id: "whoami-command",
+    title: "skillport whoami",
+    content:
+      "Show the authenticated user's identity.\n\n" +
+      "```\nskillport whoami --code <CODE>\n```\n\n" +
+      "Shows: name, email, and user ID. Useful for verifying which account is " +
+      "associated with the auth code.",
+    category: "commands",
+    keywords: ["whoami", "identity", "user", "account", "email", "who"],
+  },
 ];
