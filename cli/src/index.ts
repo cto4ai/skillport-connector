@@ -43,6 +43,9 @@ export function parseArgs(argv: string[]): ParsedArgs {
     } else if (arg === "--installed" && i + 1 < argv.length) {
       flags.installed = argv[i + 1];
       i += 2;
+    } else if (arg === "--base-url" && i + 1 < argv.length) {
+      flags["base-url"] = argv[i + 1];
+      i += 2;
     } else if (arg === "--skills-only") {
       flags["skills-only"] = true;
       i++;
@@ -115,10 +118,66 @@ if (isMain) {
     process.exit(0);
   }
 
-  console.log(`skillport v${VERSION}`);
-  console.log(`Command: ${args.command}`);
-  if (args.positional.length > 0) console.log(`Args: ${args.positional.join(", ")}`);
-  if (args.code) console.log(`Code: ${args.code.slice(0, 4)}...`);
-  console.log("(not yet implemented)");
-  process.exit(1);
+  // Commands that require --code
+  const REMOTE_COMMANDS = [
+    "list", "info", "updates", "whoami",
+    "get", "save", "deactivate", "reactivate", "delete", "sync",
+  ];
+
+  if (REMOTE_COMMANDS.includes(args.command) && !args.code) {
+    console.error(`Error: --code is required for '${args.command}'.`);
+    console.error("Get a code via MCP: execute({ method: \"auth.get_code\" })");
+    process.exit(1);
+  }
+
+  // Local-only commands
+  if (args.command === "create") {
+    console.error("(create: not yet implemented)");
+    process.exit(1);
+  }
+
+  // Remote commands — build API client
+  const baseUrl = (args.flags["base-url"] as string) || "https://skillport-connector.jack-ivers.workers.dev";
+  const { ApiClient } = await import("./api-client");
+  const api = new ApiClient(baseUrl, args.code!);
+
+  try {
+    switch (args.command) {
+      case "list": {
+        const { runList } = await import("./commands/list");
+        await runList(args, api);
+        break;
+      }
+      case "info": {
+        const { runInfo } = await import("./commands/info");
+        await runInfo(args, api);
+        break;
+      }
+      case "updates": {
+        const { runUpdates } = await import("./commands/updates");
+        await runUpdates(args, api);
+        break;
+      }
+      case "whoami": {
+        const { runWhoami } = await import("./commands/whoami");
+        await runWhoami(args, api);
+        break;
+      }
+      default:
+        console.error(`Command '${args.command}' is not yet implemented.`);
+        process.exit(1);
+    }
+  } catch (error) {
+    if (error && typeof error === "object" && "name" in error && error.name === "ApiError") {
+      const apiErr = error as { status: number; message: string };
+      if (apiErr.status === 401) {
+        console.error("Error: Code expired or invalid. Get a new one via MCP auth.get_code.");
+      } else {
+        console.error(`Error: ${apiErr.message}`);
+      }
+    } else {
+      console.error(`Error: ${error instanceof Error ? error.message : String(error)}`);
+    }
+    process.exit(1);
+  }
 }

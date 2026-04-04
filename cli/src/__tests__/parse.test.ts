@@ -78,4 +78,11 @@ describe("parseArgs", () => {
     expect(result.command).toBe("updates");
     expect(result.flags.installed).toBe(json);
   });
+
+  it("parses --base-url flag", () => {
+    const result = parseArgs(["list", "--base-url", "http://localhost:8788", "--code", "abc"]);
+    expect(result.command).toBe("list");
+    expect(result.flags["base-url"]).toBe("http://localhost:8788");
+    expect(result.code).toBe("abc");
+  });
 });
