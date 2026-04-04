@@ -1,228 +1,125 @@
-/**
- * Skillport MCP Server
- * Exposes Plugin Marketplace tools to Claude.ai/Desktop
- */
-
 import { McpAgent } from "agents/mcp";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
-import { z } from "zod";
-import { GitHubClient } from "./github-client";
+import { dispatch } from "./dispatch";
+import { SearchIndex } from "./search-index";
+import { SEARCH_CHUNKS } from "./search-chunks";
+import { ExecuteInputSchema, SearchInputSchema } from "./types";
+import type { UserProps, SearchChunk } from "./types";
 
-interface UserProps extends Record<string, unknown> {
-  uid: string; // Stable unique identifier from IdP
-  provider: string; // e.g., "google", "entra", "okta"
-  email: string;
-  name: string;
-  picture?: string;
-  domain?: string;
+const METHOD_SUMMARY = "auth.get_code, auth.whoami";
+
+interface State {
+  searchIndex: null;
 }
 
-export class SkillportMCP extends McpAgent<Env, unknown, UserProps> {
+export class SkillportMCP extends McpAgent<Env, State, UserProps> {
   server = new McpServer(
     {
       name: "skillport",
-      version: "1.0.0",
+      version: "3.0.0",
     },
     {
       instructions:
-        "This server provides tools for browsing and installing Claude Code skills from the Skillport marketplace. " +
-        "Use skillport_auth to get an authenticated session token for the REST API, then use your skillport skill " +
-        "to understand how to browse, install, manage, and author skills. " +
-        "Call with operation='bootstrap' if you don't have the skillport skill installed yet.",
-    }
+        "Skillport CLI manager — install, author, and publish plugins and skills " +
+        "for Claude Code plugin marketplaces.\n\n" +
+        "Two tools available:\n" +
+        "- execute: Auth methods ({ method, args }). Call auth.get_code to get a CLI auth code.\n" +
+        "- search: Query CLI documentation on-demand. " +
+        "IMPORTANT: Call search(\"getting started\") first to learn how to install and use the CLI.\n\n" +
+        "Workflow: search → auth.get_code → install CLI → use CLI for all operations.",
+    },
   );
 
-  /**
-   * Log user action for audit trail
-   */
-  private logAction(action: string): void {
-    const email = this.props?.email || "unknown";
-    const timestamp = new Date().toISOString();
-    console.log(`[AUDIT] ${timestamp} user=${email} action=${action}`);
+  initialState: State = { searchIndex: null };
+
+  private cachedIndex: SearchIndex | null = null;
+
+  private getSearchIndex(): SearchIndex {
+    if (this.cachedIndex) return this.cachedIndex;
+    this.cachedIndex = new SearchIndex(SEARCH_CHUNKS);
+    return this.cachedIndex;
   }
 
   async init() {
-    // ============================================================
-    // Primary Tool: skillport_auth (for REST API access)
-    // ============================================================
-
-    // Tool: skillport_auth - Get authenticated session for REST API
-    this.server.tool(
-      "skillport_auth",
-      "Get an authenticated session for the Skillport marketplace. " +
-        "If you have the skillport skill installed, call with operation='auth' then use your skillport skill for API instructions. " +
-        "If you don't have the skillport skill, call with operation='bootstrap' to install it. " +
-        "Returns a short-lived API token (15 min) and base URL for REST API calls.",
+    this.server.registerTool(
+      "execute",
       {
-        operation: z
-          .enum(["auth", "bootstrap"])
-          .default("auth")
-          .describe(
-            "'auth': Get token for API calls (use your skillport skill for instructions). " +
-              "'bootstrap': Install the Skillport skill if you don't have it."
-          ),
+        description:
+          `Execute a Skillport method. Available: ${METHOD_SUMMARY}. ` +
+          "Auth is automatic — call auth.get_code to get a CLI auth code.",
+        inputSchema: ExecuteInputSchema,
       },
-      async ({ operation }) => {
-        if (operation === "bootstrap") {
-          return this.handleBootstrap();
+      async ({ method, args }) => {
+        const uid = this.props?.uid;
+        if (!uid) {
+          return {
+            content: [{ type: "text" as const, text: "Not authenticated" }],
+            isError: true,
+          };
         }
-        return this.handleAuth();
-      }
+
+        const timestamp = new Date().toISOString();
+        console.log(`[AUDIT] ${timestamp} user=${this.props?.email} action=execute:${method}`);
+
+        try {
+          return await dispatch(method, args ?? {}, this.env, `${this.props.provider}:${uid}`, {
+            uid: this.props.uid,
+            provider: this.props.provider,
+            email: this.props.email,
+            name: this.props.name,
+          });
+        } catch (error) {
+          console.error(`[execute] Unhandled error in ${method}:`, error);
+          return {
+            content: [{ type: "text" as const, text: `Internal error executing ${method}: ${error instanceof Error ? error.message : String(error)}` }],
+            isError: true,
+          };
+        }
+      },
     );
 
-  }
+    this.server.registerTool(
+      "search",
+      {
+        description:
+          "Search Skillport CLI documentation — commands, workflows, " +
+          "plugin structure, surface compatibility, and best practices. " +
+          "Query by topic.",
+        inputSchema: SearchInputSchema,
+      },
+      async ({ query, limit }) => {
+        const timestamp = new Date().toISOString();
+        console.log(`[AUDIT] ${timestamp} user=${this.props?.email} action=search:${query}`);
 
-  // ============================================================
-  // Auth Handlers for skillport_auth tool
-  // ============================================================
+        const index = this.getSearchIndex();
+        const results = index.search(query, limit);
 
-  /**
-   * Handle auth operation - generate API token for REST API access
-   */
-  private async handleAuth() {
-    // Generate cryptographically random token
-    const tokenBytes = new Uint8Array(24);
-    crypto.getRandomValues(tokenBytes);
-    const token =
-      "sk_api_" +
-      btoa(String.fromCharCode(...tokenBytes))
-        .replace(/\+/g, "-")
-        .replace(/\//g, "_")
-        .replace(/=/g, "");
+        if (results.length === 0) {
+          const topicList = index
+            .listTopics()
+            .map((t) => `- **${t.id}**: ${t.title} _(${t.category})_`)
+            .join("\n");
 
-    // Store token in KV with 15 minute TTL
-    const tokenData = {
-      uid: this.props.uid,
-      provider: this.props.provider,
-      email: this.props.email,
-      name: this.props.name,
-      created: Date.now(),
-    };
-
-    await this.env.OAUTH_KV.put(
-      `api_token:${token}`,
-      JSON.stringify(tokenData),
-      { expirationTtl: 900 }
-    );
-
-    const baseUrl =
-      this.env.CONNECTOR_URL ||
-      "https://your-connector.workers.dev";
-
-    // Get client info from MCP initialization handshake
-    const clientVersion = this.server.server.getClientVersion();
-    const clientInfo = clientVersion
-      ? { name: clientVersion.name, version: clientVersion.version }
-      : null;
-
-    this.logAction("skillport_auth");
-
-    return {
-      content: [
-        {
-          type: "text" as const,
-          text: JSON.stringify(
-            {
-              token,
-              base_url: baseUrl,
-              expires_in: 900,
-              client_info: clientInfo,
-              instructions:
-                "Use your skillport skill for API usage instructions. " +
-                "If you don't have the skillport skill, call this tool again with operation='bootstrap' to install it.",
-            },
-            null,
-            2
-          ),
-        },
-      ],
-    };
-  }
-
-  /**
-   * Handle bootstrap operation - install skillport skill from marketplace
-   * Uses the standard install flow for the "skillport" skill
-   */
-  private async handleBootstrap() {
-    const connectorUrl =
-      this.env.CONNECTOR_URL ||
-      "https://your-connector.workers.dev";
-
-    // Check if skillport skill exists in the marketplace
-    const github = new GitHubClient(
-      this.env.GITHUB_SERVICE_TOKEN,
-      this.env.MARKETPLACE_REPO,
-      this.env.OAUTH_KV
-    );
-
-    const skill = await github.getSkill("skillport");
-    if (!skill) {
-      return {
-        content: [
-          {
-            type: "text" as const,
-            text: JSON.stringify(
+          return {
+            content: [
               {
-                error: "Skillport skill not found in marketplace",
-                message:
-                  "The 'skillport' skill needs to be added to the marketplace before bootstrap can work.",
-                instructions: [
-                  "Add the skillport skill to your marketplace repo",
-                  "Then call bootstrap again",
-                ],
+                type: "text" as const,
+                text: topicList.length > 0
+                  ? `No results for "${query}". Try one of these topics:\n\n${topicList}`
+                  : `No results for "${query}". The search index is empty.`,
               },
-              null,
-              2
-            ),
-          },
-        ],
-      };
-    }
+            ],
+          };
+        }
 
-    // Generate install token (same as handleInstallSkill in rest-api.ts)
-    const tokenBytes = new Uint8Array(24);
-    crypto.getRandomValues(tokenBytes);
-    const installToken =
-      "sk_install_" +
-      btoa(String.fromCharCode(...tokenBytes))
-        .replace(/\+/g, "-")
-        .replace(/\//g, "_")
-        .replace(/=/g, "");
+        const formatted = results
+          .map((chunk) => `## ${chunk.title}\n*${chunk.category}*\n\n${chunk.content}`)
+          .join("\n\n---\n\n");
 
-    await this.env.OAUTH_KV.put(
-      `install_token:${installToken}`,
-      JSON.stringify({
-        skill: "skillport",
-        version: skill.version,
-        user: this.props.email,
-        created: Date.now(),
-        used: false,
-      }),
-      { expirationTtl: 900 }
+        return {
+          content: [{ type: "text" as const, text: formatted }],
+        };
+      },
     );
-
-    this.logAction("skillport_bootstrap");
-
-    return {
-      content: [
-        {
-          type: "text" as const,
-          text: JSON.stringify(
-            {
-              message: "Skillport skill found. Follow these steps:",
-              steps: [
-                "1. Run the install command below to download the Skillport skill",
-                "2. Use present_files to share the downloaded .skill file with the user",
-                "3. User should click 'Copy to your skills' then start a new conversation",
-              ],
-              command: `curl -sf ${connectorUrl}/install.sh | bash -s -- ${installToken} --package`,
-              version: skill.version,
-            },
-            null,
-            2
-          ),
-        },
-      ],
-    };
   }
 }
