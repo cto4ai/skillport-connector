@@ -1,4 +1,4 @@
-const VERSION = "3.0.0-alpha.3";
+const VERSION = "3.0.0-alpha.4";
 
 export interface ParsedArgs {
   command: string;

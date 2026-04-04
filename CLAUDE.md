@@ -116,11 +116,21 @@ node node_modules/wrangler/bin/wrangler.js dev
 node node_modules/wrangler/bin/wrangler.js deploy
 ```
 
+## Deployed Endpoints
+
+| Endpoint | URL |
+|----------|-----|
+| MCP (Streamable HTTP) | `https://skillport-connector.jack-ivers.workers.dev/mcp` |
+| MCP (SSE, legacy) | `https://skillport-connector.jack-ivers.workers.dev/sse` |
+| CLI bundle | `https://skillport-connector.jack-ivers.workers.dev/cli/skillport.js` |
+| REST API | `https://skillport-connector.jack-ivers.workers.dev/api/` |
+
 ## Testing
 
-1. **Claude.ai with connector enabled** - Add the connector in Settings → Integrations using the `/mcp` endpoint (or `/sse` for older clients)
-2. **MCP Inspector** - `npx @modelcontextprotocol/inspector` then connect to your endpoint URL
-3. **Wrangler tail for logs** - `npx wrangler tail` to see audit logs
+1. **Claude.ai** — Add connector in Settings → Integrations using the MCP endpoint above
+2. **Claude Code** — `claude mcp add --transport http skillport https://skillport-connector.jack-ivers.workers.dev/mcp`
+3. **MCP Inspector** — `npx @modelcontextprotocol/inspector` then connect to the MCP endpoint
+4. **Wrangler tail for logs** — `npx wrangler tail` to see audit logs
 
 **Note:** MCP Inspector + wrangler dev + Remote OAuth has historically been unreliable. Test MCP tools against the live deployed Worker. Claude Code can smoke-test the MCP once deployed. REST API endpoints can be tested locally via wrangler dev.
 

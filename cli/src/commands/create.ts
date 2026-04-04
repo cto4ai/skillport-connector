@@ -29,7 +29,12 @@ const SKILL_PLUGIN_JSON_TEMPLATE = (name: string) =>
   );
 
 const SKILL_MD_TEMPLATE = (name: string) =>
-  `# ${name}
+  `---
+name: ${name}
+description: ${name} skill
+---
+
+# ${name}
 
 <!-- Describe when this skill should be triggered -->
 This skill should be used when...
