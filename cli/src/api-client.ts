@@ -1,4 +1,4 @@
-import { execSync } from "child_process";
+import { execFileSync } from "child_process";
 
 export class ApiError extends Error {
   constructor(
@@ -28,6 +28,9 @@ function hasProxy(): boolean {
  * Make an HTTP request via curl. Used in proxy environments where
  * Node's native fetch can't route through the proxy.
  */
+// Unique separator that won't appear in response bodies
+const CURL_SEPARATOR = "---SKILLPORT_HTTP_STATUS---";
+
 function curlRequest(
   url: string,
   method: string,
@@ -35,10 +38,9 @@ function curlRequest(
   body?: string,
 ): { status: number; body: string } {
   const args = [
-    "curl",
     "-s",
     "-w",
-    "\\n%{http_code}",
+    `${CURL_SEPARATOR}%{http_code}`,
     "-X",
     method,
   ];
@@ -53,15 +55,19 @@ function curlRequest(
 
   args.push(url);
 
-  const raw = execSync(args.join(" "), {
+  const raw = execFileSync("curl", args, {
     encoding: "utf-8",
     timeout: 30000,
   });
 
-  // Last line is the HTTP status code (from -w flag)
-  const lines = raw.trimEnd().split("\n");
-  const status = parseInt(lines[lines.length - 1], 10);
-  const responseBody = lines.slice(0, -1).join("\n");
+  // Split on our unique separator to extract status code
+  const sepIdx = raw.lastIndexOf(CURL_SEPARATOR);
+  if (sepIdx === -1) {
+    return { status: 0, body: raw };
+  }
+
+  const responseBody = raw.slice(0, sepIdx);
+  const status = parseInt(raw.slice(sepIdx + CURL_SEPARATOR.length), 10);
 
   return { status, body: responseBody };
 }
