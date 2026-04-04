@@ -1,3 +1,5 @@
+import { execSync } from "child_process";
+
 export class ApiError extends Error {
   constructor(
     message: string,
@@ -10,50 +12,75 @@ export class ApiError extends Error {
 }
 
 /**
- * Get a proxy-aware fetch function.
- * Node's native fetch ignores https_proxy env var.
- * When a proxy is detected, use undici's ProxyAgent (ships with Node 18+).
+ * Check if we're in a proxy environment (e.g. Claude.ai sandbox).
+ * Node's native fetch doesn't respect https_proxy, so we fall back to curl.
  */
-async function getProxyFetch(): Promise<typeof fetch> {
-  const proxyUrl =
+function hasProxy(): boolean {
+  return !!(
     process.env.https_proxy ||
     process.env.HTTPS_PROXY ||
     process.env.http_proxy ||
-    process.env.HTTP_PROXY;
+    process.env.HTTP_PROXY
+  );
+}
 
-  if (!proxyUrl) return fetch;
+/**
+ * Make an HTTP request via curl. Used in proxy environments where
+ * Node's native fetch can't route through the proxy.
+ */
+function curlRequest(
+  url: string,
+  method: string,
+  headers: Record<string, string>,
+  body?: string,
+): { status: number; body: string } {
+  const args = [
+    "curl",
+    "-s",
+    "-w",
+    "\\n%{http_code}",
+    "-X",
+    method,
+  ];
 
-  try {
-    const undici = await import("undici");
-    const dispatcher = new undici.ProxyAgent(proxyUrl);
-    return (input: string | URL | Request, init?: RequestInit) =>
-      undici.fetch(input, { ...init, dispatcher } as any) as Promise<Response>;
-  } catch {
-    // undici not available — fall back to native fetch
-    return fetch;
+  for (const [k, v] of Object.entries(headers)) {
+    args.push("-H", `${k}: ${v}`);
   }
+
+  if (body) {
+    args.push("-d", body);
+  }
+
+  args.push(url);
+
+  const raw = execSync(args.join(" "), {
+    encoding: "utf-8",
+    timeout: 30000,
+  });
+
+  // Last line is the HTTP status code (from -w flag)
+  const lines = raw.trimEnd().split("\n");
+  const status = parseInt(lines[lines.length - 1], 10);
+  const responseBody = lines.slice(0, -1).join("\n");
+
+  return { status, body: responseBody };
 }
 
 export class ApiClient {
-  private proxyFetch: typeof fetch | null = null;
+  private useProxy: boolean;
 
   constructor(
     private baseUrl: string,
     private code: string,
-  ) {}
+  ) {
+    this.useProxy = hasProxy();
+  }
 
   private headers(): Record<string, string> {
     return {
       Authorization: `Bearer ${this.code}`,
       "Content-Type": "application/json",
     };
-  }
-
-  private async getFetch(): Promise<typeof fetch> {
-    if (!this.proxyFetch) {
-      this.proxyFetch = await getProxyFetch();
-    }
-    return this.proxyFetch;
   }
 
   async get<T = unknown>(
@@ -71,23 +98,75 @@ export class ApiClient {
       }
     }
 
-    return this.request<T>(url, { method: "GET", headers: this.headers() });
+    return this.request<T>(url, "GET");
   }
 
   async post<T = unknown>(path: string, body: unknown): Promise<T> {
     const url = `${this.baseUrl}${path}`;
-    return this.request<T>(url, {
-      method: "POST",
-      headers: this.headers(),
-      body: JSON.stringify(body),
-    });
+    return this.request<T>(url, "POST", JSON.stringify(body));
   }
 
-  private async request<T>(url: string, init: RequestInit): Promise<T> {
-    const doFetch = await this.getFetch();
+  private async request<T>(
+    url: string,
+    method: string,
+    body?: string,
+  ): Promise<T> {
+    const hdrs = this.headers();
+
+    if (this.useProxy) {
+      return this.requestViaCurl<T>(url, method, hdrs, body);
+    }
+
+    return this.requestViaFetch<T>(url, method, hdrs, body);
+  }
+
+  private requestViaCurl<T>(
+    url: string,
+    method: string,
+    headers: Record<string, string>,
+    body?: string,
+  ): T {
+    let result: { status: number; body: string };
+    try {
+      result = curlRequest(url, method, headers, body);
+    } catch (error) {
+      throw new ApiError(
+        `Network error: ${error instanceof Error ? error.message : String(error)}`,
+        0,
+      );
+    }
+
+    if (result.status >= 400) {
+      let details: string | undefined;
+      try {
+        const parsed = JSON.parse(result.body);
+        details = parsed.details || parsed.error || result.body;
+      } catch {
+        details = result.body || `HTTP ${result.status}`;
+      }
+      throw new ApiError(
+        details || `HTTP ${result.status}`,
+        result.status,
+        details,
+      );
+    }
+
+    try {
+      return JSON.parse(result.body) as T;
+    } catch {
+      throw new ApiError(`Invalid JSON response from ${url}`, 0);
+    }
+  }
+
+  private async requestViaFetch<T>(
+    url: string,
+    method: string,
+    headers: Record<string, string>,
+    body?: string,
+  ): Promise<T> {
     let response: Response;
     try {
-      response = await doFetch(url, init);
+      response = await fetch(url, { method, headers, body });
     } catch (error) {
       throw new ApiError(
         `Network error: ${error instanceof Error ? error.message : String(error)}`,
@@ -98,8 +177,8 @@ export class ApiClient {
     if (!response.ok) {
       let details: string | undefined;
       try {
-        const body = await response.json();
-        details = body.details || body.error || JSON.stringify(body);
+        const respBody = await response.json();
+        details = respBody.details || respBody.error || JSON.stringify(respBody);
       } catch {
         details = `HTTP ${response.status}`;
       }
