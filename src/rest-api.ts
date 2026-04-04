@@ -1143,6 +1143,226 @@ async function handlePublishSkill(
 }
 
 /**
+ * POST /api/skills/:name/deactivate - Deactivate a plugin
+ */
+async function handleDeactivatePlugin(
+  env: Env,
+  user: CodeData,
+  skillName: string
+): Promise<Response> {
+  try {
+    logAction(user.email, "deactivate_plugin", { skill: skillName });
+    const github = getGitHubClient(env);
+    const accessControl = await getAccessControl(env, user.provider, user.uid);
+
+    const skill = await github.getSkill(skillName);
+    if (!skill) {
+      return errorResponse("Skill not found", `Skill '${skillName}' not found`, 404);
+    }
+
+    if (!accessControl.canWrite(skill.plugin)) {
+      return errorResponse("Access denied", `You don't have write access to '${skill.plugin}'`, 403);
+    }
+
+    const writeClient = getWriteGitHubClient(env);
+    const pluginJsonPath = `plugins/${skill.plugin}/.claude-plugin/plugin.json`;
+
+    let pluginJson: Record<string, unknown>;
+    try {
+      const content = await github.getFileContent(pluginJsonPath);
+      pluginJson = JSON.parse(content);
+    } catch {
+      return errorResponse("Plugin error", `Could not read plugin.json for '${skill.plugin}'`, 500);
+    }
+
+    if (pluginJson.deactivated === true) {
+      return errorResponse("Already deactivated", `'${skill.plugin}' is already deactivated`, 400);
+    }
+
+    pluginJson.deactivated = true;
+    await writeClient.updateFile(
+      pluginJsonPath,
+      JSON.stringify(pluginJson, null, 2),
+      `Deactivate ${skill.plugin}\n\nRequested by: ${user.email}`
+    );
+
+    try {
+      await writeClient.removeFromMarketplace(skill.plugin, user.email);
+    } catch (err) {
+      const errMsg = err instanceof Error ? err.message : String(err);
+      if (!errMsg.includes("not found in marketplace")) throw err;
+    }
+
+    await github.clearCache(skill.plugin);
+    await github.clearCache();
+
+    return jsonResponse({ success: true, plugin: skill.plugin, action: "deactivated" });
+  } catch (error) {
+    return errorResponse("Failed to deactivate", error instanceof Error ? error.message : String(error), 500);
+  }
+}
+
+/**
+ * POST /api/skills/:name/reactivate - Reactivate a deactivated plugin
+ */
+async function handleReactivatePlugin(
+  env: Env,
+  user: CodeData,
+  skillName: string
+): Promise<Response> {
+  try {
+    logAction(user.email, "reactivate_plugin", { skill: skillName });
+    const github = getGitHubClient(env);
+    const accessControl = await getAccessControl(env, user.provider, user.uid);
+
+    const skill = await github.getSkill(skillName);
+    if (!skill) {
+      return errorResponse("Skill not found", `Skill '${skillName}' not found`, 404);
+    }
+
+    if (!accessControl.canWrite(skill.plugin)) {
+      return errorResponse("Access denied", `You don't have write access to '${skill.plugin}'`, 403);
+    }
+
+    const writeClient = getWriteGitHubClient(env);
+    const pluginJsonPath = `plugins/${skill.plugin}/.claude-plugin/plugin.json`;
+
+    let pluginJson: Record<string, unknown>;
+    try {
+      const content = await github.getFileContent(pluginJsonPath);
+      pluginJson = JSON.parse(content);
+    } catch {
+      return errorResponse("Plugin error", `Could not read plugin.json for '${skill.plugin}'`, 500);
+    }
+
+    if (pluginJson.deactivated !== true) {
+      return errorResponse("Not deactivated", `'${skill.plugin}' is not deactivated`, 400);
+    }
+
+    delete pluginJson.deactivated;
+    await writeClient.updateFile(
+      pluginJsonPath,
+      JSON.stringify(pluginJson, null, 2),
+      `Reactivate ${skill.plugin}\n\nRequested by: ${user.email}`
+    );
+
+    await writeClient.upsertMarketplaceEntry(
+      {
+        name: skill.plugin,
+        description: (pluginJson.description as string) || `${skill.plugin} plugin`,
+        version: (pluginJson.version as string) || undefined,
+      },
+      user.email
+    );
+
+    await github.clearCache(skill.plugin);
+    await github.clearCache();
+
+    return jsonResponse({ success: true, plugin: skill.plugin, action: "reactivated" });
+  } catch (error) {
+    return errorResponse("Failed to reactivate", error instanceof Error ? error.message : String(error), 500);
+  }
+}
+
+/**
+ * POST /api/sync - Regenerate marketplace.json from plugin.json files
+ */
+async function handleSync(
+  env: Env,
+  user: CodeData,
+  dryRun: boolean
+): Promise<Response> {
+  try {
+    logAction(user.email, dryRun ? "sync_marketplace_dry_run" : "sync_marketplace");
+    const github = getGitHubClient(env);
+    const accessControl = await getAccessControl(env, user.provider, user.uid);
+
+    if (!accessControl.isEditor()) {
+      return errorResponse("Access denied", "Only editors can sync the marketplace", 403);
+    }
+
+    const currentMarketplace = await github.getMarketplace();
+    const allPlugins = await github.listPlugins();
+
+    const newPlugins: Array<{
+      name: string;
+      source: string;
+      description?: string;
+      version?: string;
+      category?: string;
+    }> = [];
+
+    for (const plugin of allPlugins) {
+      let pluginJson: Record<string, unknown>;
+      try {
+        const content = await github.getFileContent(
+          `${plugin.source.replace("./", "")}/.claude-plugin/plugin.json`
+        );
+        pluginJson = JSON.parse(content);
+      } catch {
+        continue;
+      }
+
+      if (pluginJson.deactivated === true) continue;
+
+      newPlugins.push({
+        name: plugin.name,
+        source: plugin.source,
+        description: (pluginJson.description as string) || undefined,
+        version: (pluginJson.version as string) || undefined,
+        category: (pluginJson.category as string) || undefined,
+      });
+    }
+
+    const currentNames = new Set(currentMarketplace.plugins.map((p) => p.name));
+    const newNames = new Set(newPlugins.map((p) => p.name));
+    const added = newPlugins.filter((p) => !currentNames.has(p.name));
+    const removed = currentMarketplace.plugins.filter((p) => !newNames.has(p.name));
+    const kept = newPlugins.filter((p) => currentNames.has(p.name));
+
+    if (dryRun) {
+      return jsonResponse({
+        dryRun: true,
+        current: currentMarketplace.plugins.length,
+        proposed: newPlugins.length,
+        added: added.map((p) => p.name),
+        removed: removed.map((p) => p.name),
+        kept: kept.map((p) => p.name),
+      });
+    }
+
+    const writeClient = getWriteGitHubClient(env);
+    const newMarketplace = {
+      ...currentMarketplace,
+      plugins: newPlugins.map((p) => ({
+        name: p.name,
+        source: p.source,
+        ...(p.description ? { description: p.description } : {}),
+        ...(p.version ? { version: p.version } : {}),
+        ...(p.category ? { category: p.category } : {}),
+      })),
+    };
+
+    await writeClient.updateFile(
+      ".claude-plugin/marketplace.json",
+      JSON.stringify(newMarketplace, null, 2),
+      `Sync marketplace.json (${newPlugins.length} plugins)\n\nRequested by: ${user.email}`
+    );
+
+    await github.clearCache();
+
+    return jsonResponse({
+      success: true,
+      plugins: newPlugins.length,
+      added: added.map((p) => p.name),
+      removed: removed.map((p) => p.name),
+    });
+  } catch (error) {
+    return errorResponse("Failed to sync marketplace", error instanceof Error ? error.message : String(error), 500);
+  }
+}
+
+/**
  * POST /api/check-updates - Check for updates
  */
 async function handleCheckUpdates(
@@ -1425,6 +1645,40 @@ export async function handleAPI(
   // Route: GET /api/whoami
   if (pathParts[0] === "whoami" && method === "GET") {
     return handleWhoami(user);
+  }
+
+  // Route: POST /api/skills/:name/deactivate
+  if (
+    pathParts[0] === "skills" &&
+    pathParts.length === 3 &&
+    pathParts[2] === "deactivate" &&
+    method === "POST"
+  ) {
+    const skillName = pathParts[1];
+    if (!validateName(skillName)) {
+      return errorResponse("Invalid skill name", "Skill name must contain only lowercase letters, numbers, and hyphens", 400);
+    }
+    return handleDeactivatePlugin(env, user, skillName);
+  }
+
+  // Route: POST /api/skills/:name/reactivate
+  if (
+    pathParts[0] === "skills" &&
+    pathParts.length === 3 &&
+    pathParts[2] === "reactivate" &&
+    method === "POST"
+  ) {
+    const skillName = pathParts[1];
+    if (!validateName(skillName)) {
+      return errorResponse("Invalid skill name", "Skill name must contain only lowercase letters, numbers, and hyphens", 400);
+    }
+    return handleReactivatePlugin(env, user, skillName);
+  }
+
+  // Route: POST /api/sync
+  if (pathParts[0] === "sync" && method === "POST") {
+    const dryRun = url.searchParams.get("dry_run") === "true";
+    return handleSync(env, user, dryRun);
   }
 
   // Route: GET /api/debug/plugins - Debug endpoint to see raw GitHub API response
