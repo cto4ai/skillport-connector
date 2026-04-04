@@ -12,6 +12,7 @@
 
 import { GitHubClient, parseSkillFrontmatter } from "./github-client";
 import { AccessControl } from "./access-control";
+import { packageSkill } from "./skill-packager";
 
 // Code data stored in KV (from MCP auth.get_code)
 export interface CodeData {
@@ -278,6 +279,105 @@ async function handleGetSkill(
     return errorResponse(
       "Failed to fetch skill",
       error instanceof Error ? error.message : String(error),
+      500
+    );
+  }
+}
+
+/**
+ * GET /api/skills/:name/download - Download skill files with content
+ * Returns full file content for writing to disk.
+ */
+async function handleDownloadSkill(
+  env: Env,
+  user: CodeData,
+  skillName: string
+): Promise<Response> {
+  try {
+    logAction(user.email, "download_skill", { skill: skillName });
+    const github = getGitHubClient(env);
+    const accessControl = await getAccessControl(env, user.provider, user.uid);
+
+    if (!accessControl.canRead(skillName)) {
+      return errorResponse(
+        "Access denied",
+        "You don't have access to this skill",
+        403
+      );
+    }
+
+    const { skill, plugin, files } = await github.fetchSkill(skillName);
+
+    return jsonResponse({
+      skill: {
+        name: skill.name,
+        version: skill.version,
+        plugin: skill.plugin,
+      },
+      plugin: {
+        name: plugin.name,
+        version: plugin.version,
+      },
+      files: files.map((f) => ({
+        path: f.path,
+        content: f.content,
+      })),
+    });
+  } catch (error) {
+    const msg = error instanceof Error ? error.message : String(error);
+    if (msg.includes("not found") || msg.includes("Not Found")) {
+      return errorResponse("Skill not found", `Skill '${skillName}' not found`, 404);
+    }
+    return errorResponse(
+      "Failed to download skill",
+      msg,
+      500
+    );
+  }
+}
+
+/**
+ * GET /api/skills/:name/package - Download skill as .skill ZIP (base64)
+ */
+async function handlePackageSkill(
+  env: Env,
+  user: CodeData,
+  skillName: string
+): Promise<Response> {
+  try {
+    logAction(user.email, "package_skill", { skill: skillName });
+    const github = getGitHubClient(env);
+    const accessControl = await getAccessControl(env, user.provider, user.uid);
+
+    if (!accessControl.canRead(skillName)) {
+      return errorResponse(
+        "Access denied",
+        "You don't have access to this skill",
+        403
+      );
+    }
+
+    const { skill, files } = await github.fetchSkill(skillName);
+    const pkg = packageSkill(skill.name, files);
+
+    return jsonResponse({
+      skill: {
+        name: skill.name,
+        version: skill.version,
+      },
+      package: {
+        filename: pkg.filename,
+        content_base64: pkg.content_base64,
+      },
+    });
+  } catch (error) {
+    const msg = error instanceof Error ? error.message : String(error);
+    if (msg.includes("not found") || msg.includes("Not Found")) {
+      return errorResponse("Skill not found", `Skill '${skillName}' not found`, 404);
+    }
+    return errorResponse(
+      "Failed to package skill",
+      msg,
       500
     );
   }
@@ -1170,6 +1270,42 @@ export async function handleAPI(
       );
     }
     return handleEditSkill(env, user, skillName);
+  }
+
+  // Route: GET /api/skills/:name/download
+  if (
+    pathParts[0] === "skills" &&
+    pathParts.length === 3 &&
+    pathParts[2] === "download" &&
+    method === "GET"
+  ) {
+    const skillName = pathParts[1];
+    if (!validateName(skillName)) {
+      return errorResponse(
+        "Invalid skill name",
+        "Skill name must contain only lowercase letters, numbers, and hyphens",
+        400
+      );
+    }
+    return handleDownloadSkill(env, user, skillName);
+  }
+
+  // Route: GET /api/skills/:name/package
+  if (
+    pathParts[0] === "skills" &&
+    pathParts.length === 3 &&
+    pathParts[2] === "package" &&
+    method === "GET"
+  ) {
+    const skillName = pathParts[1];
+    if (!validateName(skillName)) {
+      return errorResponse(
+        "Invalid skill name",
+        "Skill name must contain only lowercase letters, numbers, and hyphens",
+        400
+      );
+    }
+    return handlePackageSkill(env, user, skillName);
   }
 
   // Route: POST /api/skills/:name
