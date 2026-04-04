@@ -11,6 +11,7 @@
     "test": "vitest",
     "cf-typegen": "wrangler types",
     "build:cli": "node cli/build.mjs",
+    "upload:cli": "npm run build:cli && echo 'Upload dist/skillport.js to KV key cli:bundle using: wrangler kv:key put --path dist/skillport.js --binding OAUTH_KV cli:bundle'",
     "postinstall": "node scripts/patch-oauth-provider.js && node scripts/patch-agents-mcp.js"
   },
   "dependencies": {
