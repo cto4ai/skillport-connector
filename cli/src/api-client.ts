@@ -112,6 +112,11 @@ export class ApiClient {
     return this.request<T>(url, "POST", JSON.stringify(body));
   }
 
+  async delete<T = unknown>(pathWithQuery: string): Promise<T> {
+    const url = `${this.baseUrl}${pathWithQuery}`;
+    return this.request<T>(url, "DELETE");
+  }
+
   private async request<T>(
     url: string,
     method: string,
