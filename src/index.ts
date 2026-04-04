@@ -44,6 +44,17 @@ export default {
   async fetch(request: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
     const url = new URL(request.url);
 
+    // CLI version check (no auth required)
+    if (url.pathname === "/cli/version") {
+      const version = await env.OAUTH_KV.get("cli:version", "text");
+      return new Response(JSON.stringify({ version: version || "unknown" }), {
+        headers: {
+          "Content-Type": "application/json",
+          "Cache-Control": "public, max-age=60",
+        },
+      });
+    }
+
     // Serve CLI bundle (no auth required)
     if (url.pathname === "/cli/skillport.js") {
       const js = await env.OAUTH_KV.get("cli:bundle", "text");

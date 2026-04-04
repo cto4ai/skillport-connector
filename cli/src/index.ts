@@ -1,4 +1,4 @@
-const VERSION = "3.0.0-alpha.1";
+const VERSION = "3.0.0-alpha.2";
 
 export interface ParsedArgs {
   command: string;
@@ -137,8 +137,15 @@ if (isMain) {
     process.exit(0);
   }
 
-  // Remote commands — build API client
+  // Remote commands — check for updates, then build API client
   const baseUrl = (args.flags["base-url"] as string) || "https://skillport-connector.jack-ivers.workers.dev";
+
+  // Auto-update: check server version, download + re-exec if outdated
+  const { checkForUpdate } = await import("./update");
+  if (checkForUpdate(VERSION, baseUrl)) {
+    process.exit(0); // Re-exec completed successfully
+  }
+
   const { ApiClient } = await import("./api-client");
   const api = new ApiClient(baseUrl, args.code!);
 
