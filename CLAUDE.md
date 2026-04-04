@@ -122,7 +122,7 @@ node node_modules/wrangler/bin/wrangler.js deploy
 2. **MCP Inspector** - `npx @modelcontextprotocol/inspector` then connect to your endpoint URL
 3. **Wrangler tail for logs** - `npx wrangler tail` to see audit logs
 
-**Note:** Claude Code cannot directly call MCP tools in this project because they require Google OAuth authentication. Testing must be done via Claude.ai or Claude Desktop with the connector enabled.
+**Note:** MCP Inspector + wrangler dev + Remote OAuth has historically been unreliable. Test MCP tools against the live deployed Worker. Claude Code can smoke-test the MCP once deployed. REST API endpoints can be tested locally via wrangler dev.
 
 ## Documentation
 
