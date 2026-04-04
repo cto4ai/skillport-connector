@@ -130,10 +130,11 @@ if (isMain) {
     process.exit(1);
   }
 
-  // Local-only commands
+  // Local-only commands (no --code needed)
   if (args.command === "create") {
-    console.error("(create: not yet implemented)");
-    process.exit(1);
+    const { runCreate } = await import("./commands/create");
+    await runCreate(args);
+    process.exit(0);
   }
 
   // Remote commands — build API client
@@ -161,6 +162,11 @@ if (isMain) {
       case "whoami": {
         const { runWhoami } = await import("./commands/whoami");
         await runWhoami(args, api);
+        break;
+      }
+      case "get": {
+        const { runGet } = await import("./commands/get");
+        await runGet(args, api);
         break;
       }
       default:
