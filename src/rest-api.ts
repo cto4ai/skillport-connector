@@ -868,48 +868,56 @@ async function handleDeleteSkill(
     const github = getGitHubClient(env);
     const accessControl = await getAccessControl(env, user.provider, user.uid);
 
+    // Try as skill name first; if not found, try as plugin name (for deactivated plugins)
+    let pluginName: string;
+    let skillDirName: string | null = null;
+
     const skill = await github.getSkill(skillName);
-    if (!skill) {
-      return errorResponse(
-        "Skill not found",
-        `Skill "${skillName}" not found`,
-        404
-      );
+    if (skill) {
+      pluginName = skill.plugin;
+      skillDirName = skill.dirName;
+    } else {
+      // Check if it's a plugin name (may be deactivated, so getSkill won't find it)
+      try {
+        await github.getFileContent(`plugins/${skillName}/.claude-plugin/plugin.json`);
+        pluginName = skillName;
+      } catch {
+        return errorResponse("Not found", `'${skillName}' not found as skill or plugin`, 404);
+      }
     }
 
-    // Write access is keyed by group name
-    if (!accessControl.canWrite(skill.plugin)) {
+    if (!accessControl.canWrite(pluginName)) {
       return errorResponse(
         "Access denied",
-        `You don't have write access to group "${skill.plugin}"`,
+        `You don't have write access to '${pluginName}'`,
         403
       );
     }
 
     logAction(user.email, "delete_skill", {
       skill: skillName,
-      plugin: skill.plugin,
+      plugin: pluginName,
     });
 
     const writeClient = getWriteGitHubClient(env);
 
-    const skillDirCount = await github.countSkillDirectories(skill.plugin);
-    const isLastSkillInPlugin = skillDirCount === 1;
+    const skillDirCount = await github.countSkillDirectories(pluginName);
+    const isLastSkillInPlugin = !skillDirName || skillDirCount === 1;
 
     let deletedFiles: string[];
     let pluginDeleted = false;
 
     if (isLastSkillInPlugin) {
-      const pluginPath = `plugins/${skill.plugin}`;
+      const pluginPath = `plugins/${pluginName}`;
       const result = await writeClient.deleteDirectory(
         pluginPath,
-        `Delete plugin ${skill.plugin} (last skill removed)\n\nRequested by: ${user.email}`
+        `Delete plugin ${pluginName}\n\nRequested by: ${user.email}`
       );
       deletedFiles = result.deletedFiles;
       pluginDeleted = true;
 
       try {
-        await writeClient.removeFromMarketplace(skill.plugin, user.email);
+        await writeClient.removeFromMarketplace(pluginName, user.email);
       } catch (err) {
         const errMsg = err instanceof Error ? err.message : String(err);
         if (!errMsg.includes("not found in marketplace")) {
@@ -917,7 +925,8 @@ async function handleDeleteSkill(
         }
       }
     } else {
-      const skillDirPath = `plugins/${skill.plugin}/skills/${skill.dirName}`;
+      const dirName = skillDirName || skillName;
+      const skillDirPath = `plugins/${pluginName}/skills/${dirName}`;
       const result = await writeClient.deleteDirectory(
         skillDirPath,
         `Delete skill ${skillName}\n\nRequested by: ${user.email}`
@@ -926,8 +935,10 @@ async function handleDeleteSkill(
     }
 
     // Clear caches
-    await github.clearCache(skill.plugin);
-    await github.clearSkillDirCache(skill.plugin, skill.dirName);
+    await github.clearCache(pluginName);
+    if (skillDirName) {
+      await github.clearSkillDirCache(pluginName, skillDirName);
+    }
     if (pluginDeleted) {
       await github.clearCache();
     }
@@ -935,7 +946,7 @@ async function handleDeleteSkill(
     return jsonResponse({
       success: true,
       skill: skillName,
-      plugin: skill.plugin,
+      plugin: pluginName,
       pluginDeleted,
       deletedFiles,
     });
