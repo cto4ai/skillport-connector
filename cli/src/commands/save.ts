@@ -5,7 +5,14 @@ import type { ApiClient } from "../api-client";
 
 const VALID_BUMPS = ["patch", "minor", "major"];
 
-interface SaveResponse {
+interface PluginSaveResponse {
+  success: boolean;
+  plugin: string;
+  summary: string;
+  newVersion?: string;
+}
+
+interface SkillSaveResponse {
   success: boolean;
   skill: string;
   skill_group: string;
@@ -41,19 +48,67 @@ export async function runSave(
     throw new Error("Directory not found");
   }
 
-  // Determine directory layout:
-  // Plugin layout: name/.claude-plugin/plugin.json + name/skills/*/...
-  // Skill layout:  name/SKILL.md + name/.claude-plugin/plugin.json
-  const skillDir = join(dir, "skills", name);
+  // Detect layout: plugin (has skills/ subdir) vs standalone skill
+  const skillsDir = join(dir, "skills");
   let isPluginLayout = false;
   try {
-    await stat(skillDir);
-    isPluginLayout = true;
+    const s = await stat(skillsDir);
+    isPluginLayout = s.isDirectory();
   } catch {
-    // Not a plugin layout — treat entire dir as skill files
+    // No skills/ directory — standalone skill
   }
 
-  // Read plugin_metadata from .claude-plugin/plugin.json at root
+  if (isPluginLayout) {
+    await savePlugin(name, dir, bump, api);
+  } else {
+    await saveSkill(name, dir, bump, api);
+  }
+}
+
+/**
+ * Save entire plugin directory tree via PUT /api/plugins/:name.
+ * Sends all files (including .claude-plugin/plugin.json, commands/, skills/).
+ * Server handles writing, publishing, and version bump.
+ */
+async function savePlugin(
+  name: string,
+  dir: string,
+  bump: string,
+  api: ApiClient,
+): Promise<void> {
+  const files = await collectFiles(dir, "");
+
+  if (files.length === 0) {
+    console.error(`Error: No files found in './${name}'.`);
+    throw new Error("No files to save");
+  }
+
+  console.log(`Saving plugin ${name} (${files.length} file(s))...`);
+
+  const result = await api.put<PluginSaveResponse>(
+    `/api/plugins/${encodeURIComponent(name)}`,
+    { files, bump },
+  );
+
+  console.log(result.summary);
+  if (result.newVersion) {
+    console.log(`Version: ${result.newVersion}`);
+  }
+  console.log("Done.");
+}
+
+/**
+ * Save standalone skill via POST /api/skills/:name + bump.
+ * Strips .claude-plugin/ from files (synthesized, not stored).
+ * Reads plugin_metadata from local .claude-plugin/plugin.json.
+ */
+async function saveSkill(
+  name: string,
+  dir: string,
+  bump: string,
+  api: ApiClient,
+): Promise<void> {
+  // Read plugin_metadata from .claude-plugin/plugin.json
   let pluginMetadata: { description: string } | undefined;
   const pluginJsonPath = join(dir, ".claude-plugin", "plugin.json");
   try {
@@ -66,17 +121,8 @@ export async function runSave(
     // No plugin.json — skip metadata
   }
 
-  // Collect skill files (relative to the skill directory).
-  // Always strip .claude-plugin/plugin.json — it's synthesized at download time
-  // from the plugin-level manifest, not stored in the repo at skill level.
-  let files: Array<{ path: string; content: string }>;
-  if (isPluginLayout) {
-    // Plugin layout: collect from skills/<name>/
-    files = await collectFiles(skillDir, "");
-  } else {
-    // Skill layout: collect everything from dir
-    files = await collectFiles(dir, "");
-  }
+  // Collect skill files, strip .claude-plugin/ (synthesized, not stored)
+  let files = await collectFiles(dir, "");
   files = files.filter((f) => !f.path.startsWith(".claude-plugin/"));
 
   if (files.length === 0) {
@@ -86,16 +132,15 @@ export async function runSave(
 
   console.log(`Saving ${name} (${files.length} file(s))...`);
 
-  const saveResult = await api.post<SaveResponse>(`/api/skills/${encodeURIComponent(name)}`, {
-    files,
-    plugin_metadata: pluginMetadata,
-  });
+  const saveResult = await api.post<SkillSaveResponse>(
+    `/api/skills/${encodeURIComponent(name)}`,
+    { files, plugin_metadata: pluginMetadata },
+  );
 
   console.log(saveResult.summary);
 
   // Auto-publish if new skill (needed before bump can work)
   if (saveResult.isNewSkill || saveResult.isNewGroup) {
-    // Read surface_tags from plugin.json for the publish call
     let surfaceTags = ["surface:CC"];
     let description = pluginMetadata?.description || `${name} skill`;
     try {
@@ -125,7 +170,7 @@ export async function runSave(
   }>(`/api/skills/${encodeURIComponent(name)}/bump`, { type: bump });
 
   console.log(`Version: ${bumpResult.oldVersion} → ${bumpResult.newVersion}`);
-  console.log(`Done.`);
+  console.log("Done.");
 }
 
 async function collectFiles(

@@ -1400,6 +1400,172 @@ async function handleWhoami(user: CodeData): Promise<Response> {
   });
 }
 
+/**
+ * PUT /api/plugins/:name - Save entire plugin directory tree
+ * Writes all files to plugins/{name}/ on GitHub, bumps version,
+ * and ensures marketplace.json entry.
+ */
+async function handleSavePlugin(
+  env: Env,
+  user: CodeData,
+  pluginName: string,
+  body: {
+    files: Array<{ path: string; content: string }>;
+    bump?: "patch" | "minor" | "major";
+  }
+): Promise<Response> {
+  try {
+    const { files, bump } = body;
+
+    if (!files || !Array.isArray(files) || files.length === 0) {
+      return errorResponse("Invalid request", "files array is required", 400);
+    }
+
+    logAction(user.email, "save_plugin", { plugin: pluginName });
+
+    const github = getGitHubClient(env);
+    const accessControl = await getAccessControl(env, user.provider, user.uid);
+
+    // Check write access (editors can create new, writers can update existing)
+    const pluginExists = await github.fileExists(`plugins/${pluginName}/.claude-plugin/plugin.json`);
+    if (pluginExists) {
+      if (!accessControl.canWrite(pluginName)) {
+        return errorResponse("Access denied", `You don't have write access to '${pluginName}'`, 403);
+      }
+    } else {
+      if (!accessControl.isEditor()) {
+        return errorResponse("Access denied", "Only editors can create new plugins", 403);
+      }
+    }
+
+    // Validate all file paths
+    for (const file of files) {
+      const sanitized = validateFilePath(file.path);
+      if (!sanitized) {
+        return errorResponse("Invalid file path", `Path "${file.path}" is invalid`, 400);
+      }
+    }
+
+    // Validate plugin.json exists in the payload
+    const pluginJsonFile = files.find((f) => f.path === ".claude-plugin/plugin.json");
+    if (!pluginJsonFile) {
+      return errorResponse(
+        "Missing plugin.json",
+        "Plugin save must include .claude-plugin/plugin.json",
+        400
+      );
+    }
+
+    // Parse plugin.json for metadata
+    let pluginJson: Record<string, unknown>;
+    try {
+      pluginJson = JSON.parse(pluginJsonFile.content);
+    } catch {
+      return errorResponse("Invalid plugin.json", "plugin.json contains invalid JSON", 400);
+    }
+
+    // Validate at least one SKILL.md exists under skills/
+    const hasSkill = files.some((f) => f.path.match(/^skills\/[^/]+\/SKILL\.md$/));
+    if (!hasSkill) {
+      return errorResponse(
+        "Missing skill",
+        "Plugin must contain at least one skill (skills/*/SKILL.md)",
+        400
+      );
+    }
+
+    // Validate SKILL.md frontmatter for each skill
+    const skillMdFiles = files.filter((f) => f.path.match(/^skills\/[^/]+\/SKILL\.md$/));
+    for (const skillMd of skillMdFiles) {
+      const frontmatter = parseSkillFrontmatter(skillMd.content);
+      if (!frontmatter.name || !frontmatter.description) {
+        const skillDir = skillMd.path.split("/")[1];
+        return errorResponse(
+          "Invalid SKILL.md frontmatter",
+          `skills/${skillDir}/SKILL.md must have name and description in frontmatter`,
+          400
+        );
+      }
+    }
+
+    const writeClient = getWriteGitHubClient(env);
+    const basePath = `plugins/${pluginName}`;
+
+    // Write all files
+    const results: Array<{ path: string; created?: boolean }> = [];
+    for (const file of files) {
+      const absolutePath = `${basePath}/${file.path}`;
+      const { created } = await writeClient.upsertFile(
+        absolutePath,
+        file.content,
+        `Update ${pluginName}: ${file.path}\n\nRequested by: ${user.email}`
+      );
+      results.push({ path: file.path, created });
+    }
+
+    // Ensure marketplace.json entry
+    const description = (pluginJson.description as string) || `${pluginName} plugin`;
+    await writeClient.upsertMarketplaceEntry(
+      {
+        name: pluginName,
+        description,
+        version: (pluginJson.version as string) || undefined,
+      },
+      user.email
+    );
+
+    // Bump version if requested
+    let newVersion: string | undefined;
+    if (bump) {
+      const currentVersion = (pluginJson.version as string) || "1.0.0";
+      const [major, minor, patch] = currentVersion.split(".").map(Number);
+      newVersion =
+        bump === "major"
+          ? `${major + 1}.0.0`
+          : bump === "minor"
+            ? `${major}.${minor + 1}.0`
+            : `${major}.${minor}.${patch + 1}`;
+
+      // Update plugin.json with new version
+      const updatedPluginJson = { ...pluginJson, version: newVersion };
+      await writeClient.upsertFile(
+        `${basePath}/.claude-plugin/plugin.json`,
+        JSON.stringify(updatedPluginJson, null, 2),
+        `Bump ${pluginName} version to ${newVersion}\n\nRequested by: ${user.email}`
+      );
+
+      // Update marketplace.json version
+      try {
+        await writeClient.updateMarketplaceVersion(pluginName, newVersion, user.email);
+      } catch {
+        // marketplace version update may fail if just created — that's fine,
+        // upsertMarketplaceEntry above already set the version
+      }
+    }
+
+    // Clear caches
+    await github.clearCache(pluginName);
+    await github.clearCache();
+
+    const created = results.filter((r) => r.created === true).length;
+    const updated = results.filter((r) => r.created === false).length;
+    const summary = `${created} file(s) created, ${updated} file(s) updated`;
+
+    return jsonResponse({
+      success: true,
+      plugin: pluginName,
+      summary,
+      newVersion,
+    });
+  } catch (error) {
+    return errorResponse(
+      "Failed to save plugin",
+      error instanceof Error ? error.message : String(error),
+      500
+    );
+  }
+}
+
 // ============================================================
 // Main Router
 // ============================================================
@@ -1679,6 +1845,23 @@ export async function handleAPI(
   if (pathParts[0] === "sync" && method === "POST") {
     const dryRun = url.searchParams.get("dry_run") === "true";
     return handleSync(env, user, dryRun);
+  }
+
+  // Route: PUT /api/plugins/:name - Save entire plugin directory tree
+  if (
+    pathParts[0] === "plugins" &&
+    pathParts.length === 2 &&
+    method === "PUT"
+  ) {
+    const pluginName = pathParts[1];
+    if (!validateName(pluginName)) {
+      return errorResponse("Invalid plugin name", "Plugin name must contain only lowercase letters, numbers, and hyphens", 400);
+    }
+    const body = await request.json() as {
+      files: Array<{ path: string; content: string }>;
+      bump?: "patch" | "minor" | "major";
+    };
+    return handleSavePlugin(env, user, pluginName, body);
   }
 
   // Route: GET /api/debug/plugins - Debug endpoint to see raw GitHub API response
