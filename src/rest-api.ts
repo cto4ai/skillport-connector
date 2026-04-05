@@ -1148,55 +1148,50 @@ async function handlePublishSkill(
 async function handleDeactivatePlugin(
   env: Env,
   user: CodeData,
-  skillName: string
+  pluginName: string
 ): Promise<Response> {
   try {
-    logAction(user.email, "deactivate_plugin", { skill: skillName });
+    logAction(user.email, "deactivate_plugin", { plugin: pluginName });
     const github = getGitHubClient(env);
     const accessControl = await getAccessControl(env, user.provider, user.uid);
 
-    const skill = await github.getSkill(skillName);
-    if (!skill) {
-      return errorResponse("Skill not found", `Skill '${skillName}' not found`, 404);
-    }
-
-    if (!accessControl.canWrite(skill.plugin)) {
-      return errorResponse("Access denied", `You don't have write access to '${skill.plugin}'`, 403);
+    if (!accessControl.canWrite(pluginName)) {
+      return errorResponse("Access denied", `You don't have write access to '${pluginName}'`, 403);
     }
 
     const writeClient = getWriteGitHubClient(env);
-    const pluginJsonPath = `plugins/${skill.plugin}/.claude-plugin/plugin.json`;
+    const pluginJsonPath = `plugins/${pluginName}/.claude-plugin/plugin.json`;
 
     let pluginJson: Record<string, unknown>;
     try {
       const content = await github.getFileContent(pluginJsonPath);
       pluginJson = JSON.parse(content);
     } catch {
-      return errorResponse("Plugin error", `Could not read plugin.json for '${skill.plugin}'`, 500);
+      return errorResponse("Plugin not found", `Plugin '${pluginName}' not found`, 404);
     }
 
     if (pluginJson.deactivated === true) {
-      return errorResponse("Already deactivated", `'${skill.plugin}' is already deactivated`, 400);
+      return errorResponse("Already deactivated", `'${pluginName}' is already deactivated`, 400);
     }
 
     pluginJson.deactivated = true;
     await writeClient.updateFile(
       pluginJsonPath,
       JSON.stringify(pluginJson, null, 2),
-      `Deactivate ${skill.plugin}\n\nRequested by: ${user.email}`
+      `Deactivate ${pluginName}\n\nRequested by: ${user.email}`
     );
 
     try {
-      await writeClient.removeFromMarketplace(skill.plugin, user.email);
+      await writeClient.removeFromMarketplace(pluginName, user.email);
     } catch (err) {
       const errMsg = err instanceof Error ? err.message : String(err);
       if (!errMsg.includes("not found in marketplace")) throw err;
     }
 
-    await github.clearCache(skill.plugin);
+    await github.clearCache(pluginName);
     await github.clearCache();
 
-    return jsonResponse({ success: true, plugin: skill.plugin, action: "deactivated" });
+    return jsonResponse({ success: true, plugin: pluginName, action: "deactivated" });
   } catch (error) {
     return errorResponse("Failed to deactivate", error instanceof Error ? error.message : String(error), 500);
   }
@@ -1208,57 +1203,52 @@ async function handleDeactivatePlugin(
 async function handleReactivatePlugin(
   env: Env,
   user: CodeData,
-  skillName: string
+  pluginName: string
 ): Promise<Response> {
   try {
-    logAction(user.email, "reactivate_plugin", { skill: skillName });
+    logAction(user.email, "reactivate_plugin", { plugin: pluginName });
     const github = getGitHubClient(env);
     const accessControl = await getAccessControl(env, user.provider, user.uid);
 
-    const skill = await github.getSkill(skillName);
-    if (!skill) {
-      return errorResponse("Skill not found", `Skill '${skillName}' not found`, 404);
-    }
-
-    if (!accessControl.canWrite(skill.plugin)) {
-      return errorResponse("Access denied", `You don't have write access to '${skill.plugin}'`, 403);
+    if (!accessControl.canWrite(pluginName)) {
+      return errorResponse("Access denied", `You don't have write access to '${pluginName}'`, 403);
     }
 
     const writeClient = getWriteGitHubClient(env);
-    const pluginJsonPath = `plugins/${skill.plugin}/.claude-plugin/plugin.json`;
+    const pluginJsonPath = `plugins/${pluginName}/.claude-plugin/plugin.json`;
 
     let pluginJson: Record<string, unknown>;
     try {
       const content = await github.getFileContent(pluginJsonPath);
       pluginJson = JSON.parse(content);
     } catch {
-      return errorResponse("Plugin error", `Could not read plugin.json for '${skill.plugin}'`, 500);
+      return errorResponse("Plugin not found", `Plugin '${pluginName}' not found`, 404);
     }
 
     if (pluginJson.deactivated !== true) {
-      return errorResponse("Not deactivated", `'${skill.plugin}' is not deactivated`, 400);
+      return errorResponse("Not deactivated", `'${pluginName}' is not deactivated`, 400);
     }
 
     delete pluginJson.deactivated;
     await writeClient.updateFile(
       pluginJsonPath,
       JSON.stringify(pluginJson, null, 2),
-      `Reactivate ${skill.plugin}\n\nRequested by: ${user.email}`
+      `Reactivate ${pluginName}\n\nRequested by: ${user.email}`
     );
 
     await writeClient.upsertMarketplaceEntry(
       {
-        name: skill.plugin,
-        description: (pluginJson.description as string) || `${skill.plugin} plugin`,
+        name: pluginName,
+        description: (pluginJson.description as string) || `${pluginName} plugin`,
         version: (pluginJson.version as string) || undefined,
       },
       user.email
     );
 
-    await github.clearCache(skill.plugin);
+    await github.clearCache(pluginName);
     await github.clearCache();
 
-    return jsonResponse({ success: true, plugin: skill.plugin, action: "reactivated" });
+    return jsonResponse({ success: true, plugin: pluginName, action: "reactivated" });
   } catch (error) {
     return errorResponse("Failed to reactivate", error instanceof Error ? error.message : String(error), 500);
   }
