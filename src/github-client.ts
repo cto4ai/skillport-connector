@@ -779,7 +779,11 @@ export class GitHubClient {
       );
     }
 
-    // Include plugin.json for versioning (if it exists)
+    // Synthesize skill-level .claude-plugin/plugin.json from the plugin manifest.
+    // This file is NOT stored in the repo — it's generated at download time so that
+    // skills carry version info when extracted for non-plugin surfaces (Claude.ai, Desktop).
+    // The plugin-level plugin.json is the single source of truth for version.
+    files = files.filter((f) => f.path !== ".claude-plugin/plugin.json");
     if (manifest) {
       files.push({
         path: ".claude-plugin/plugin.json",

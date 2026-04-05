@@ -66,16 +66,18 @@ export async function runSave(
     // No plugin.json — skip metadata
   }
 
-  // Collect skill files (relative to the skill directory)
+  // Collect skill files (relative to the skill directory).
+  // Always strip .claude-plugin/plugin.json — it's synthesized at download time
+  // from the plugin-level manifest, not stored in the repo at skill level.
   let files: Array<{ path: string; content: string }>;
   if (isPluginLayout) {
     // Plugin layout: collect from skills/<name>/
     files = await collectFiles(skillDir, "");
   } else {
-    // Skill layout: collect everything except .claude-plugin/
+    // Skill layout: collect everything from dir
     files = await collectFiles(dir, "");
-    files = files.filter((f) => !f.path.startsWith(".claude-plugin/"));
   }
+  files = files.filter((f) => !f.path.startsWith(".claude-plugin/"));
 
   if (files.length === 0) {
     console.error(`Error: No skill files found in './${name}'.`);
