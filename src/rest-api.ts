@@ -1247,11 +1247,16 @@ async function handleReactivatePlugin(
       `Reactivate ${pluginName}\n\nRequested by: ${user.email}`
     );
 
+    const reactivateSurfaceTags = (pluginJson.surface_tags as string[]) || [];
+    const reactivateTags = reactivateSurfaceTags.map((t: string) =>
+      t.startsWith("surface:") ? t : `surface:${t}`,
+    );
     await writeClient.upsertMarketplaceEntry(
       {
         name: pluginName,
         description: (pluginJson.description as string) || `${pluginName} plugin`,
         version: (pluginJson.version as string) || undefined,
+        tags: reactivateTags.length > 0 ? reactivateTags : undefined,
       },
       user.email
     );
@@ -1657,13 +1662,18 @@ async function handleSavePlugin(
       results.push({ path: file.path, created });
     }
 
-    // Ensure marketplace.json entry
+    // Ensure marketplace.json entry — sync surface tags from plugin.json
     const description = (pluginJson.description as string) || `${pluginName} plugin`;
+    const surfaceTags = (pluginJson.surface_tags as string[]) || [];
+    const tags = surfaceTags.map((t: string) =>
+      t.startsWith("surface:") ? t : `surface:${t}`,
+    );
     await writeClient.upsertMarketplaceEntry(
       {
         name: pluginName,
         description,
         version: (pluginJson.version as string) || undefined,
+        tags: tags.length > 0 ? tags : undefined,
       },
       user.email
     );
