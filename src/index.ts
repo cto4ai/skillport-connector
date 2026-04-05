@@ -75,6 +75,17 @@ export default {
     }
 
     // MCP + OAuth
-    return oauthProvider.fetch(request, env, ctx);
+    const response = await oauthProvider.fetch(request, env, ctx);
+
+    // Add Access-Control-Expose-Headers for CORS — required for Claude.ai
+    // to read the WWW-Authenticate header during OAuth negotiation
+    const origin = request.headers.get("Origin");
+    if (origin) {
+      const newResponse = new Response(response.body, response);
+      newResponse.headers.set("Access-Control-Expose-Headers", "WWW-Authenticate");
+      return newResponse;
+    }
+
+    return response;
   },
 };

@@ -63,7 +63,7 @@ function curlRequest(
   // Split on our unique separator to extract status code
   const sepIdx = raw.lastIndexOf(CURL_SEPARATOR);
   if (sepIdx === -1) {
-    return { status: 0, body: raw };
+    throw new Error(`curl returned unexpected output (no status separator). Output: ${raw.slice(0, 200)}`);
   }
 
   const responseBody = raw.slice(0, sepIdx);

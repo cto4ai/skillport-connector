@@ -68,6 +68,7 @@ export function parseArgs(argv: string[]): ParsedArgs {
       positional.push(arg);
       i++;
     } else {
+      console.error(`Warning: unknown flag '${arg}' (ignored)`);
       i++;
     }
   }
