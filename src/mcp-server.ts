@@ -25,6 +25,9 @@ export class SkillportMCP extends McpAgent<Env, State, UserProps> {
         "Two tools available:\n" +
         "- execute: Auth methods ({ method, args }). Call auth.get_code to get a CLI auth code.\n" +
         "- search: Query CLI documentation on-demand.\n\n" +
+        // FIXME: hardcoded worker URL — should use CONNECTOR_URL from env
+        // but McpServer instructions are static (set before env is available).
+        // Options: make instructions dynamic in init(), or use a generic domain.
         "Quick start:\n" +
         "1. execute({ method: \"auth.get_code\" }) → get a code\n" +
         "2. curl -sO https://skillport-connector.jack-ivers.workers.dev/cli/skillport.js\n" +
