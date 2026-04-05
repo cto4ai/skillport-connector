@@ -532,6 +532,11 @@ export class GitHubClient {
             continue;
           }
 
+          // Skip deactivated plugins
+          if ((manifest as Record<string, unknown>).deactivated === true) {
+            continue;
+          }
+
           // Get version from plugin.json (authoritative), author from manifest or marketplace
           const publishedInfo = publishedPlugins.get(groupName);
           const version = manifest.version || publishedInfo?.version || "1.0.0";
@@ -662,6 +667,24 @@ export class GitHubClient {
   }
 
   /**
+   * List items in a plugin subdirectory (e.g., "skills", "commands")
+   */
+  /**
+   * Fetch all files in a plugin directory recursively
+   */
+  async fetchPluginFiles(pluginName: string): Promise<SkillFile[]> {
+    const basePath = `plugins/${pluginName}`;
+    return this.fetchDirectoryRecursive(basePath, basePath);
+  }
+
+  async listPluginSubdir(
+    pluginName: string,
+    subdir: string,
+  ): Promise<GitHubContentItem[]> {
+    return this.listDirectory(`plugins/${pluginName}/${subdir}`);
+  }
+
+  /**
    * Get detailed plugin information
    */
   async getPlugin(name: string): Promise<{
@@ -779,7 +802,11 @@ export class GitHubClient {
       );
     }
 
-    // Include plugin.json for versioning (if it exists)
+    // Synthesize skill-level .claude-plugin/plugin.json from the plugin manifest.
+    // This file is NOT stored in the repo — it's generated at download time so that
+    // skills carry version info when extracted for non-plugin surfaces (Claude.ai, Desktop).
+    // The plugin-level plugin.json is the single source of truth for version.
+    files = files.filter((f) => f.path !== ".claude-plugin/plugin.json");
     if (manifest) {
       files.push({
         path: ".claude-plugin/plugin.json",

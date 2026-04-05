@@ -2,7 +2,7 @@
  * REST API Handler for Skillport
  *
  * Exposes all Skillport operations as HTTP endpoints.
- * Authentication is via Bearer token obtained from the `skillport_auth` MCP tool.
+ * Authentication is via Bearer code obtained from `auth.get_code` via the MCP execute tool.
  *
  * This enables the "single-tool + skill" architecture where:
  * - MCP provides only authentication (skillport_auth tool)
@@ -12,9 +12,10 @@
 
 import { GitHubClient, parseSkillFrontmatter } from "./github-client";
 import { AccessControl } from "./access-control";
+import { packageSkill, packagePlugin } from "./skill-packager";
 
-// Token data stored in KV
-interface TokenData {
+// Code data stored in KV (from MCP auth.get_code)
+export interface CodeData {
   uid: string;
   provider: string;
   email: string;
@@ -23,28 +24,26 @@ interface TokenData {
 }
 
 /**
- * Validate Bearer token from Authorization header
+ * Validate CLI code from Authorization header.
+ * The code is issued by MCP execute({ method: "auth.get_code" })
+ * and stored in KV as cli_code:{code}.
  */
-async function validateToken(
+export async function validateCode(
   request: Request,
-  env: Env
-): Promise<TokenData | null> {
+  env: Env,
+): Promise<CodeData | null> {
   const authHeader = request.headers.get("Authorization");
   if (!authHeader?.startsWith("Bearer ")) {
     return null;
   }
 
-  const token = authHeader.slice(7);
-  if (!token.startsWith("sk_api_")) {
-    return null;
-  }
-
-  const data = await env.OAUTH_KV.get(`api_token:${token}`);
+  const code = authHeader.slice(7);
+  const data = await env.OAUTH_KV.get(`cli_code:${code}`);
   if (!data) {
     return null;
   }
 
-  return JSON.parse(data) as TokenData;
+  return JSON.parse(data) as CodeData;
 }
 
 /**
@@ -174,7 +173,7 @@ function validateFilePath(filePath: string): string | null {
  */
 async function handleListSkills(
   env: Env,
-  user: TokenData,
+  user: CodeData,
   options: { refresh?: boolean; surface?: string } = {}
 ): Promise<Response> {
   try {
@@ -227,7 +226,7 @@ async function handleListSkills(
  */
 async function handleGetSkill(
   env: Env,
-  user: TokenData,
+  user: CodeData,
   skillName: string
 ): Promise<Response> {
   try {
@@ -286,11 +285,110 @@ async function handleGetSkill(
 }
 
 /**
+ * GET /api/skills/:name/download - Download skill files with content
+ * Returns full file content for writing to disk.
+ */
+async function handleDownloadSkill(
+  env: Env,
+  user: CodeData,
+  skillName: string
+): Promise<Response> {
+  try {
+    logAction(user.email, "download_skill", { skill: skillName });
+    const github = getGitHubClient(env);
+    const accessControl = await getAccessControl(env, user.provider, user.uid);
+
+    if (!accessControl.canRead(skillName)) {
+      return errorResponse(
+        "Access denied",
+        "You don't have access to this skill",
+        403
+      );
+    }
+
+    const { skill, plugin, files } = await github.fetchSkill(skillName);
+
+    return jsonResponse({
+      skill: {
+        name: skill.name,
+        version: skill.version,
+        plugin: skill.plugin,
+      },
+      plugin: {
+        name: plugin.name,
+        version: plugin.version,
+      },
+      files: files.map((f) => ({
+        path: f.path,
+        content: f.content,
+      })),
+    });
+  } catch (error) {
+    const msg = error instanceof Error ? error.message : String(error);
+    if (msg.includes("not found") || msg.includes("Not Found")) {
+      return errorResponse("Skill not found", `Skill '${skillName}' not found`, 404);
+    }
+    return errorResponse(
+      "Failed to download skill",
+      msg,
+      500
+    );
+  }
+}
+
+/**
+ * GET /api/skills/:name/package - Download skill as .skill ZIP (base64)
+ */
+async function handlePackageSkill(
+  env: Env,
+  user: CodeData,
+  skillName: string
+): Promise<Response> {
+  try {
+    logAction(user.email, "package_skill", { skill: skillName });
+    const github = getGitHubClient(env);
+    const accessControl = await getAccessControl(env, user.provider, user.uid);
+
+    if (!accessControl.canRead(skillName)) {
+      return errorResponse(
+        "Access denied",
+        "You don't have access to this skill",
+        403
+      );
+    }
+
+    const { skill, files } = await github.fetchSkill(skillName);
+    const pkg = packageSkill(skill.name, files);
+
+    return jsonResponse({
+      skill: {
+        name: skill.name,
+        version: skill.version,
+      },
+      package: {
+        filename: pkg.filename,
+        content_base64: pkg.content_base64,
+      },
+    });
+  } catch (error) {
+    const msg = error instanceof Error ? error.message : String(error);
+    if (msg.includes("not found") || msg.includes("Not Found")) {
+      return errorResponse("Skill not found", `Skill '${skillName}' not found`, 404);
+    }
+    return errorResponse(
+      "Failed to package skill",
+      msg,
+      500
+    );
+  }
+}
+
+/**
  * GET /api/skills/:name/install - Get install token and command
  */
 async function handleInstallSkill(
   env: Env,
-  user: TokenData,
+  user: CodeData,
   skillName: string
 ): Promise<Response> {
   try {
@@ -362,7 +460,7 @@ async function handleInstallSkill(
  */
 async function handleEditSkill(
   env: Env,
-  user: TokenData,
+  user: CodeData,
   skillName: string
 ): Promise<Response> {
   try {
@@ -437,7 +535,7 @@ async function handleEditSkill(
  */
 async function handleSaveSkill(
   env: Env,
-  user: TokenData,
+  user: CodeData,
   skillName: string,
   body: {
     skill_group?: string;
@@ -754,7 +852,7 @@ async function handleSaveSkill(
  */
 async function handleDeleteSkill(
   env: Env,
-  user: TokenData,
+  user: CodeData,
   skillName: string,
   confirm: boolean
 ): Promise<Response> {
@@ -770,48 +868,56 @@ async function handleDeleteSkill(
     const github = getGitHubClient(env);
     const accessControl = await getAccessControl(env, user.provider, user.uid);
 
+    // Try as skill name first; if not found, try as plugin name (for deactivated plugins)
+    let pluginName: string;
+    let skillDirName: string | null = null;
+
     const skill = await github.getSkill(skillName);
-    if (!skill) {
-      return errorResponse(
-        "Skill not found",
-        `Skill "${skillName}" not found`,
-        404
-      );
+    if (skill) {
+      pluginName = skill.plugin;
+      skillDirName = skill.dirName;
+    } else {
+      // Check if it's a plugin name (may be deactivated, so getSkill won't find it)
+      try {
+        await github.getFileContent(`plugins/${skillName}/.claude-plugin/plugin.json`);
+        pluginName = skillName;
+      } catch {
+        return errorResponse("Not found", `'${skillName}' not found as skill or plugin`, 404);
+      }
     }
 
-    // Write access is keyed by group name
-    if (!accessControl.canWrite(skill.plugin)) {
+    if (!accessControl.canWrite(pluginName)) {
       return errorResponse(
         "Access denied",
-        `You don't have write access to group "${skill.plugin}"`,
+        `You don't have write access to '${pluginName}'`,
         403
       );
     }
 
     logAction(user.email, "delete_skill", {
       skill: skillName,
-      plugin: skill.plugin,
+      plugin: pluginName,
     });
 
     const writeClient = getWriteGitHubClient(env);
 
-    const skillDirCount = await github.countSkillDirectories(skill.plugin);
-    const isLastSkillInPlugin = skillDirCount === 1;
+    const skillDirCount = await github.countSkillDirectories(pluginName);
+    const isLastSkillInPlugin = !skillDirName || skillDirCount === 1;
 
     let deletedFiles: string[];
     let pluginDeleted = false;
 
     if (isLastSkillInPlugin) {
-      const pluginPath = `plugins/${skill.plugin}`;
+      const pluginPath = `plugins/${pluginName}`;
       const result = await writeClient.deleteDirectory(
         pluginPath,
-        `Delete plugin ${skill.plugin} (last skill removed)\n\nRequested by: ${user.email}`
+        `Delete plugin ${pluginName}\n\nRequested by: ${user.email}`
       );
       deletedFiles = result.deletedFiles;
       pluginDeleted = true;
 
       try {
-        await writeClient.removeFromMarketplace(skill.plugin, user.email);
+        await writeClient.removeFromMarketplace(pluginName, user.email);
       } catch (err) {
         const errMsg = err instanceof Error ? err.message : String(err);
         if (!errMsg.includes("not found in marketplace")) {
@@ -819,7 +925,8 @@ async function handleDeleteSkill(
         }
       }
     } else {
-      const skillDirPath = `plugins/${skill.plugin}/skills/${skill.dirName}`;
+      const dirName = skillDirName || skillName;
+      const skillDirPath = `plugins/${pluginName}/skills/${dirName}`;
       const result = await writeClient.deleteDirectory(
         skillDirPath,
         `Delete skill ${skillName}\n\nRequested by: ${user.email}`
@@ -828,8 +935,10 @@ async function handleDeleteSkill(
     }
 
     // Clear caches
-    await github.clearCache(skill.plugin);
-    await github.clearSkillDirCache(skill.plugin, skill.dirName);
+    await github.clearCache(pluginName);
+    if (skillDirName) {
+      await github.clearSkillDirCache(pluginName, skillDirName);
+    }
     if (pluginDeleted) {
       await github.clearCache();
     }
@@ -837,7 +946,7 @@ async function handleDeleteSkill(
     return jsonResponse({
       success: true,
       skill: skillName,
-      plugin: skill.plugin,
+      plugin: pluginName,
       pluginDeleted,
       deletedFiles,
     });
@@ -855,7 +964,7 @@ async function handleDeleteSkill(
  */
 async function handleBumpVersion(
   env: Env,
-  user: TokenData,
+  user: CodeData,
   skillName: string,
   type: "major" | "minor" | "patch"
 ): Promise<Response> {
@@ -954,7 +1063,7 @@ async function handleBumpVersion(
  */
 async function handlePublishSkill(
   env: Env,
-  user: TokenData,
+  user: CodeData,
   skillName: string,
   body: {
     description: string;
@@ -1045,11 +1154,221 @@ async function handlePublishSkill(
 }
 
 /**
+ * POST /api/skills/:name/deactivate - Deactivate a plugin
+ */
+async function handleDeactivatePlugin(
+  env: Env,
+  user: CodeData,
+  pluginName: string
+): Promise<Response> {
+  try {
+    logAction(user.email, "deactivate_plugin", { plugin: pluginName });
+    const github = getGitHubClient(env);
+    const accessControl = await getAccessControl(env, user.provider, user.uid);
+
+    if (!accessControl.canWrite(pluginName)) {
+      return errorResponse("Access denied", `You don't have write access to '${pluginName}'`, 403);
+    }
+
+    const writeClient = getWriteGitHubClient(env);
+    const pluginJsonPath = `plugins/${pluginName}/.claude-plugin/plugin.json`;
+
+    let pluginJson: Record<string, unknown>;
+    try {
+      const content = await github.getFileContent(pluginJsonPath);
+      pluginJson = JSON.parse(content);
+    } catch {
+      return errorResponse("Plugin not found", `Plugin '${pluginName}' not found`, 404);
+    }
+
+    if (pluginJson.deactivated === true) {
+      return errorResponse("Already deactivated", `'${pluginName}' is already deactivated`, 400);
+    }
+
+    pluginJson.deactivated = true;
+    await writeClient.updateFile(
+      pluginJsonPath,
+      JSON.stringify(pluginJson, null, 2),
+      `Deactivate ${pluginName}\n\nRequested by: ${user.email}`
+    );
+
+    try {
+      await writeClient.removeFromMarketplace(pluginName, user.email);
+    } catch (err) {
+      const errMsg = err instanceof Error ? err.message : String(err);
+      if (!errMsg.includes("not found in marketplace")) throw err;
+    }
+
+    await github.clearCache(pluginName);
+    await github.clearCache();
+
+    return jsonResponse({ success: true, plugin: pluginName, action: "deactivated" });
+  } catch (error) {
+    return errorResponse("Failed to deactivate", error instanceof Error ? error.message : String(error), 500);
+  }
+}
+
+/**
+ * POST /api/skills/:name/reactivate - Reactivate a deactivated plugin
+ */
+async function handleReactivatePlugin(
+  env: Env,
+  user: CodeData,
+  pluginName: string
+): Promise<Response> {
+  try {
+    logAction(user.email, "reactivate_plugin", { plugin: pluginName });
+    const github = getGitHubClient(env);
+    const accessControl = await getAccessControl(env, user.provider, user.uid);
+
+    if (!accessControl.canWrite(pluginName)) {
+      return errorResponse("Access denied", `You don't have write access to '${pluginName}'`, 403);
+    }
+
+    const writeClient = getWriteGitHubClient(env);
+    const pluginJsonPath = `plugins/${pluginName}/.claude-plugin/plugin.json`;
+
+    let pluginJson: Record<string, unknown>;
+    try {
+      const content = await github.getFileContent(pluginJsonPath);
+      pluginJson = JSON.parse(content);
+    } catch {
+      return errorResponse("Plugin not found", `Plugin '${pluginName}' not found`, 404);
+    }
+
+    if (pluginJson.deactivated !== true) {
+      return errorResponse("Not deactivated", `'${pluginName}' is not deactivated`, 400);
+    }
+
+    delete pluginJson.deactivated;
+    await writeClient.updateFile(
+      pluginJsonPath,
+      JSON.stringify(pluginJson, null, 2),
+      `Reactivate ${pluginName}\n\nRequested by: ${user.email}`
+    );
+
+    await writeClient.upsertMarketplaceEntry(
+      {
+        name: pluginName,
+        description: (pluginJson.description as string) || `${pluginName} plugin`,
+        version: (pluginJson.version as string) || undefined,
+      },
+      user.email
+    );
+
+    await github.clearCache(pluginName);
+    await github.clearCache();
+
+    return jsonResponse({ success: true, plugin: pluginName, action: "reactivated" });
+  } catch (error) {
+    return errorResponse("Failed to reactivate", error instanceof Error ? error.message : String(error), 500);
+  }
+}
+
+/**
+ * POST /api/sync - Regenerate marketplace.json from plugin.json files
+ */
+async function handleSync(
+  env: Env,
+  user: CodeData,
+  dryRun: boolean
+): Promise<Response> {
+  try {
+    logAction(user.email, dryRun ? "sync_marketplace_dry_run" : "sync_marketplace");
+    const github = getGitHubClient(env);
+    const accessControl = await getAccessControl(env, user.provider, user.uid);
+
+    if (!accessControl.isEditor()) {
+      return errorResponse("Access denied", "Only editors can sync the marketplace", 403);
+    }
+
+    const currentMarketplace = await github.getMarketplace();
+    const allPlugins = await github.listPlugins();
+
+    const newPlugins: Array<{
+      name: string;
+      source: string;
+      description?: string;
+      version?: string;
+      category?: string;
+    }> = [];
+
+    for (const plugin of allPlugins) {
+      let pluginJson: Record<string, unknown>;
+      try {
+        const content = await github.getFileContent(
+          `${plugin.source.replace("./", "")}/.claude-plugin/plugin.json`
+        );
+        pluginJson = JSON.parse(content);
+      } catch {
+        continue;
+      }
+
+      if (pluginJson.deactivated === true) continue;
+
+      newPlugins.push({
+        name: plugin.name,
+        source: plugin.source,
+        description: (pluginJson.description as string) || undefined,
+        version: (pluginJson.version as string) || undefined,
+        category: (pluginJson.category as string) || undefined,
+      });
+    }
+
+    const currentNames = new Set(currentMarketplace.plugins.map((p) => p.name));
+    const newNames = new Set(newPlugins.map((p) => p.name));
+    const added = newPlugins.filter((p) => !currentNames.has(p.name));
+    const removed = currentMarketplace.plugins.filter((p) => !newNames.has(p.name));
+    const kept = newPlugins.filter((p) => currentNames.has(p.name));
+
+    if (dryRun) {
+      return jsonResponse({
+        dryRun: true,
+        current: currentMarketplace.plugins.length,
+        proposed: newPlugins.length,
+        added: added.map((p) => p.name),
+        removed: removed.map((p) => p.name),
+        kept: kept.map((p) => p.name),
+      });
+    }
+
+    const writeClient = getWriteGitHubClient(env);
+    const newMarketplace = {
+      ...currentMarketplace,
+      plugins: newPlugins.map((p) => ({
+        name: p.name,
+        source: p.source,
+        ...(p.description ? { description: p.description } : {}),
+        ...(p.version ? { version: p.version } : {}),
+        ...(p.category ? { category: p.category } : {}),
+      })),
+    };
+
+    await writeClient.updateFile(
+      ".claude-plugin/marketplace.json",
+      JSON.stringify(newMarketplace, null, 2),
+      `Sync marketplace.json (${newPlugins.length} plugins)\n\nRequested by: ${user.email}`
+    );
+
+    await github.clearCache();
+
+    return jsonResponse({
+      success: true,
+      plugins: newPlugins.length,
+      added: added.map((p) => p.name),
+      removed: removed.map((p) => p.name),
+    });
+  } catch (error) {
+    return errorResponse("Failed to sync marketplace", error instanceof Error ? error.message : String(error), 500);
+  }
+}
+
+/**
  * POST /api/check-updates - Check for updates
  */
 async function handleCheckUpdates(
   env: Env,
-  user: TokenData,
+  user: CodeData,
   installed: Array<{ name: string; version: string }>
 ): Promise<Response> {
   try {
@@ -1073,13 +1392,332 @@ async function handleCheckUpdates(
 /**
  * GET /api/whoami - Get user identity
  */
-async function handleWhoami(user: TokenData): Promise<Response> {
+async function handleWhoami(user: CodeData): Promise<Response> {
   return jsonResponse({
     id: `${user.provider}:${user.uid}`,
     email: user.email,
     name: user.name,
     provider: user.provider,
   });
+}
+
+/**
+ * GET /api/plugins/:name/info - Plugin-level info with component listing
+ */
+async function handlePluginInfo(
+  env: Env,
+  user: CodeData,
+  pluginName: string
+): Promise<Response> {
+  try {
+    logAction(user.email, "plugin_info", { plugin: pluginName });
+    const github = getGitHubClient(env);
+    const accessControl = await getAccessControl(env, user.provider, user.uid);
+
+    // Read plugin.json
+    const basePath = `plugins/${pluginName}`;
+    let pluginJson: Record<string, unknown>;
+    try {
+      const content = await github.getFileContent(`${basePath}/.claude-plugin/plugin.json`);
+      pluginJson = JSON.parse(content);
+    } catch {
+      return errorResponse("Plugin not found", `Plugin '${pluginName}' not found`, 404);
+    }
+
+    // Scan for skills (directories under skills/ that contain SKILL.md)
+    const skills: Array<{ name: string; description: string; files?: string[] }> = [];
+    try {
+      const skillsDirItems = await github.listPluginSubdir(pluginName, "skills");
+      for (const item of skillsDirItems) {
+        if (item.type === "dir") {
+          let description = "";
+          try {
+            const skillMd = await github.getFileContent(
+              `${basePath}/skills/${item.name}/SKILL.md`
+            );
+            const fm = parseSkillFrontmatter(skillMd);
+            description = fm.description || "";
+          } catch {
+            // No SKILL.md or no frontmatter
+          }
+          skills.push({ name: item.name, description });
+        }
+      }
+    } catch {
+      // No skills/ directory
+    }
+
+    // For single-skill plugins, include file list for the skill
+    if (skills.length === 1) {
+      try {
+        const fileList = await github.listSkillFiles(skills[0].name);
+        skills[0].files = fileList;
+      } catch {
+        // Skip file list
+      }
+    }
+
+    // Scan for commands (files under commands/)
+    const commands: Array<{ name: string; description: string }> = [];
+    try {
+      const cmdItems = await github.listPluginSubdir(pluginName, "commands");
+      for (const item of cmdItems) {
+        if (item.type === "file" && item.name.endsWith(".md")) {
+          const cmdName = item.name.replace(/\.md$/, "");
+          // Try to read frontmatter for description
+          let description = "";
+          try {
+            const content = await github.getFileContent(
+              `${basePath}/commands/${item.name}`
+            );
+            const fm = parseSkillFrontmatter(content);
+            description = fm.description || "";
+          } catch {
+            // Skip description
+          }
+          commands.push({ name: cmdName, description });
+        }
+      }
+    } catch {
+      // No commands/ directory
+    }
+
+    return jsonResponse({
+      plugin: {
+        name: pluginName,
+        version: (pluginJson.version as string) || "unknown",
+        description: (pluginJson.description as string) || "",
+        surface_tags: (pluginJson.surface_tags as string[]) || [],
+      },
+      components: {
+        skills,
+        commands,
+      },
+      editable: accessControl.canWrite(pluginName),
+    });
+  } catch (error) {
+    return errorResponse(
+      "Failed to get plugin info",
+      error instanceof Error ? error.message : String(error),
+      500
+    );
+  }
+}
+
+/**
+ * GET /api/plugins/:name/package - Download plugin as .plugin ZIP (base64)
+ */
+async function handlePluginPackage(
+  env: Env,
+  user: CodeData,
+  pluginName: string
+): Promise<Response> {
+  try {
+    logAction(user.email, "package_plugin", { plugin: pluginName });
+    const github = getGitHubClient(env);
+    const accessControl = await getAccessControl(env, user.provider, user.uid);
+
+    if (!accessControl.canRead(pluginName)) {
+      return errorResponse("Access denied", `You don't have access to '${pluginName}'`, 403);
+    }
+
+    // Read plugin.json for version
+    const basePath = `plugins/${pluginName}`;
+    let pluginJson: Record<string, unknown>;
+    try {
+      const content = await github.getFileContent(`${basePath}/.claude-plugin/plugin.json`);
+      pluginJson = JSON.parse(content);
+    } catch {
+      return errorResponse("Plugin not found", `Plugin '${pluginName}' not found`, 404);
+    }
+
+    // Fetch all files in the plugin directory recursively
+    const files = await github.fetchPluginFiles(pluginName);
+    const pkg = packagePlugin(pluginName, files);
+
+    return jsonResponse({
+      plugin: {
+        name: pluginName,
+        version: (pluginJson.version as string) || "unknown",
+      },
+      package: {
+        filename: pkg.filename,
+        content_base64: pkg.content_base64,
+      },
+    });
+  } catch (error) {
+    const msg = error instanceof Error ? error.message : String(error);
+    if (msg.includes("not found") || msg.includes("Not Found")) {
+      return errorResponse("Plugin not found", `Plugin '${pluginName}' not found`, 404);
+    }
+    return errorResponse("Failed to package plugin", msg, 500);
+  }
+}
+
+/**
+ * PUT /api/plugins/:name - Save entire plugin directory tree
+ * Writes all files to plugins/{name}/ on GitHub, bumps version,
+ * and ensures marketplace.json entry.
+ */
+async function handleSavePlugin(
+  env: Env,
+  user: CodeData,
+  pluginName: string,
+  body: {
+    files: Array<{ path: string; content: string }>;
+    bump?: "patch" | "minor" | "major";
+  }
+): Promise<Response> {
+  try {
+    const { files, bump } = body;
+
+    if (!files || !Array.isArray(files) || files.length === 0) {
+      return errorResponse("Invalid request", "files array is required", 400);
+    }
+
+    logAction(user.email, "save_plugin", { plugin: pluginName });
+
+    const github = getGitHubClient(env);
+    const accessControl = await getAccessControl(env, user.provider, user.uid);
+
+    // Check write access (editors can create new, writers can update existing)
+    const pluginExists = await github.fileExists(`plugins/${pluginName}/.claude-plugin/plugin.json`);
+    if (pluginExists) {
+      if (!accessControl.canWrite(pluginName)) {
+        return errorResponse("Access denied", `You don't have write access to '${pluginName}'`, 403);
+      }
+    } else {
+      if (!accessControl.isEditor()) {
+        return errorResponse("Access denied", "Only editors can create new plugins", 403);
+      }
+    }
+
+    // Validate all file paths
+    for (const file of files) {
+      const sanitized = validateFilePath(file.path);
+      if (!sanitized) {
+        return errorResponse("Invalid file path", `Path "${file.path}" is invalid`, 400);
+      }
+    }
+
+    // Validate plugin.json exists in the payload
+    const pluginJsonFile = files.find((f) => f.path === ".claude-plugin/plugin.json");
+    if (!pluginJsonFile) {
+      return errorResponse(
+        "Missing plugin.json",
+        "Plugin save must include .claude-plugin/plugin.json",
+        400
+      );
+    }
+
+    // Parse plugin.json for metadata
+    let pluginJson: Record<string, unknown>;
+    try {
+      pluginJson = JSON.parse(pluginJsonFile.content);
+    } catch {
+      return errorResponse("Invalid plugin.json", "plugin.json contains invalid JSON", 400);
+    }
+
+    // Validate at least one SKILL.md exists under skills/
+    const hasSkill = files.some((f) => f.path.match(/^skills\/[^/]+\/SKILL\.md$/));
+    if (!hasSkill) {
+      return errorResponse(
+        "Missing skill",
+        "Plugin must contain at least one skill (skills/*/SKILL.md)",
+        400
+      );
+    }
+
+    // Validate SKILL.md frontmatter for each skill
+    const skillMdFiles = files.filter((f) => f.path.match(/^skills\/[^/]+\/SKILL\.md$/));
+    for (const skillMd of skillMdFiles) {
+      const frontmatter = parseSkillFrontmatter(skillMd.content);
+      if (!frontmatter.name || !frontmatter.description) {
+        const skillDir = skillMd.path.split("/")[1];
+        return errorResponse(
+          "Invalid SKILL.md frontmatter",
+          `skills/${skillDir}/SKILL.md must have name and description in frontmatter`,
+          400
+        );
+      }
+    }
+
+    const writeClient = getWriteGitHubClient(env);
+    const basePath = `plugins/${pluginName}`;
+
+    // Write all files
+    const results: Array<{ path: string; created?: boolean }> = [];
+    for (const file of files) {
+      const absolutePath = `${basePath}/${file.path}`;
+      const { created } = await writeClient.upsertFile(
+        absolutePath,
+        file.content,
+        `Update ${pluginName}: ${file.path}\n\nRequested by: ${user.email}`
+      );
+      results.push({ path: file.path, created });
+    }
+
+    // Ensure marketplace.json entry
+    const description = (pluginJson.description as string) || `${pluginName} plugin`;
+    await writeClient.upsertMarketplaceEntry(
+      {
+        name: pluginName,
+        description,
+        version: (pluginJson.version as string) || undefined,
+      },
+      user.email
+    );
+
+    // Bump version if requested
+    let newVersion: string | undefined;
+    if (bump) {
+      const currentVersion = (pluginJson.version as string) || "1.0.0";
+      const [major, minor, patch] = currentVersion.split(".").map(Number);
+      newVersion =
+        bump === "major"
+          ? `${major + 1}.0.0`
+          : bump === "minor"
+            ? `${major}.${minor + 1}.0`
+            : `${major}.${minor}.${patch + 1}`;
+
+      // Update plugin.json with new version
+      const updatedPluginJson = { ...pluginJson, version: newVersion };
+      await writeClient.upsertFile(
+        `${basePath}/.claude-plugin/plugin.json`,
+        JSON.stringify(updatedPluginJson, null, 2),
+        `Bump ${pluginName} version to ${newVersion}\n\nRequested by: ${user.email}`
+      );
+
+      // Update marketplace.json version
+      try {
+        await writeClient.updateMarketplaceVersion(pluginName, newVersion, user.email);
+      } catch {
+        // marketplace version update may fail if just created — that's fine,
+        // upsertMarketplaceEntry above already set the version
+      }
+    }
+
+    // Clear caches
+    await github.clearCache(pluginName);
+    await github.clearCache();
+
+    const created = results.filter((r) => r.created === true).length;
+    const updated = results.filter((r) => r.created === false).length;
+    const summary = `${created} file(s) created, ${updated} file(s) updated`;
+
+    return jsonResponse({
+      success: true,
+      plugin: pluginName,
+      summary,
+      newVersion,
+    });
+  } catch (error) {
+    return errorResponse(
+      "Failed to save plugin",
+      error instanceof Error ? error.message : String(error),
+      500
+    );
+  }
 }
 
 // ============================================================
@@ -1097,11 +1735,11 @@ export async function handleAPI(
   const method = request.method;
 
   // Validate token
-  const user = await validateToken(request, env);
+  const user = await validateCode(request, env);
   if (!user) {
     return errorResponse(
       "Unauthorized",
-      "Invalid or expired token. Call skillport_auth to get a new token.",
+      "Invalid or expired code. Call auth.get_code via MCP to get a new code.",
       401
     );
   }
@@ -1172,6 +1810,42 @@ export async function handleAPI(
       );
     }
     return handleEditSkill(env, user, skillName);
+  }
+
+  // Route: GET /api/skills/:name/download
+  if (
+    pathParts[0] === "skills" &&
+    pathParts.length === 3 &&
+    pathParts[2] === "download" &&
+    method === "GET"
+  ) {
+    const skillName = pathParts[1];
+    if (!validateName(skillName)) {
+      return errorResponse(
+        "Invalid skill name",
+        "Skill name must contain only lowercase letters, numbers, and hyphens",
+        400
+      );
+    }
+    return handleDownloadSkill(env, user, skillName);
+  }
+
+  // Route: GET /api/skills/:name/package
+  if (
+    pathParts[0] === "skills" &&
+    pathParts.length === 3 &&
+    pathParts[2] === "package" &&
+    method === "GET"
+  ) {
+    const skillName = pathParts[1];
+    if (!validateName(skillName)) {
+      return errorResponse(
+        "Invalid skill name",
+        "Skill name must contain only lowercase letters, numbers, and hyphens",
+        400
+      );
+    }
+    return handlePackageSkill(env, user, skillName);
   }
 
   // Route: POST /api/skills/:name
@@ -1291,6 +1965,85 @@ export async function handleAPI(
   // Route: GET /api/whoami
   if (pathParts[0] === "whoami" && method === "GET") {
     return handleWhoami(user);
+  }
+
+  // Route: POST /api/skills/:name/deactivate
+  if (
+    pathParts[0] === "skills" &&
+    pathParts.length === 3 &&
+    pathParts[2] === "deactivate" &&
+    method === "POST"
+  ) {
+    const skillName = pathParts[1];
+    if (!validateName(skillName)) {
+      return errorResponse("Invalid skill name", "Skill name must contain only lowercase letters, numbers, and hyphens", 400);
+    }
+    return handleDeactivatePlugin(env, user, skillName);
+  }
+
+  // Route: POST /api/skills/:name/reactivate
+  if (
+    pathParts[0] === "skills" &&
+    pathParts.length === 3 &&
+    pathParts[2] === "reactivate" &&
+    method === "POST"
+  ) {
+    const skillName = pathParts[1];
+    if (!validateName(skillName)) {
+      return errorResponse("Invalid skill name", "Skill name must contain only lowercase letters, numbers, and hyphens", 400);
+    }
+    return handleReactivatePlugin(env, user, skillName);
+  }
+
+  // Route: POST /api/sync
+  if (pathParts[0] === "sync" && method === "POST") {
+    const dryRun = url.searchParams.get("dry_run") === "true";
+    return handleSync(env, user, dryRun);
+  }
+
+  // Route: GET /api/plugins/:name/info
+  if (
+    pathParts[0] === "plugins" &&
+    pathParts.length === 3 &&
+    pathParts[2] === "info" &&
+    method === "GET"
+  ) {
+    const pluginName = pathParts[1];
+    if (!validateName(pluginName)) {
+      return errorResponse("Invalid plugin name", "Plugin name must contain only lowercase letters, numbers, and hyphens", 400);
+    }
+    return handlePluginInfo(env, user, pluginName);
+  }
+
+  // Route: GET /api/plugins/:name/package
+  if (
+    pathParts[0] === "plugins" &&
+    pathParts.length === 3 &&
+    pathParts[2] === "package" &&
+    method === "GET"
+  ) {
+    const pluginName = pathParts[1];
+    if (!validateName(pluginName)) {
+      return errorResponse("Invalid plugin name", "Plugin name must contain only lowercase letters, numbers, and hyphens", 400);
+    }
+    return handlePluginPackage(env, user, pluginName);
+  }
+
+  // Route: PUT /api/plugins/:name - Save entire plugin directory tree
+  if (
+    pathParts[0] === "plugins" &&
+    pathParts.length === 2 &&
+    method === "PUT"
+  ) {
+    const pluginName = pathParts[1];
+    if (!validateName(pluginName)) {
+      return errorResponse("Invalid plugin name", "Plugin name must contain only lowercase letters, numbers, and hyphens", 400);
+    }
+    const body = await request.json() as {
+      files: Array<{ path: string; content: string }>;
+      bump?: "patch" | "minor" | "major";
+    };
+    return handleSavePlugin(env, user, pluginName, body);
   }
 
   // Route: GET /api/debug/plugins - Debug endpoint to see raw GitHub API response

@@ -10,6 +10,8 @@
     "deploy:authless": "wrangler deploy -c wrangler-authless.toml",
     "test": "vitest",
     "cf-typegen": "wrangler types",
+    "build:cli": "node cli/build.mjs",
+    "upload:cli": "npm run build:cli && echo 'Upload dist/skillport.js to KV key cli:bundle using: wrangler kv:key put --path dist/skillport.js --binding OAUTH_KV cli:bundle'",
     "postinstall": "node scripts/patch-oauth-provider.js && node scripts/patch-agents-mcp.js"
   },
   "dependencies": {
@@ -22,9 +24,10 @@
   },
   "devDependencies": {
     "@cloudflare/workers-types": "^4.20250109.0",
+    "esbuild": "^0.28.0",
     "typescript": "^5.7.0",
     "vitest": "^2.1.0",
-    "wrangler": "^4.59.1"
+    "wrangler": "^4.80.0"
   },
   "keywords": [
     "mcp",

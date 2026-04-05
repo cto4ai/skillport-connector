@@ -1,228 +1,193 @@
-/**
- * Skillport MCP Server
- * Exposes Plugin Marketplace tools to Claude.ai/Desktop
- */
-
 import { McpAgent } from "agents/mcp";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
-import { GitHubClient } from "./github-client";
+import { dispatch } from "./dispatch";
+import { SearchIndex } from "./search-index";
+import { SEARCH_CHUNKS } from "./search-chunks";
+import { ExecuteInputSchema, SearchInputSchema } from "./types";
+import type { UserProps, SearchChunk } from "./types";
 
-interface UserProps extends Record<string, unknown> {
-  uid: string; // Stable unique identifier from IdP
-  provider: string; // e.g., "google", "entra", "okta"
-  email: string;
-  name: string;
-  picture?: string;
-  domain?: string;
+const METHOD_SUMMARY = "auth.get_code, auth.whoami";
+
+// FIXME: hardcoded worker URL — should use CONNECTOR_URL from env
+// but McpServer config is static (set before env is available).
+// Options: make instructions dynamic in init(), or use a generic domain.
+const CLI_URL = "https://skillport-connector.jack-ivers.workers.dev/cli/skillport.js";
+
+const README_CONTENT =
+  "# Skillport\n\n" +
+  "Browse, install, author, and publish plugins and skills for Claude Code plugin marketplaces.\n\n" +
+  "## Quick Start\n\n" +
+  "1. Get an auth code: `execute({ method: \"auth.get_code\" })`\n" +
+  `2. Download the CLI: \`curl -sO ${CLI_URL}\`\n` +
+  "3. Run a command: `node skillport.js list --code <CODE>`\n\n" +
+  "## CLI Commands\n\n" +
+  "All remote commands require `--code <CODE>` from step 1.\n\n" +
+  "**Browse:**\n" +
+  "- `list [--surface CC|CD|CAI|CALL]` — List plugins in the marketplace\n" +
+  "- `info <name>` — Plugin or skill details (works with either)\n" +
+  "- `updates --installed '<json>'` — Check for version updates\n" +
+  "- `whoami` — Show authenticated user\n\n" +
+  "**Install:**\n" +
+  "- `get <name>` — Download skill files to current directory\n" +
+  "- `get <plugin> --skill <skill>` — Download specific skill from a plugin\n" +
+  "- `get <plugin> --skills-only` — Download all skills as standalone\n" +
+  "- `get <name> --format skill` — Download as .skill ZIP\n" +
+  "- `get <plugin> --format plugin` — Download as .plugin ZIP\n\n" +
+  "**Author:**\n" +
+  "- `create <name>` — Scaffold a new plugin locally (no auth needed)\n" +
+  "- `create --skill <name>` — Scaffold a standalone skill\n" +
+  "- `save <name> <patch|minor|major>` — Push local files + bump version\n" +
+  "- `save <plugin> --skill <skill> <bump>` — Save one skill within a plugin\n\n" +
+  "**Lifecycle:**\n" +
+  "- `deactivate <name>` — Remove from marketplace (keeps files)\n" +
+  "- `reactivate <name>` — Restore to marketplace\n" +
+  "- `delete <name> --confirm` — Permanently remove (must deactivate first)\n" +
+  "- `sync [--dry-run]` — Regenerate marketplace.json\n\n" +
+  "## Tips\n\n" +
+  "- The CLI auto-updates when a new version is available\n" +
+  "- Use `search` tool for detailed docs on any command or workflow\n" +
+  "- `list` shows plugins grouped by name; multi-skill plugins expand to show skills\n" +
+  "- `info` works with both plugin names and skill names\n";
+
+interface State {
+  searchIndex: null;
 }
 
-export class SkillportMCP extends McpAgent<Env, unknown, UserProps> {
+export class SkillportMCP extends McpAgent<Env, State, UserProps> {
   server = new McpServer(
     {
       name: "skillport",
-      version: "1.0.0",
+      version: "3.0.0",
     },
     {
       instructions:
-        "This server provides tools for browsing and installing Claude Code skills from the Skillport marketplace. " +
-        "Use skillport_auth to get an authenticated session token for the REST API, then use your skillport skill " +
-        "to understand how to browse, install, manage, and author skills. " +
-        "Call with operation='bootstrap' if you don't have the skillport skill installed yet.",
-    }
+        "Skillport — browse, install, author, and publish plugins and skills " +
+        "for Claude Code plugin marketplaces.\n\n" +
+        "Three tools available:\n" +
+        "- readme: Call this first — returns full usage guide with all CLI commands\n" +
+        "- execute: Auth methods (auth.get_code, auth.whoami)\n" +
+        "- search: Query documentation on specific commands or workflows\n\n" +
+        "Workflow: call readme → get auth code via execute → download CLI → use CLI for all operations.",
+    },
   );
 
-  /**
-   * Log user action for audit trail
-   */
-  private logAction(action: string): void {
-    const email = this.props?.email || "unknown";
-    const timestamp = new Date().toISOString();
-    console.log(`[AUDIT] ${timestamp} user=${email} action=${action}`);
+  initialState: State = { searchIndex: null };
+
+  private cachedIndex: SearchIndex | null = null;
+
+  private getSearchIndex(): SearchIndex {
+    if (this.cachedIndex) return this.cachedIndex;
+    this.cachedIndex = new SearchIndex(SEARCH_CHUNKS);
+    return this.cachedIndex;
   }
 
   async init() {
-    // ============================================================
-    // Primary Tool: skillport_auth (for REST API access)
-    // ============================================================
-
-    // Tool: skillport_auth - Get authenticated session for REST API
-    this.server.tool(
-      "skillport_auth",
-      "Get an authenticated session for the Skillport marketplace. " +
-        "If you have the skillport skill installed, call with operation='auth' then use your skillport skill for API instructions. " +
-        "If you don't have the skillport skill, call with operation='bootstrap' to install it. " +
-        "Returns a short-lived API token (15 min) and base URL for REST API calls.",
+    // ── readme tool ─────────────────────────────────────────────
+    this.server.registerTool(
+      "readme",
       {
-        operation: z
-          .enum(["auth", "bootstrap"])
-          .default("auth")
-          .describe(
-            "'auth': Get token for API calls (use your skillport skill for instructions). " +
-              "'bootstrap': Install the Skillport skill if you don't have it."
-          ),
+        description:
+          "How to use Skillport — call this first. Returns the full guide: " +
+          "setup, CLI commands, workflows, and tips.",
+        inputSchema: {},
       },
-      async ({ operation }) => {
-        if (operation === "bootstrap") {
-          return this.handleBootstrap();
+      async () => {
+        const timestamp = new Date().toISOString();
+        console.log(`[AUDIT] ${timestamp} user=${this.props?.email} action=readme`);
+
+        return {
+          content: [{ type: "text" as const, text: README_CONTENT }],
+        };
+      },
+    );
+
+    // ── execute tool ────────────────────────────────────────────
+    this.server.registerTool(
+      "execute",
+      {
+        description:
+          `Run a Skillport auth method. Available: ${METHOD_SUMMARY}. ` +
+          "Call auth.get_code to get a CLI auth code, then download and run the CLI " +
+          `(curl -sO ${CLI_URL}). ` +
+          "The CLI handles all marketplace operations (list, get, save, etc.). " +
+          "Call readme for the full command reference.",
+        inputSchema: ExecuteInputSchema,
+      },
+      async ({ method, args }) => {
+        const uid = this.props?.uid;
+        if (!uid) {
+          return {
+            content: [{ type: "text" as const, text: "Not authenticated" }],
+            isError: true,
+          };
         }
-        return this.handleAuth();
-      }
+
+        const timestamp = new Date().toISOString();
+        console.log(`[AUDIT] ${timestamp} user=${this.props?.email} action=execute:${method}`);
+
+        try {
+          return await dispatch(method, args ?? {}, this.env, `${this.props.provider}:${uid}`, {
+            uid: this.props.uid,
+            provider: this.props.provider,
+            email: this.props.email,
+            name: this.props.name,
+          });
+        } catch (error) {
+          console.error(`[execute] Unhandled error in ${method}:`, error);
+          return {
+            content: [{ type: "text" as const, text: `Internal error executing ${method}: ${error instanceof Error ? error.message : String(error)}` }],
+            isError: true,
+          };
+        }
+      },
     );
 
-  }
+    // ── search tool ─────────────────────────────────────────────
+    this.server.registerTool(
+      "search",
+      {
+        description:
+          "Search Skillport documentation — command usage, workflows, " +
+          "plugin structure, and best practices. " +
+          "This searches docs only, not the live marketplace catalog. " +
+          "To browse plugins, use the CLI (skillport list). " +
+          "Call readme first for an overview.",
+        inputSchema: SearchInputSchema,
+      },
+      async ({ query, limit }) => {
+        const timestamp = new Date().toISOString();
+        console.log(`[AUDIT] ${timestamp} user=${this.props?.email} action=search:${query}`);
 
-  // ============================================================
-  // Auth Handlers for skillport_auth tool
-  // ============================================================
+        const index = this.getSearchIndex();
+        const results = index.search(query, limit);
 
-  /**
-   * Handle auth operation - generate API token for REST API access
-   */
-  private async handleAuth() {
-    // Generate cryptographically random token
-    const tokenBytes = new Uint8Array(24);
-    crypto.getRandomValues(tokenBytes);
-    const token =
-      "sk_api_" +
-      btoa(String.fromCharCode(...tokenBytes))
-        .replace(/\+/g, "-")
-        .replace(/\//g, "_")
-        .replace(/=/g, "");
+        if (results.length === 0) {
+          const topicList = index
+            .listTopics()
+            .map((t) => `- **${t.id}**: ${t.title} _(${t.category})_`)
+            .join("\n");
 
-    // Store token in KV with 15 minute TTL
-    const tokenData = {
-      uid: this.props.uid,
-      provider: this.props.provider,
-      email: this.props.email,
-      name: this.props.name,
-      created: Date.now(),
-    };
-
-    await this.env.OAUTH_KV.put(
-      `api_token:${token}`,
-      JSON.stringify(tokenData),
-      { expirationTtl: 900 }
-    );
-
-    const baseUrl =
-      this.env.CONNECTOR_URL ||
-      "https://your-connector.workers.dev";
-
-    // Get client info from MCP initialization handshake
-    const clientVersion = this.server.server.getClientVersion();
-    const clientInfo = clientVersion
-      ? { name: clientVersion.name, version: clientVersion.version }
-      : null;
-
-    this.logAction("skillport_auth");
-
-    return {
-      content: [
-        {
-          type: "text" as const,
-          text: JSON.stringify(
-            {
-              token,
-              base_url: baseUrl,
-              expires_in: 900,
-              client_info: clientInfo,
-              instructions:
-                "Use your skillport skill for API usage instructions. " +
-                "If you don't have the skillport skill, call this tool again with operation='bootstrap' to install it.",
-            },
-            null,
-            2
-          ),
-        },
-      ],
-    };
-  }
-
-  /**
-   * Handle bootstrap operation - install skillport skill from marketplace
-   * Uses the standard install flow for the "skillport" skill
-   */
-  private async handleBootstrap() {
-    const connectorUrl =
-      this.env.CONNECTOR_URL ||
-      "https://your-connector.workers.dev";
-
-    // Check if skillport skill exists in the marketplace
-    const github = new GitHubClient(
-      this.env.GITHUB_SERVICE_TOKEN,
-      this.env.MARKETPLACE_REPO,
-      this.env.OAUTH_KV
-    );
-
-    const skill = await github.getSkill("skillport");
-    if (!skill) {
-      return {
-        content: [
-          {
-            type: "text" as const,
-            text: JSON.stringify(
+          return {
+            content: [
               {
-                error: "Skillport skill not found in marketplace",
-                message:
-                  "The 'skillport' skill needs to be added to the marketplace before bootstrap can work.",
-                instructions: [
-                  "Add the skillport skill to your marketplace repo",
-                  "Then call bootstrap again",
-                ],
+                type: "text" as const,
+                text: topicList.length > 0
+                  ? `No results for "${query}". Try one of these topics:\n\n${topicList}`
+                  : `No results for "${query}". The search index is empty.`,
               },
-              null,
-              2
-            ),
-          },
-        ],
-      };
-    }
+            ],
+          };
+        }
 
-    // Generate install token (same as handleInstallSkill in rest-api.ts)
-    const tokenBytes = new Uint8Array(24);
-    crypto.getRandomValues(tokenBytes);
-    const installToken =
-      "sk_install_" +
-      btoa(String.fromCharCode(...tokenBytes))
-        .replace(/\+/g, "-")
-        .replace(/\//g, "_")
-        .replace(/=/g, "");
+        const formatted = results
+          .map((chunk) => `## ${chunk.title}\n*${chunk.category}*\n\n${chunk.content}`)
+          .join("\n\n---\n\n");
 
-    await this.env.OAUTH_KV.put(
-      `install_token:${installToken}`,
-      JSON.stringify({
-        skill: "skillport",
-        version: skill.version,
-        user: this.props.email,
-        created: Date.now(),
-        used: false,
-      }),
-      { expirationTtl: 900 }
+        return {
+          content: [{ type: "text" as const, text: formatted }],
+        };
+      },
     );
-
-    this.logAction("skillport_bootstrap");
-
-    return {
-      content: [
-        {
-          type: "text" as const,
-          text: JSON.stringify(
-            {
-              message: "Skillport skill found. Follow these steps:",
-              steps: [
-                "1. Run the install command below to download the Skillport skill",
-                "2. Use present_files to share the downloaded .skill file with the user",
-                "3. User should click 'Copy to your skills' then start a new conversation",
-              ],
-              command: `curl -sf ${connectorUrl}/install.sh | bash -s -- ${installToken} --package`,
-              version: skill.version,
-            },
-            null,
-            2
-          ),
-        },
-      ],
-    };
   }
 }

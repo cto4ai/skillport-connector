@@ -4,6 +4,19 @@ MCP connector that bridges Claude Code Skill Marketplaces to Claude.ai and Claud
 
 > **Note:** If `CLAUDE-MORE-DETAILS.md` exists in this repo, review it for additional development context.
 
+## Current Work
+
+**Branch:** `feature/v3-foundation` — v3 rewrite (CLI + thin MCP)
+
+**Status:** Plans 1-4 complete, all 15 CLI commands implemented. Testing and polish phase.
+
+**Latest checkpoint:** [docs/working/checkpoints/2026-04-04-2114-v3-plans1-4-complete.md](docs/working/checkpoints/2026-04-04-2114-v3-plans1-4-complete.md) — read this first when resuming.
+
+**Key docs:**
+- [Design spec](docs/superpowers/specs/2026-04-03-skillport-v3-design.md)
+- [Plans 1-4](docs/superpowers/plans/) — implementation plans with full TDD steps
+- [Checkpoint](docs/working/checkpoints/2026-04-04-2114-v3-plans1-4-complete.md) — current state, bugs found, next steps
+
 ## Project Overview
 
 This is a **Cloudflare Worker** that:
@@ -116,13 +129,23 @@ node node_modules/wrangler/bin/wrangler.js dev
 node node_modules/wrangler/bin/wrangler.js deploy
 ```
 
+## Deployed Endpoints
+
+| Endpoint | URL |
+|----------|-----|
+| MCP (Streamable HTTP) | `https://skillport-connector.jack-ivers.workers.dev/mcp` |
+| MCP (SSE, legacy) | `https://skillport-connector.jack-ivers.workers.dev/sse` |
+| CLI bundle | `https://skillport-connector.jack-ivers.workers.dev/cli/skillport.js` |
+| REST API | `https://skillport-connector.jack-ivers.workers.dev/api/` |
+
 ## Testing
 
-1. **Claude.ai with connector enabled** - Add the connector in Settings → Integrations using the `/mcp` endpoint (or `/sse` for older clients)
-2. **MCP Inspector** - `npx @modelcontextprotocol/inspector` then connect to your endpoint URL
-3. **Wrangler tail for logs** - `npx wrangler tail` to see audit logs
+1. **Claude.ai** — Add connector in Settings → Integrations using the MCP endpoint above
+2. **Claude Code** — `claude mcp add --transport http skillport https://skillport-connector.jack-ivers.workers.dev/mcp`
+3. **MCP Inspector** — `npx @modelcontextprotocol/inspector` then connect to the MCP endpoint
+4. **Wrangler tail for logs** — `npx wrangler tail` to see audit logs
 
-**Note:** Claude Code cannot directly call MCP tools in this project because they require Google OAuth authentication. Testing must be done via Claude.ai or Claude Desktop with the connector enabled.
+**Note:** MCP Inspector + wrangler dev + Remote OAuth has historically been unreliable. Test MCP tools against the live deployed Worker. Claude Code can smoke-test the MCP once deployed. REST API endpoints can be tested locally via wrangler dev.
 
 ## Documentation
 
