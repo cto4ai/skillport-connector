@@ -42,10 +42,11 @@ export async function runInfo(
     throw new Error("Missing name");
   }
 
-  // --skill flag forces skill-level info (skips plugin lookup)
+  // --skill targets a specific skill (by name or as boolean to force skill view)
   if (args.flags.skill) {
+    const skillName = typeof args.flags.skill === "string" ? args.flags.skill : name;
     const data = await api.get<SkillInfoResponse>(
-      `/api/skills/${encodeURIComponent(name)}`,
+      `/api/skills/${encodeURIComponent(skillName)}`,
     );
     printSkillInfo(data);
     return;

@@ -12,7 +12,7 @@
 
 import { GitHubClient, parseSkillFrontmatter } from "./github-client";
 import { AccessControl } from "./access-control";
-import { packageSkill } from "./skill-packager";
+import { packageSkill, packagePlugin } from "./skill-packager";
 
 // Code data stored in KV (from MCP auth.get_code)
 export interface CodeData {
@@ -1505,6 +1505,56 @@ async function handlePluginInfo(
 }
 
 /**
+ * GET /api/plugins/:name/package - Download plugin as .plugin ZIP (base64)
+ */
+async function handlePluginPackage(
+  env: Env,
+  user: CodeData,
+  pluginName: string
+): Promise<Response> {
+  try {
+    logAction(user.email, "package_plugin", { plugin: pluginName });
+    const github = getGitHubClient(env);
+    const accessControl = await getAccessControl(env, user.provider, user.uid);
+
+    if (!accessControl.canRead(pluginName)) {
+      return errorResponse("Access denied", `You don't have access to '${pluginName}'`, 403);
+    }
+
+    // Read plugin.json for version
+    const basePath = `plugins/${pluginName}`;
+    let pluginJson: Record<string, unknown>;
+    try {
+      const content = await github.getFileContent(`${basePath}/.claude-plugin/plugin.json`);
+      pluginJson = JSON.parse(content);
+    } catch {
+      return errorResponse("Plugin not found", `Plugin '${pluginName}' not found`, 404);
+    }
+
+    // Fetch all files in the plugin directory recursively
+    const files = await github.fetchPluginFiles(pluginName);
+    const pkg = packagePlugin(pluginName, files);
+
+    return jsonResponse({
+      plugin: {
+        name: pluginName,
+        version: (pluginJson.version as string) || "unknown",
+      },
+      package: {
+        filename: pkg.filename,
+        content_base64: pkg.content_base64,
+      },
+    });
+  } catch (error) {
+    const msg = error instanceof Error ? error.message : String(error);
+    if (msg.includes("not found") || msg.includes("Not Found")) {
+      return errorResponse("Plugin not found", `Plugin '${pluginName}' not found`, 404);
+    }
+    return errorResponse("Failed to package plugin", msg, 500);
+  }
+}
+
+/**
  * PUT /api/plugins/:name - Save entire plugin directory tree
  * Writes all files to plugins/{name}/ on GitHub, bumps version,
  * and ensures marketplace.json entry.
@@ -1963,6 +2013,20 @@ export async function handleAPI(
       return errorResponse("Invalid plugin name", "Plugin name must contain only lowercase letters, numbers, and hyphens", 400);
     }
     return handlePluginInfo(env, user, pluginName);
+  }
+
+  // Route: GET /api/plugins/:name/package
+  if (
+    pathParts[0] === "plugins" &&
+    pathParts.length === 3 &&
+    pathParts[2] === "package" &&
+    method === "GET"
+  ) {
+    const pluginName = pathParts[1];
+    if (!validateName(pluginName)) {
+      return errorResponse("Invalid plugin name", "Plugin name must contain only lowercase letters, numbers, and hyphens", 400);
+    }
+    return handlePluginPackage(env, user, pluginName);
   }
 
   // Route: PUT /api/plugins/:name - Save entire plugin directory tree

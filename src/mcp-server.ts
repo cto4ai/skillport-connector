@@ -30,11 +30,15 @@ const README_CONTENT =
   "- `whoami` — Show authenticated user\n\n" +
   "**Install:**\n" +
   "- `get <name>` — Download skill files to current directory\n" +
-  "- `get <name> --format skill` — Download as .skill ZIP\n\n" +
+  "- `get <plugin> --skill <skill>` — Download specific skill from a plugin\n" +
+  "- `get <plugin> --skills-only` — Download all skills as standalone\n" +
+  "- `get <name> --format skill` — Download as .skill ZIP\n" +
+  "- `get <plugin> --format plugin` — Download as .plugin ZIP\n\n" +
   "**Author:**\n" +
   "- `create <name>` — Scaffold a new plugin locally (no auth needed)\n" +
   "- `create --skill <name>` — Scaffold a standalone skill\n" +
-  "- `save <name> <patch|minor|major>` — Push local files + bump version\n\n" +
+  "- `save <name> <patch|minor|major>` — Push local files + bump version\n" +
+  "- `save <plugin> --skill <skill> <bump>` — Save one skill within a plugin\n\n" +
   "**Lifecycle:**\n" +
   "- `deactivate <name>` — Remove from marketplace (keeps files)\n" +
   "- `reactivate <name>` — Restore to marketplace\n" +

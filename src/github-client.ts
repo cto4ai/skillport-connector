@@ -669,6 +669,14 @@ export class GitHubClient {
   /**
    * List items in a plugin subdirectory (e.g., "skills", "commands")
    */
+  /**
+   * Fetch all files in a plugin directory recursively
+   */
+  async fetchPluginFiles(pluginName: string): Promise<SkillFile[]> {
+    const basePath = `plugins/${pluginName}`;
+    return this.fetchDirectoryRecursive(basePath, basePath);
+  }
+
   async listPluginSubdir(
     pluginName: string,
     subdir: string,

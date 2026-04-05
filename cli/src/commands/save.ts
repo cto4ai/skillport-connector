@@ -58,7 +58,20 @@ export async function runSave(
     // No skills/ directory — standalone skill
   }
 
-  if (isPluginLayout) {
+  // --skill <name> targets a specific skill within the plugin directory
+  const targetSkill = args.flags.skill as string | undefined;
+
+  if (targetSkill && isPluginLayout) {
+    // Save one skill from within a plugin directory
+    const skillDir = join(dir, "skills", targetSkill);
+    try {
+      await stat(skillDir);
+    } catch {
+      console.error(`Error: Skill directory './${name}/skills/${targetSkill}' not found.`);
+      throw new Error("Skill directory not found");
+    }
+    await saveSkill(targetSkill, skillDir, bump, api);
+  } else if (isPluginLayout) {
     await savePlugin(name, dir, bump, api);
   } else {
     await saveSkill(name, dir, bump, api);

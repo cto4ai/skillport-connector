@@ -66,7 +66,9 @@ export const SEARCH_CHUNKS: SearchChunk[] = [
       "- **Plugin name** (e.g. `test-tools`): shows plugin metadata, surface tags, " +
       "and lists all components (skills, commands)\n" +
       "- **Skill name** (e.g. `json-validator`): shows skill details, plugin, " +
-      "category, tags, and file list\n\n" +
+      "category, tags, and file list\n" +
+      "- `info <plugin> --skill <skill>`: show skill details for a specific skill within a plugin\n" +
+      "- `info <name> --skill`: force skill-level view (for same-named plugin/skill)\n\n" +
       "The CLI tries plugin first, then falls back to skill.",
     category: "commands",
     keywords: ["info", "details", "show", "describe", "skill", "plugin", "metadata", "components"],
@@ -98,16 +100,18 @@ export const SEARCH_CHUNKS: SearchChunk[] = [
     id: "get-command",
     title: "skillport get",
     content:
-      "Download a skill from the marketplace.\n\n" +
+      "Download skills or plugins from the marketplace.\n\n" +
       "```\n" +
-      "skillport get <name> --code <CODE>                        # unpacked files\n" +
-      "skillport get <name> --format skill --code <CODE>          # .skill ZIP\n" +
+      "skillport get <name> --code <CODE>                              # skill, unpacked\n" +
+      "skillport get <plugin> --skill <skill> --code <CODE>            # specific skill from plugin\n" +
+      "skillport get <plugin> --skills-only --code <CODE>              # all skills as standalone\n" +
+      "skillport get <name> --format skill --code <CODE>               # .skill ZIP\n" +
+      "skillport get <plugin> --format plugin --code <CODE>            # .plugin ZIP\n" +
+      "skillport get <plugin> --skills-only --format skill --code <CODE>  # all skills as .skill ZIPs\n" +
       "```\n\n" +
-      "Files are written to `./<name>/` (unpacked) or `./<name>.skill` (ZIP).\n\n" +
-      "Future flags (not yet implemented):\n" +
-      "- `--skill <name>` — target a specific skill within a plugin\n" +
-      "- `--skills-only` — get all skills as standalone\n" +
-      "- `--format plugin` — download as .plugin ZIP",
+      "Invalid combinations (rejected):\n" +
+      "- `--skill <x> --format plugin` (a single skill isn't a plugin)\n" +
+      "- `--skills-only --format plugin` (standalone skills aren't a plugin)",
     category: "commands",
     keywords: ["get", "download", "install", "fetch", "skill", "plugin", "zip", "format"],
   },
@@ -134,13 +138,15 @@ export const SEARCH_CHUNKS: SearchChunk[] = [
     id: "save-command",
     title: "skillport save",
     content:
-      "Push local skill files to the marketplace and bump version.\n\n" +
+      "Push local files to the marketplace and bump version.\n\n" +
       "```\n" +
-      "skillport save <name> <patch|minor|major> --code <CODE>\n" +
+      "skillport save <name> <patch|minor|major> --code <CODE>                # whole plugin or skill\n" +
+      "skillport save <plugin> --skill <skill> <patch|minor|major> --code <CODE>  # one skill in plugin\n" +
       "```\n\n" +
-      "Reads all files from `./<name>/`, uploads to the marketplace, " +
-      "and bumps the version. Always specify a bump type.\n\n" +
-      "Workflow: `skillport create <name>` → edit SKILL.md → `skillport save <name> patch`",
+      "Detects layout automatically: if `./<name>/skills/` exists, saves as plugin " +
+      "(PUT /api/plugins/:name). Otherwise saves as standalone skill.\n" +
+      "`--skill <name>` targets a specific skill within a plugin directory.\n\n" +
+      "Workflow: `create` → edit SKILL.md → `save <name> patch`",
     category: "commands",
     keywords: ["save", "push", "publish", "upload", "bump", "version", "patch", "minor", "major"],
   },
