@@ -108,7 +108,8 @@ const isMain =
   typeof process !== "undefined" &&
   typeof import.meta?.url === "string" &&
   (process.argv[1] === new URL(import.meta.url).pathname ||
-    process.argv[1]?.endsWith("/skillport"));
+    process.argv[1]?.endsWith("/skillport") ||
+    process.argv[1]?.endsWith("/skillport.js"));
 
 if (isMain) {
   const args = parseArgs(process.argv.slice(2));
