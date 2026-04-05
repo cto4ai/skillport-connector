@@ -4,6 +4,19 @@ MCP connector that bridges Claude Code Skill Marketplaces to Claude.ai and Claud
 
 > **Note:** If `CLAUDE-MORE-DETAILS.md` exists in this repo, review it for additional development context.
 
+## Current Work
+
+**Branch:** `feature/v3-foundation` — v3 rewrite (CLI + thin MCP)
+
+**Status:** Plans 1-4 complete, all 15 CLI commands implemented. Testing and polish phase.
+
+**Latest checkpoint:** [docs/working/checkpoints/2026-04-04-2114-v3-plans1-4-complete.md](docs/working/checkpoints/2026-04-04-2114-v3-plans1-4-complete.md) — read this first when resuming.
+
+**Key docs:**
+- [Design spec](docs/superpowers/specs/2026-04-03-skillport-v3-design.md)
+- [Plans 1-4](docs/superpowers/plans/) — implementation plans with full TDD steps
+- [Checkpoint](docs/working/checkpoints/2026-04-04-2114-v3-plans1-4-complete.md) — current state, bugs found, next steps
+
 ## Project Overview
 
 This is a **Cloudflare Worker** that:
