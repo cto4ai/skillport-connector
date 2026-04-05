@@ -1116,6 +1116,15 @@ async function handlePublishSkill(
     }
 
     const groupName = skill.plugin;
+
+    if (!accessControl.canWrite(groupName)) {
+      return errorResponse(
+        "Access denied",
+        `You don't have write access to '${groupName}'`,
+        403
+      );
+    }
+
     logAction(user.email, "publish_skill", {
       skill: skillName,
       skill_group: groupName,
@@ -1418,6 +1427,10 @@ async function handlePluginInfo(
     logAction(user.email, "plugin_info", { plugin: pluginName });
     const github = getGitHubClient(env);
     const accessControl = await getAccessControl(env, user.provider, user.uid);
+
+    if (!accessControl.canRead(pluginName)) {
+      return errorResponse("Access denied", `You don't have access to '${pluginName}'`, 403);
+    }
 
     // Read plugin.json
     const basePath = `plugins/${pluginName}`;
