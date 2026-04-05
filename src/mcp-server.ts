@@ -24,9 +24,12 @@ export class SkillportMCP extends McpAgent<Env, State, UserProps> {
         "for Claude Code plugin marketplaces.\n\n" +
         "Two tools available:\n" +
         "- execute: Auth methods ({ method, args }). Call auth.get_code to get a CLI auth code.\n" +
-        "- search: Query CLI documentation on-demand. " +
-        "IMPORTANT: Call search(\"getting started\") first to learn how to install and use the CLI.\n\n" +
-        "Workflow: search → auth.get_code → install CLI → use CLI for all operations.",
+        "- search: Query CLI documentation on-demand.\n\n" +
+        "Quick start:\n" +
+        "1. execute({ method: \"auth.get_code\" }) → get a code\n" +
+        "2. curl -sO https://skillport-connector.jack-ivers.workers.dev/cli/skillport.js\n" +
+        "3. node skillport.js list --code <CODE>\n\n" +
+        "Call search(\"getting started\") for full workflow details.",
     },
   );
 

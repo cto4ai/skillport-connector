@@ -6,7 +6,7 @@ export const SEARCH_CHUNKS: SearchChunk[] = [
     title: "Getting Started with Skillport CLI",
     content:
       "1. Get an auth code: the model calls `execute({ method: \"auth.get_code\" })` via MCP\n" +
-      "2. Install the CLI: `curl -sO https://<worker>/cli/skillport.js`\n" +
+      "2. Install the CLI: `curl -sO https://skillport-connector.jack-ivers.workers.dev/cli/skillport.js`\n" +
       "3. Run a command: `node skillport.js list --code <CODE>`\n\n" +
       "Or with an alias: `alias skillport='node skillport.js'`\n" +
       "Then: `skillport list --code <CODE>`",
