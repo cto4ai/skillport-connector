@@ -31,9 +31,15 @@ export function parseArgs(argv: string[]): ParsedArgs {
     if (arg === "--code" && i + 1 < argv.length) {
       code = argv[i + 1];
       i += 2;
-    } else if (arg === "--skill" && i + 1 < argv.length) {
-      flags.skill = argv[i + 1];
-      i += 2;
+    } else if (arg === "--skill") {
+      // --skill can be a boolean flag (info --skill) or take a value (get --skill foo)
+      if (i + 1 < argv.length && !argv[i + 1].startsWith("--")) {
+        flags.skill = argv[i + 1];
+        i += 2;
+      } else {
+        flags.skill = true;
+        i++;
+      }
     } else if (arg === "--format" && i + 1 < argv.length) {
       flags.format = argv[i + 1];
       i += 2;
@@ -75,25 +81,24 @@ function printHelp(): void {
 Usage: skillport <command> [options] --code <CODE>
 
 Commands:
-  get <plugin>         Download plugin/skill from marketplace
-  save <plugin> <bump> Push local changes (bump: patch|minor|major)
-  list                 List plugins and skills
-  info <plugin>        Show plugin/skill details
-  updates              Check for version updates
+  list                 List plugins in the marketplace
+  info <name>          Show plugin or skill details
+  get <name>           Download skill from marketplace
+  save <name> <bump>   Push local changes (bump: patch|minor|major)
   create <name>        Scaffold new plugin or skill locally
-  deactivate <plugin>  Remove plugin from marketplace
-  reactivate <plugin>  Restore deactivated plugin
-  delete <plugin>      Delete plugin files (must be deactivated)
+  updates              Check for version updates
+  deactivate <name>    Remove plugin from marketplace
+  reactivate <name>    Restore deactivated plugin
+  delete <name>        Delete plugin/skill (must be deactivated)
   sync                 Regenerate marketplace.json
   whoami               Show authenticated user
 
 Options:
   --code <CODE>        Auth code (from MCP auth.get_code)
-  --skill <name>       Target a specific skill within a plugin
-  --skills-only        Target all skills as standalone
-  --format <type>      Output format: plugin (.plugin ZIP) or skill (.skill ZIP)
+  --format skill       Download as .skill ZIP (with get)
   --surface <tag>      Filter by surface tag (CC, CD, CAI, etc.)
   --dry-run            Preview changes without writing (sync)
+  --confirm            Required for delete
   --help, -h           Show help
   --version, -v        Show version`);
 }

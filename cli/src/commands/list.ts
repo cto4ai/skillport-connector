@@ -17,6 +17,14 @@ interface ListResponse {
   skills: Skill[];
 }
 
+interface PluginGroup {
+  name: string;
+  version: string;
+  skills: string[];
+  surfaces: string;
+  editable: boolean;
+}
+
 export async function runList(
   args: ParsedArgs,
   api: ApiClient,
@@ -25,25 +33,50 @@ export async function runList(
   const data = await api.get<ListResponse>("/api/skills", { surface });
 
   if (data.skills.length === 0) {
-    console.log("No skills found.");
+    console.log("No plugins found.");
     if (surface) console.log(`(filtered by surface: ${surface})`);
     return;
   }
 
+  // Group skills by plugin
+  const pluginMap = new Map<string, PluginGroup>();
+  for (const s of data.skills) {
+    let group = pluginMap.get(s.plugin);
+    if (!group) {
+      group = {
+        name: s.plugin,
+        version: s.version,
+        skills: [],
+        surfaces: s.surface_tags?.join(",") || "",
+        editable: s.editable,
+      };
+      pluginMap.set(s.plugin, group);
+    }
+    group.skills.push(s.name);
+  }
+
+  const plugins = Array.from(pluginMap.values());
+
   // Header
-  const header = `${"Name".padEnd(30)} ${"Plugin".padEnd(25)} ${"Version".padEnd(10)} ${"Surfaces".padEnd(15)}`;
+  const header = `${"Plugin".padEnd(25)} ${"Skills".padEnd(8)} ${"Version".padEnd(10)} ${"Surfaces".padEnd(12)}`;
   console.log(header);
   console.log("-".repeat(header.length));
 
   // Rows
-  for (const s of data.skills) {
-    const surfaces = s.surface_tags?.join(",") || "";
+  for (const p of plugins) {
+    const skillCount = p.skills.length === 1 ? "1 skill" : `${p.skills.length} skills`;
     console.log(
-      `${s.name.padEnd(30)} ${s.plugin.padEnd(25)} ${s.version.padEnd(10)} ${surfaces.padEnd(15)}`,
+      `${p.name.padEnd(25)} ${skillCount.padEnd(8)} ${p.version.padEnd(10)} ${p.surfaces.padEnd(12)}`,
     );
+    // List individual skills for multi-skill plugins
+    if (p.skills.length > 1) {
+      for (const skill of p.skills) {
+        console.log(`  ${skill}`);
+      }
+    }
   }
 
   // Summary
   console.log("");
-  console.log(`${data.count} skill(s)${surface ? ` (surface: ${surface})` : ""}`);
+  console.log(`${plugins.length} plugin(s), ${data.skills.length} skill(s)${surface ? ` (surface: ${surface})` : ""}`);
 }

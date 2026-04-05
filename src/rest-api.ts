@@ -1401,6 +1401,109 @@ async function handleWhoami(user: CodeData): Promise<Response> {
 }
 
 /**
+ * GET /api/plugins/:name/info - Plugin-level info with component listing
+ */
+async function handlePluginInfo(
+  env: Env,
+  user: CodeData,
+  pluginName: string
+): Promise<Response> {
+  try {
+    logAction(user.email, "plugin_info", { plugin: pluginName });
+    const github = getGitHubClient(env);
+    const accessControl = await getAccessControl(env, user.provider, user.uid);
+
+    // Read plugin.json
+    const basePath = `plugins/${pluginName}`;
+    let pluginJson: Record<string, unknown>;
+    try {
+      const content = await github.getFileContent(`${basePath}/.claude-plugin/plugin.json`);
+      pluginJson = JSON.parse(content);
+    } catch {
+      return errorResponse("Plugin not found", `Plugin '${pluginName}' not found`, 404);
+    }
+
+    // Scan for skills (directories under skills/ that contain SKILL.md)
+    const skills: Array<{ name: string; description: string; files?: string[] }> = [];
+    try {
+      const skillsDirItems = await github.listPluginSubdir(pluginName, "skills");
+      for (const item of skillsDirItems) {
+        if (item.type === "dir") {
+          let description = "";
+          try {
+            const skillMd = await github.getFileContent(
+              `${basePath}/skills/${item.name}/SKILL.md`
+            );
+            const fm = parseSkillFrontmatter(skillMd);
+            description = fm.description || "";
+          } catch {
+            // No SKILL.md or no frontmatter
+          }
+          skills.push({ name: item.name, description });
+        }
+      }
+    } catch {
+      // No skills/ directory
+    }
+
+    // For single-skill plugins, include file list for the skill
+    if (skills.length === 1) {
+      try {
+        const fileList = await github.listSkillFiles(skills[0].name);
+        skills[0].files = fileList;
+      } catch {
+        // Skip file list
+      }
+    }
+
+    // Scan for commands (files under commands/)
+    const commands: Array<{ name: string; description: string }> = [];
+    try {
+      const cmdItems = await github.listPluginSubdir(pluginName, "commands");
+      for (const item of cmdItems) {
+        if (item.type === "file" && item.name.endsWith(".md")) {
+          const cmdName = item.name.replace(/\.md$/, "");
+          // Try to read frontmatter for description
+          let description = "";
+          try {
+            const content = await github.getFileContent(
+              `${basePath}/commands/${item.name}`
+            );
+            const fm = parseSkillFrontmatter(content);
+            description = fm.description || "";
+          } catch {
+            // Skip description
+          }
+          commands.push({ name: cmdName, description });
+        }
+      }
+    } catch {
+      // No commands/ directory
+    }
+
+    return jsonResponse({
+      plugin: {
+        name: pluginName,
+        version: (pluginJson.version as string) || "unknown",
+        description: (pluginJson.description as string) || "",
+        surface_tags: (pluginJson.surface_tags as string[]) || [],
+      },
+      components: {
+        skills,
+        commands,
+      },
+      editable: accessControl.canWrite(pluginName),
+    });
+  } catch (error) {
+    return errorResponse(
+      "Failed to get plugin info",
+      error instanceof Error ? error.message : String(error),
+      500
+    );
+  }
+}
+
+/**
  * PUT /api/plugins/:name - Save entire plugin directory tree
  * Writes all files to plugins/{name}/ on GitHub, bumps version,
  * and ensures marketplace.json entry.
@@ -1845,6 +1948,20 @@ export async function handleAPI(
   if (pathParts[0] === "sync" && method === "POST") {
     const dryRun = url.searchParams.get("dry_run") === "true";
     return handleSync(env, user, dryRun);
+  }
+
+  // Route: GET /api/plugins/:name/info
+  if (
+    pathParts[0] === "plugins" &&
+    pathParts.length === 3 &&
+    pathParts[2] === "info" &&
+    method === "GET"
+  ) {
+    const pluginName = pathParts[1];
+    if (!validateName(pluginName)) {
+      return errorResponse("Invalid plugin name", "Plugin name must contain only lowercase letters, numbers, and hyphens", 400);
+    }
+    return handlePluginInfo(env, user, pluginName);
   }
 
   // Route: PUT /api/plugins/:name - Save entire plugin directory tree

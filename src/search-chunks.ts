@@ -30,8 +30,8 @@ export const SEARCH_CHUNKS: SearchChunk[] = [
     id: "cli-commands-overview",
     title: "CLI Commands Overview",
     content:
-      "**Browse:** `list`, `info`, `updates`\n" +
-      "**Get:** `get` (with --skill, --skills-only, --format)\n" +
+      "**Browse:** `list` (plugins), `info` (plugin or skill), `updates`\n" +
+      "**Get:** `get` (with --format skill for ZIP)\n" +
       "**Author:** `save`, `create`\n" +
       "**Lifecycle:** `deactivate`, `reactivate`, `delete`\n" +
       "**Marketplace:** `sync`\n" +
@@ -45,13 +45,14 @@ export const SEARCH_CHUNKS: SearchChunk[] = [
     id: "list-command",
     title: "skillport list",
     content:
-      "List all skills in the marketplace.\n\n" +
+      "List all plugins in the marketplace, grouped by plugin.\n\n" +
       "```\nskillport list --code <CODE>\n" +
       "skillport list --surface CC --code <CODE>\n```\n\n" +
       "Options:\n" +
       "- `--surface <tag>` — Filter by surface: CC (Claude Code), CD (Claude Desktop), " +
       "CAI (Claude.ai), CDAI (Claude Desktop AI), CALL (all surfaces)\n\n" +
-      "Output: table with name, plugin, version, and surface tags for each skill.",
+      "Output: table showing each plugin with skill count, version, and surface tags. " +
+      "Multi-skill plugins list their skills underneath.",
     category: "commands",
     keywords: ["list", "browse", "marketplace", "skills", "plugins", "surface", "filter"],
   },
@@ -59,13 +60,16 @@ export const SEARCH_CHUNKS: SearchChunk[] = [
     id: "info-command",
     title: "skillport info",
     content:
-      "Show details for a specific skill or plugin.\n\n" +
+      "Show details for a plugin or skill.\n\n" +
       "```\nskillport info <name> --code <CODE>\n```\n\n" +
-      "Shows: name, version, plugin, description, category, tags, surface tags, " +
-      "publish status, edit permissions, and file list.\n\n" +
-      "The `<name>` is the skill name as shown in `skillport list`.",
+      "Works with both plugin names and skill names:\n" +
+      "- **Plugin name** (e.g. `test-tools`): shows plugin metadata, surface tags, " +
+      "and lists all components (skills, commands)\n" +
+      "- **Skill name** (e.g. `json-validator`): shows skill details, plugin, " +
+      "category, tags, and file list\n\n" +
+      "The CLI tries plugin first, then falls back to skill.",
     category: "commands",
-    keywords: ["info", "details", "show", "describe", "skill", "plugin", "metadata"],
+    keywords: ["info", "details", "show", "describe", "skill", "plugin", "metadata", "components"],
   },
   {
     id: "updates-command",

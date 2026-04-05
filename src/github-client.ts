@@ -662,6 +662,16 @@ export class GitHubClient {
   }
 
   /**
+   * List items in a plugin subdirectory (e.g., "skills", "commands")
+   */
+  async listPluginSubdir(
+    pluginName: string,
+    subdir: string,
+  ): Promise<GitHubContentItem[]> {
+    return this.listDirectory(`plugins/${pluginName}/${subdir}`);
+  }
+
+  /**
    * Get detailed plugin information
    */
   async getPlugin(name: string): Promise<{
