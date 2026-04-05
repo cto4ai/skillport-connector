@@ -532,6 +532,11 @@ export class GitHubClient {
             continue;
           }
 
+          // Skip deactivated plugins
+          if ((manifest as Record<string, unknown>).deactivated === true) {
+            continue;
+          }
+
           // Get version from plugin.json (authoritative), author from manifest or marketplace
           const publishedInfo = publishedPlugins.get(groupName);
           const version = manifest.version || publishedInfo?.version || "1.0.0";
