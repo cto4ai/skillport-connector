@@ -37,7 +37,7 @@ describe("runUpdates", () => {
         {
           name: "my-skill",
           installedVersion: "1.0.0",
-          latestVersion: "1.1.0",
+          availableVersion: "1.1.0",
         },
       ],
     });

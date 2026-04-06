@@ -4,7 +4,7 @@ import type { ApiClient } from "../api-client";
 interface Update {
   name: string;
   installedVersion: string;
-  latestVersion: string;
+  availableVersion: string;
 }
 
 interface UpdatesResponse {
@@ -46,7 +46,7 @@ export async function runUpdates(
 
   for (const u of data.updates) {
     console.log(
-      `${u.name.padEnd(30)} ${u.installedVersion.padEnd(12)} ${u.latestVersion.padEnd(12)}`,
+      `${u.name.padEnd(30)} ${u.installedVersion.padEnd(12)} ${u.availableVersion.padEnd(12)}`,
     );
   }
 

@@ -84,8 +84,13 @@ export function getSearchChunks(connectorUrl: string): SearchChunk[] {
     content:
       "Check if installed skills have newer versions in the marketplace.\n\n" +
       "```\nskillport updates --installed '<json>' --code <CODE>\n```\n\n" +
-      "The `--installed` flag takes a JSON array of `{ \"name\": \"...\", \"version\": \"...\" }` objects.\n" +
-      "The model should construct this from local `.claude-plugin/plugin.json` files.\n\n" +
+      "The `--installed` flag takes a JSON array of `{ \"name\": \"...\", \"version\": \"...\" }` objects.\n\n" +
+      "**How to build the installed list:**\n" +
+      "1. Skillport skills are installed in `~/.claude/skills/` (one directory per skill)\n" +
+      "2. Each skill has a `.claude-plugin/plugin.json` file containing the version\n" +
+      "3. Enumerate all skill directories, read the version from each plugin.json, and build the array\n\n" +
+      "Example shell to gather versions:\n" +
+      "```\nfor dir in ~/.claude/skills/*/; do\n  name=$(basename \"$dir\")\n  ver=$(python3 -c \"import json; print(json.load(open('$dir.claude-plugin/plugin.json')).get('version','0.0.0'))\" 2>/dev/null || echo '0.0.0')\n  echo \"{\\\"name\\\":\\\"$name\\\",\\\"version\\\":\\\"$ver\\\"}\"\ndone\n```\n\n" +
       "Output: table of skills with available updates (installed vs latest version).",
     category: "commands",
     keywords: ["updates", "check", "version", "upgrade", "outdated", "installed"],
