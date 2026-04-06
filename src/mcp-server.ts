@@ -3,52 +3,58 @@ import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
 import { dispatch } from "./dispatch";
 import { SearchIndex } from "./search-index";
-import { SEARCH_CHUNKS } from "./search-chunks";
+import { getSearchChunks } from "./search-chunks";
 import { ExecuteInputSchema, SearchInputSchema } from "./types";
 import type { UserProps, SearchChunk } from "./types";
 
 const METHOD_SUMMARY = "auth.get_code, auth.whoami";
 
-// FIXME: hardcoded worker URL — should use CONNECTOR_URL from env
-// but McpServer config is static (set before env is available).
-// Options: make instructions dynamic in init(), or use a generic domain.
-const CLI_URL = "https://skillport-connector.jack-ivers.workers.dev/cli/skillport.js";
+const DEFAULT_CONNECTOR_URL = "https://skillport-connector.jack-ivers.workers.dev";
 
-const README_CONTENT =
-  "# Skillport\n\n" +
-  "Browse, install, author, and publish plugins and skills for Claude Code plugin marketplaces.\n\n" +
-  "## Quick Start\n\n" +
-  "1. Get an auth code: `execute({ method: \"auth.get_code\" })`\n" +
-  `2. Download the CLI: \`curl -sO ${CLI_URL}\`\n` +
-  "3. Run a command: `node skillport.js list --code <CODE>`\n\n" +
-  "## CLI Commands\n\n" +
-  "All remote commands require `--code <CODE>` from step 1.\n\n" +
-  "**Browse:**\n" +
-  "- `list [--surface CC|CD|CAI|CALL]` — List plugins in the marketplace\n" +
-  "- `info <name>` — Plugin or skill details (works with either)\n" +
-  "- `updates --installed '<json>'` — Check for version updates\n" +
-  "- `whoami` — Show authenticated user\n\n" +
-  "**Install:**\n" +
-  "- `get <name>` — Download skill files to current directory\n" +
-  "- `get <plugin> --skill <skill>` — Download specific skill from a plugin\n" +
-  "- `get <plugin> --skills-only` — Download all skills as standalone\n" +
-  "- `get <name> --format skill` — Download as .skill ZIP\n" +
-  "- `get <plugin> --format plugin` — Download as .plugin ZIP\n\n" +
-  "**Author:**\n" +
-  "- `create <name>` — Scaffold a new plugin locally (no auth needed)\n" +
-  "- `create --skill <name>` — Scaffold a standalone skill\n" +
-  "- `save <name> <patch|minor|major>` — Push local files + bump version\n" +
-  "- `save <plugin> --skill <skill> <bump>` — Save one skill within a plugin\n\n" +
-  "**Lifecycle:**\n" +
-  "- `deactivate <name>` — Remove from marketplace (keeps files)\n" +
-  "- `reactivate <name>` — Restore to marketplace\n" +
-  "- `delete <name> --confirm` — Permanently remove (must deactivate first)\n" +
-  "- `sync [--dry-run]` — Regenerate marketplace.json\n\n" +
-  "## Tips\n\n" +
-  "- The CLI auto-updates when a new version is available\n" +
-  "- Use `search` tool for detailed docs on any command or workflow\n" +
-  "- `list` shows plugins grouped by name; multi-skill plugins expand to show skills\n" +
-  "- `info` works with both plugin names and skill names\n";
+function getCliUrl(env: Env): string {
+  const base = env.CONNECTOR_URL || DEFAULT_CONNECTOR_URL;
+  return `${base}/cli/skillport.js`;
+}
+
+function getReadmeContent(env: Env): string {
+  const cliUrl = getCliUrl(env);
+  return (
+    "# Skillport\n\n" +
+    "Browse, install, author, and publish plugins and skills for Claude Code plugin marketplaces.\n\n" +
+    "## Quick Start\n\n" +
+    "1. Get an auth code: `execute({ method: \"auth.get_code\" })`\n" +
+    `2. Download the CLI: \`curl -sO ${cliUrl}\`\n` +
+    "3. Run a command: `node skillport.js list --code <CODE>`\n\n" +
+    "## CLI Commands\n\n" +
+    "All remote commands require `--code <CODE>` from step 1.\n\n" +
+    "**Browse:**\n" +
+    "- `list [--surface CC|CD|CAI|CALL]` — List plugins in the marketplace\n" +
+    "- `info <name>` — Plugin or skill details (works with either)\n" +
+    "- `updates --installed '<json>'` — Check for version updates\n" +
+    "- `whoami` — Show authenticated user\n\n" +
+    "**Install:**\n" +
+    "- `get <name>` — Download skill files to current directory\n" +
+    "- `get <plugin> --skill <skill>` — Download specific skill from a plugin\n" +
+    "- `get <plugin> --skills-only` — Download all skills as standalone\n" +
+    "- `get <name> --format skill` — Download as .skill ZIP\n" +
+    "- `get <plugin> --format plugin` — Download as .plugin ZIP\n\n" +
+    "**Author:**\n" +
+    "- `create <name>` — Scaffold a new plugin locally (no auth needed)\n" +
+    "- `create --skill <name>` — Scaffold a standalone skill\n" +
+    "- `save <name> <patch|minor|major>` — Push local files + bump version\n" +
+    "- `save <plugin> --skill <skill> <bump>` — Save one skill within a plugin\n\n" +
+    "**Lifecycle:**\n" +
+    "- `deactivate <name>` — Remove from marketplace (keeps files)\n" +
+    "- `reactivate <name>` — Restore to marketplace\n" +
+    "- `delete <name> --confirm` — Permanently remove (must deactivate first)\n" +
+    "- `sync [--dry-run]` — Regenerate marketplace.json\n\n" +
+    "## Tips\n\n" +
+    "- The CLI auto-updates when a new version is available\n" +
+    "- Use `search` tool for detailed docs on any command or workflow\n" +
+    "- `list` shows plugins grouped by name; multi-skill plugins expand to show skills\n" +
+    "- `info` works with both plugin names and skill names\n"
+  );
+}
 
 interface State {
   searchIndex: null;
@@ -78,7 +84,7 @@ export class SkillportMCP extends McpAgent<Env, State, UserProps> {
 
   private getSearchIndex(): SearchIndex {
     if (this.cachedIndex) return this.cachedIndex;
-    this.cachedIndex = new SearchIndex(SEARCH_CHUNKS);
+    this.cachedIndex = new SearchIndex(getSearchChunks(this.env.CONNECTOR_URL));
     return this.cachedIndex;
   }
 
@@ -97,7 +103,7 @@ export class SkillportMCP extends McpAgent<Env, State, UserProps> {
         console.log(`[AUDIT] ${timestamp} user=${this.props?.email} action=readme`);
 
         return {
-          content: [{ type: "text" as const, text: README_CONTENT }],
+          content: [{ type: "text" as const, text: getReadmeContent(this.env) }],
         };
       },
     );
@@ -109,7 +115,7 @@ export class SkillportMCP extends McpAgent<Env, State, UserProps> {
         description:
           `Run a Skillport auth method. Available: ${METHOD_SUMMARY}. ` +
           "Call auth.get_code to get a CLI auth code, then download and run the CLI " +
-          `(curl -sO ${CLI_URL}). ` +
+          `(curl -sO ${getCliUrl(this.env)}). ` +
           "The CLI handles all marketplace operations (list, get, save, etc.). " +
           "Call readme for the full command reference.",
         inputSchema: ExecuteInputSchema,
