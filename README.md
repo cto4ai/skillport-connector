@@ -40,7 +40,7 @@ Your organization's Skills live in a GitHub repository. Write Skills in Markdown
 
 ### Under the Hood
 
-Skillport Connector deploys to Cloudflare Workers and uses a single-tool architecture inspired by Anthropic's Programmable Tool Calling patterns. Low context overhead. Fast responses. The Marketplace repository follows Anthropic's Plugin Marketplace standard—compatible with Claude Code's native `/plugin` command if you choose to make it public.
+Skillport Connector deploys to Cloudflare Workers with a thin MCP layer (auth + documentation) and a CLI that handles all marketplace operations. The CLI is a bundled JS file served from the Worker—downloads in under a second, self-updates automatically, and works in any environment with Node.js. The Marketplace repository follows Anthropic's Plugin Marketplace standard—compatible with Claude Code's native `/plugin` command if you choose to make it public.
 
 ---
 
@@ -336,9 +336,9 @@ npx wrangler tail
 │        SKILLPORT CONNECTOR         │  │  Claude Code │
 │        (Cloudflare Workers)        │  │    (CLI)     │
 │                                    │  └──────────────┘
-│  • Single-tool architecture        │
+│  • MCP (auth + docs) + CLI         │
 │  • OAuth authentication            │
-│  • GitHub API integration          │
+│  • REST API + GitHub integration   │
 │  • Access control enforcement      │
 └────────────────────────────────────┘
                  │

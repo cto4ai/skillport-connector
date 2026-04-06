@@ -1,30 +1,41 @@
 # Skillport Connector
 
-MCP connector that bridges Claude Code Skill Marketplaces to Claude.ai and Claude Desktop.
-
-> **Note:** If `CLAUDE-MORE-DETAILS.md` exists in this repo, review it for additional development context.
+MCP connector + CLI for managing Claude Code plugin marketplaces. Works across Claude.ai, Claude Desktop, and Claude Code.
 
 ## Project Overview
 
 This is a **Cloudflare Worker** that:
-- Exposes a Skill Marketplace via MCP protocol
+- Provides a thin MCP layer (auth + docs) for Claude.ai/Desktop
+- Serves a CLI (bundled JS) for all marketplace operations
+- Exposes a REST API that the CLI talks to
 - Authenticates users via Google OAuth
-- Provides tools to browse and fetch Skills for Claude.ai/Desktop users
 
 ## Sibling Repository
 
-This project is part of a two-repo system:
-
 | Repo | Purpose |
 |------|---------|
-| **skillport-connector** (this repo) | MCP connector deployed on Cloudflare Workers |
+| **skillport-connector** (this repo) | MCP + CLI + REST API deployed on Cloudflare Workers |
 | **skillport-marketplace** | GitHub template for creating skill marketplaces |
 
 ## Architecture
 
 ```
-Skill Marketplace Repo → Claude Code (native plugin support)
-                       → Skillport Connector (MCP) → Claude.ai / Claude Desktop
+Claude Surface (CC, Claude.ai, Desktop)
+  │
+  ├── MCP Connection (auto OAuth)
+  │     • readme: full usage guide
+  │     • execute: auth.get_code / auth.whoami
+  │     • search: CLI documentation
+  │
+  └── CLI (bundled JS, downloaded via curl)
+        • All marketplace operations (list, get, save, etc.)
+        • Passes --code <CODE> from auth.get_code
+        • Self-updating via /cli/version check
+        │
+        └── REST API (Cloudflare Worker)
+              • GitHub proxy (authenticated via shared PATs)
+              • Code-based auth (codes stored in KV)
+              • Plugin/skill CRUD operations
 ```
 
 ## Tech Stack
@@ -32,42 +43,53 @@ Skill Marketplace Repo → Claude Code (native plugin support)
 - **Runtime**: Cloudflare Workers
 - **Language**: TypeScript
 - **MCP SDK**: @modelcontextprotocol/sdk
-- **Auth**: Google OAuth
-- **Storage**: Cloudflare KV (for OAuth tokens)
+- **Auth**: Google OAuth (MCP) + code-based auth (CLI → REST API)
+- **Storage**: Cloudflare KV (OAuth tokens, CLI codes, CLI bundle)
+- **CLI Build**: esbuild
 
 ## Key Files
 
 | File | Purpose |
 |------|---------|
-| [src/index.ts](src/index.ts) | Entry point with OAuth handler |
-| [src/mcp-server.ts](src/mcp-server.ts) | MCP server with tool definitions |
-| [wrangler.toml.example](wrangler.toml.example) | Worker configuration template |
-| [package.json](package.json) | Dependencies and scripts |
+| `src/index.ts` | Worker entry point, OAuth provider, CLI serving |
+| `src/mcp-server.ts` | MCP server: readme, execute, search tools |
+| `src/rest-api.ts` | REST API endpoints for CLI |
+| `src/dispatch.ts` | Namespace-based method routing |
+| `src/auth.ts` | auth.get_code, auth.whoami handlers |
+| `src/github-client.ts` | GitHub API client (read + write) |
+| `src/search-index.ts` | Porter stemmer + search index |
+| `src/search-chunks.ts` | CLI documentation content |
+| `cli/src/index.ts` | CLI entry point, arg parsing, command routing |
+| `cli/src/api-client.ts` | HTTP client with proxy-aware curl fallback |
+| `cli/src/commands/*.ts` | One file per CLI command |
+| `cli/src/update.ts` | CLI self-update mechanism |
+| `cli/build.mjs` | esbuild bundler for CLI |
 
 ## MCP Tools
 
-The connector exposes these MCP tools:
-
-### User Tools
 | Tool | Purpose |
 |------|---------|
-| `list_skills` | List all skills across all plugins |
-| `fetch_skill` | Fetch SKILL.md and related files for installation |
-| `check_updates` | Check if installed skills have updates |
-| `whoami` | Get your user identity (for access.json setup) |
+| `readme` | Full usage guide — call this first |
+| `execute` | Auth methods: `auth.get_code`, `auth.whoami` |
+| `search` | Query CLI documentation (commands, workflows, best practices) |
 
-### Editor Tools (require write access)
-| Tool | Purpose |
-|------|---------|
-| `save_skill` | Create or update skill files |
-| `publish_skill` | Make a skill discoverable in the marketplace |
-| `bump_version` | Bump version for a skill's group |
+## CLI Commands
 
-### v2 Tools (`/v2/mcp` endpoint)
-| Tool | Purpose |
-|------|---------|
-| `execute` | Dispatch typed `{ method, args }` calls to the Skillport API (auth is automatic) |
-| `search` | Query domain knowledge on-demand (SKILL.md format, naming, surface tags, best practices) |
+All remote commands require `--code <CODE>` from `auth.get_code`.
+
+| Command | Purpose |
+|---------|---------|
+| `list [--surface]` | List plugins in marketplace |
+| `info <name> [--skill]` | Plugin or skill details |
+| `get <name> [--skill] [--skills-only] [--format]` | Download plugin/skill |
+| `save <name> <bump> [--skill]` | Push local files + bump version |
+| `create <name>` / `create --skill <name>` | Scaffold plugin or skill |
+| `updates --installed <json>` | Check for version updates |
+| `deactivate <name>` | Remove from marketplace |
+| `reactivate <name>` | Restore to marketplace |
+| `delete <name> --confirm` | Permanent deletion |
+| `sync [--dry-run]` | Regenerate marketplace.json |
+| `whoami` | User identity |
 
 ## Setup
 
@@ -107,13 +129,9 @@ npx wrangler secret put GITHUB_WRITE_TOKEN      # read-write token (for editor t
 ```bash
 npm install              # Install dependencies
 npm run dev              # Start local dev server (localhost:8788)
+npm run build:cli        # Bundle CLI → dist/skillport.js
 npm run deploy           # Deploy to Cloudflare Workers
-```
-
-**Note:** Wrangler v4 requires Node v20+. If using an older Node version (e.g., VSCode with Node 19):
-```bash
-node node_modules/wrangler/bin/wrangler.js dev
-node node_modules/wrangler/bin/wrangler.js deploy
+npx vitest run           # Run tests (81 tests)
 ```
 
 ## Deployed Endpoints
@@ -123,6 +141,7 @@ node node_modules/wrangler/bin/wrangler.js deploy
 | MCP (Streamable HTTP) | `https://skillport-connector.jack-ivers.workers.dev/mcp` |
 | MCP (SSE, legacy) | `https://skillport-connector.jack-ivers.workers.dev/sse` |
 | CLI bundle | `https://skillport-connector.jack-ivers.workers.dev/cli/skillport.js` |
+| CLI version | `https://skillport-connector.jack-ivers.workers.dev/cli/version` |
 | REST API | `https://skillport-connector.jack-ivers.workers.dev/api/` |
 
 ## Testing
@@ -136,11 +155,10 @@ node node_modules/wrangler/bin/wrangler.js deploy
 
 ## Documentation
 
-See `/docs/reference/` for detailed documentation:
-- [project-overview.md](docs/reference/project-overview.md) - High-level project overview
-- [architecture-decisions.md](docs/reference/architecture-decisions.md) - Design decisions
-- [implementation-guide.md](docs/reference/implementation-guide.md) - Implementation guide
-- [access-control.md](docs/reference/access-control.md) - User roles and permissions
+- [access-control.md](docs/reference/access-control.md) — User roles and permissions
+- [anthropic-skill-formats.md](docs/reference/anthropic-skill-formats.md) — Anthropic's skill format reference
+- [v3 design spec](docs/superpowers/specs/2026-04-03-skillport-v3-design.md) — Architecture and design decisions
+- [v3 implementation plans](docs/superpowers/plans/) — Plans 1-4 with full TDD steps
 
 ## Git Workflow
 
