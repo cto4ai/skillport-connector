@@ -31,7 +31,7 @@ export function checkForUpdate(
     return false;
   }
 
-  // Only update if server version is newer (simple semver comparison)
+  // Only update if server version is newer
   if (!isNewer(serverVersion, localVersion)) {
     return false;
   }
@@ -66,6 +66,8 @@ export function checkForUpdate(
  * Version comparison: returns true if server > local.
  * Handles formats like "3.0.0" and "3.0.0-42.af6a286" (base-commitCount.sha).
  * Compares major.minor.patch first, then commit count if base versions match.
+ * Note: "3.0.0-42.xxx" is intentionally treated as newer than "3.0.0" (commit
+ * count 42 > 0). This is the opposite of standard semver pre-release ordering.
  */
 function isNewer(server: string, local: string): boolean {
   const parse = (v: string) => {

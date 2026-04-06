@@ -225,5 +225,8 @@ if (isMain) {
     }
     process.exit(1);
   }
-})();
+})().catch((error) => {
+    console.error(`Fatal: ${error instanceof Error ? error.message : String(error)}`);
+    process.exit(1);
+  });
 }
