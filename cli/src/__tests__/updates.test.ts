@@ -58,6 +58,28 @@ describe("runUpdates", () => {
     });
   });
 
+  it("skips malformed update entries", async () => {
+    const api = mockApi({
+      hasUpdates: true,
+      updates: [
+        { name: "good-skill", installedVersion: "1.0.0", availableVersion: "1.1.0" },
+        { name: "bad-skill", installedVersion: "1.0.0" },
+      ],
+    });
+    const args: ParsedArgs = {
+      command: "updates",
+      positional: [],
+      code: "abc",
+      flags: { installed: '[{"name":"good-skill","version":"1.0.0"},{"name":"bad-skill","version":"1.0.0"}]' },
+    };
+
+    const lines = await captureOutput(() => runUpdates(args, api as any));
+    const errors = await captureStderr(() => runUpdates(args, api as any));
+
+    expect(lines.some((l) => l.includes("good-skill"))).toBe(true);
+    expect(lines.every((l) => !l.includes("bad-skill"))).toBe(true);
+  });
+
   it("shows no updates message", async () => {
     const api = mockApi({ hasUpdates: false, updates: [] });
     const args: ParsedArgs = {

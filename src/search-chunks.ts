@@ -87,10 +87,10 @@ export function getSearchChunks(connectorUrl: string): SearchChunk[] {
       "The `--installed` flag takes a JSON array of `{ \"name\": \"...\", \"version\": \"...\" }` objects.\n\n" +
       "**How to build the installed list:**\n" +
       "1. Skillport skills are installed in `~/.claude/skills/` (one directory per skill)\n" +
-      "2. Each skill has a `.claude-plugin/plugin.json` file containing the version\n" +
-      "3. Enumerate all skill directories, read the version from each plugin.json, and build the array\n\n" +
+      "2. Each skill with a `.claude-plugin/plugin.json` file has a `version` field — skip directories without this file\n" +
+      "3. Enumerate all skill directories, read the version from each plugin.json, and build a JSON array\n\n" +
       "Example shell to gather versions:\n" +
-      "```\nfor dir in ~/.claude/skills/*/; do\n  name=$(basename \"$dir\")\n  ver=$(python3 -c \"import json; print(json.load(open('$dir.claude-plugin/plugin.json')).get('version','0.0.0'))\" 2>/dev/null || echo '0.0.0')\n  echo \"{\\\"name\\\":\\\"$name\\\",\\\"version\\\":\\\"$ver\\\"}\"\ndone\n```\n\n" +
+      "```\nnode -e \"\n  const fs = require('fs'), path = require('path');\n  const dir = path.join(require('os').homedir(), '.claude/skills');\n  const installed = fs.readdirSync(dir).filter(d => fs.statSync(path.join(dir,d)).isDirectory()).map(name => {\n    try { return { name, version: JSON.parse(fs.readFileSync(path.join(dir,name,'.claude-plugin/plugin.json'),'utf8')).version || '0.0.0' }; }\n    catch { return null; }\n  }).filter(Boolean);\n  console.log(JSON.stringify(installed));\n\"\n```\n\n" +
       "Output: table of skills with available updates (installed vs latest version).",
     category: "commands",
     keywords: ["updates", "check", "version", "upgrade", "outdated", "installed"],

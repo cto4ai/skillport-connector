@@ -45,6 +45,10 @@ export async function runUpdates(
   console.log("-".repeat(header.length));
 
   for (const u of data.updates) {
+    if (!u.name || !u.installedVersion || !u.availableVersion) {
+      console.error(`Warning: skipping malformed update entry: ${JSON.stringify(u)}`);
+      continue;
+    }
     console.log(
       `${u.name.padEnd(30)} ${u.installedVersion.padEnd(12)} ${u.availableVersion.padEnd(12)}`,
     );
