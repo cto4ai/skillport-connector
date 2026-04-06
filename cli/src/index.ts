@@ -1,4 +1,4 @@
-const VERSION = "3.0.0-alpha.4";
+const VERSION = process.env.SKILLPORT_VERSION || "0.0.0";
 
 export interface ParsedArgs {
   command: string;
@@ -107,12 +107,12 @@ Options:
 // Main entry point (only runs when executed directly, not when imported for tests)
 const isMain =
   typeof process !== "undefined" &&
-  typeof import.meta?.url === "string" &&
-  (process.argv[1] === new URL(import.meta.url).pathname ||
-    process.argv[1]?.endsWith("/skillport") ||
-    process.argv[1]?.endsWith("/skillport.js"));
+  (process.argv[1]?.endsWith("/skillport") ||
+    process.argv[1]?.endsWith("/skillport.js") ||
+    (typeof require !== "undefined" && require.main === module));
 
 if (isMain) {
+(async () => {
   const args = parseArgs(process.argv.slice(2));
 
   if (args.command === "help") {
@@ -225,4 +225,8 @@ if (isMain) {
     }
     process.exit(1);
   }
+})().catch((error) => {
+    console.error(`Fatal: ${error instanceof Error ? error.message : String(error)}`);
+    process.exit(1);
+  });
 }
