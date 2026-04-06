@@ -24,7 +24,7 @@ function getReadmeContent(env: Env): string {
     "**Browse:**\n" +
     "- `list [--surface CC|CD|CAI|CALL]` — List plugins in the marketplace\n" +
     "- `info <name>` — Plugin or skill details (works with either)\n" +
-    "- `updates --installed '<json>'` — Check for version updates\n" +
+    "- `updates --installed '<json>'` — Check for version updates (skills live in ~/.claude/skills/; read version from each skill's .claude-plugin/plugin.json)\n" +
     "- `whoami` — Show authenticated user\n\n" +
     "**Install:**\n" +
     "- `get <name>` — Download skill files to current directory\n" +
