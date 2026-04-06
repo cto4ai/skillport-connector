@@ -4,17 +4,11 @@ import { z } from "zod";
 import { dispatch } from "./dispatch";
 import { SearchIndex } from "./search-index";
 import { getSearchChunks } from "./search-chunks";
+import { resolveConnectorUrl, getCliUrl } from "./config";
 import { ExecuteInputSchema, SearchInputSchema } from "./types";
 import type { UserProps, SearchChunk } from "./types";
 
 const METHOD_SUMMARY = "auth.get_code, auth.whoami";
-
-const DEFAULT_CONNECTOR_URL = "https://skillport-connector.jack-ivers.workers.dev";
-
-function getCliUrl(env: Env): string {
-  const base = env.CONNECTOR_URL || DEFAULT_CONNECTOR_URL;
-  return `${base}/cli/skillport.js`;
-}
 
 function getReadmeContent(env: Env): string {
   const cliUrl = getCliUrl(env);
@@ -84,11 +78,14 @@ export class SkillportMCP extends McpAgent<Env, State, UserProps> {
 
   private getSearchIndex(): SearchIndex {
     if (this.cachedIndex) return this.cachedIndex;
-    this.cachedIndex = new SearchIndex(getSearchChunks(this.env.CONNECTOR_URL));
+    this.cachedIndex = new SearchIndex(getSearchChunks(resolveConnectorUrl(this.env)));
     return this.cachedIndex;
   }
 
   async init() {
+    // Validate CONNECTOR_URL at init time (logs warnings for missing/malformed)
+    resolveConnectorUrl(this.env);
+
     // ── readme tool ─────────────────────────────────────────────
     this.server.registerTool(
       "readme",

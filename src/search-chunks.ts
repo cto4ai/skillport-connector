@@ -1,9 +1,11 @@
 import type { SearchChunk } from "./types";
 
-const DEFAULT_CONNECTOR_URL = "https://skillport-connector.jack-ivers.workers.dev";
-
-export function getSearchChunks(connectorUrl?: string): SearchChunk[] {
-  const baseUrl = connectorUrl || DEFAULT_CONNECTOR_URL;
+/**
+ * Get search chunks with the connector URL baked in.
+ * Caller should pass a validated URL (from resolveConnectorUrl).
+ */
+export function getSearchChunks(connectorUrl: string): SearchChunk[] {
+  const baseUrl = connectorUrl;
   return [
   {
     id: "getting-started",

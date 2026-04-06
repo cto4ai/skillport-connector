@@ -13,6 +13,7 @@
 import { GitHubClient, parseSkillFrontmatter } from "./github-client";
 import { AccessControl } from "./access-control";
 import { packageSkill, packagePlugin } from "./skill-packager";
+import { resolveConnectorUrl } from "./config";
 
 // Code data stored in KV (from MCP auth.get_code)
 export interface CodeData {
@@ -437,7 +438,7 @@ async function handleInstallSkill(
     );
 
     const connectorUrl =
-      env.CONNECTOR_URL || "https://your-connector.workers.dev";
+      resolveConnectorUrl(env);
 
     return jsonResponse({
       install_token: installToken,
@@ -511,7 +512,7 @@ async function handleEditSkill(
     );
 
     const connectorUrl =
-      env.CONNECTOR_URL || "https://your-connector.workers.dev";
+      resolveConnectorUrl(env);
 
     return jsonResponse({
       edit_token: editToken,
