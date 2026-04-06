@@ -63,14 +63,23 @@ export function checkForUpdate(
 }
 
 /**
- * Simple semver comparison: returns true if server > local.
+ * Version comparison: returns true if server > local.
+ * Handles formats like "3.0.0" and "3.0.0-42.af6a286" (base-commitCount.sha).
+ * Compares major.minor.patch first, then commit count if base versions match.
  */
 function isNewer(server: string, local: string): boolean {
-  const [sM, sm, sp] = server.split(".").map((s) => parseInt(s, 10) || 0);
-  const [lM, lm, lp] = local.split(".").map((s) => parseInt(s, 10) || 0);
-  if (sM !== lM) return sM > lM;
-  if (sm !== lm) return sm > lm;
-  return sp > lp;
+  const parse = (v: string) => {
+    const [base, pre] = v.split("-", 2);
+    const [major, minor, patch] = base.split(".").map((s) => parseInt(s, 10) || 0);
+    const commitCount = pre ? parseInt(pre.split(".")[0], 10) || 0 : 0;
+    return { major, minor, patch, commitCount };
+  };
+  const s = parse(server);
+  const l = parse(local);
+  if (s.major !== l.major) return s.major > l.major;
+  if (s.minor !== l.minor) return s.minor > l.minor;
+  if (s.patch !== l.patch) return s.patch > l.patch;
+  return s.commitCount > l.commitCount;
 }
 
 function fetchVersion(baseUrl: string): string {

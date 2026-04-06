@@ -1,6 +1,6 @@
 {
   "name": "skillport-connector",
-  "version": "0.1.0",
+  "version": "3.0.0",
   "description": "MCP Connector bridging Plugin Marketplaces to Claude.ai and Claude Desktop",
   "main": "src/index.ts",
   "scripts": {
@@ -11,7 +11,8 @@
     "test": "vitest",
     "cf-typegen": "wrangler types",
     "build:cli": "node cli/build.mjs",
-    "upload:cli": "npm run build:cli && echo 'Upload dist/skillport.js to KV key cli:bundle using: wrangler kv:key put --path dist/skillport.js --binding OAUTH_KV cli:bundle'",
+    "deploy:cli": "npm run build:cli && npx wrangler kv key put --namespace-id 2328f53c6e5846d6830cae916254634c cli:bundle --path dist/skillport.js --remote && npx wrangler kv key put --namespace-id 2328f53c6e5846d6830cae916254634c cli:version \"$(node -e \"var p=require('./package.json').version,c=require('child_process');process.stdout.write(p+'-'+c.execSync('git rev-list HEAD --count',{encoding:'utf8'}).trim()+'.'+c.execSync('git rev-parse --short HEAD',{encoding:'utf8'}).trim())\")\" --remote",
+    "deploy:all": "npm run deploy && npm run deploy:cli",
     "postinstall": "node scripts/patch-oauth-provider.js && node scripts/patch-agents-mcp.js"
   },
   "dependencies": {
