@@ -1,13 +1,16 @@
 import type { SearchChunk } from "./types";
 
-export const SEARCH_CHUNKS: SearchChunk[] = [
+const DEFAULT_CONNECTOR_URL = "https://skillport-connector.jack-ivers.workers.dev";
+
+export function getSearchChunks(connectorUrl?: string): SearchChunk[] {
+  const baseUrl = connectorUrl || DEFAULT_CONNECTOR_URL;
+  return [
   {
     id: "getting-started",
     title: "Getting Started with Skillport CLI",
     content:
       "1. Get an auth code: the model calls `execute({ method: \"auth.get_code\" })` via MCP\n" +
-      // FIXME: hardcoded worker URL — should be derived from CONNECTOR_URL env var
-      "2. Install the CLI: `curl -sO https://skillport-connector.jack-ivers.workers.dev/cli/skillport.js`\n" +
+      `2. Install the CLI: \`curl -sO ${baseUrl}/cli/skillport.js\`\n` +
       "3. Run a command: `node skillport.js list --code <CODE>`\n\n" +
       "Or with an alias: `alias skillport='node skillport.js'`\n" +
       "Then: `skillport list --code <CODE>`",
@@ -193,3 +196,4 @@ export const SEARCH_CHUNKS: SearchChunk[] = [
     keywords: ["sync", "regenerate", "marketplace", "rebuild", "index", "dry-run", "validate"],
   },
 ];
+}
