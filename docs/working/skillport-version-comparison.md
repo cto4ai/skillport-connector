@@ -10,13 +10,13 @@ This document compares all three versions: what they did, how they did it, and w
 
 | Dimension | V1 (Dec 2025) | V2 (Feb–Mar 2026) | V3 (Apr 2026) |
 |-----------|---------------|---------------------|----------------|
-| **Architecture** | MCP server (10 tools) + companion skill + REST API | MCP server (2 tools: execute + search) + REST API | CLI + thin MCP (auth + docs only) + REST API |
+| **Architecture** | Single MCP tool (`skillport_auth`) + companion skill + REST API | MCP server (2 tools: execute + search) + REST API | CLI + thin MCP (auth + docs only) + REST API |
 | **Requires a skill?** | Yes — a ~500-line Skillport skill must be installed | No — execute + search tools replace the skill | No — CLI replaces everything |
 | **How the model works** | Reads skill instructions → constructs curl/Python calls → manages bearer tokens | Calls `execute({ method, args })` → server dispatches | Runs one CLI command → CLI handles everything |
 | **File content through model** | Yes — model constructs curl commands with file payloads | Yes — MCP responses contain file contents as JSON | No — files flow disk → CLI → REST API → GitHub |
-| **Token cost per interaction** | 3,000–5,000 tokens (10 tool defs) + skill load (~500 lines) | ~1,000 tokens (2 tool defs) + search results on demand | ~800 tokens (3 tool defs) + readme on first call |
+| **Token cost per interaction** | ~500 tokens (1 tool def) + skill load (~500 lines) | ~1,000 tokens (2 tool defs) + search results on demand | ~800 tokens (3 tool defs) + readme on first call |
 | **Model turns per operation** | 6–10 (orchestrate curl, parse JSON, handle errors) | 2–3 (call execute, maybe search first) | 1 (run CLI command, read stdout) |
-| **Auth model** | OAuth → short-lived bearer tokens (5-min TTL, 3 token types) | OAuth → automatic (server-side, transparent) | OAuth → pairing code (8-hour TTL, one code type) |
+| **Auth model** | OAuth → short-lived bearer token from `skillport_auth` | OAuth → automatic (server-side, transparent) | OAuth → pairing code (8-hour TTL) |
 | **Unit of operation** | Skill-level (full skill folders, but one skill at a time) | Skill-level (full skill folders, but one skill at a time) | Skill-level + plugin-level (all V1/V2 skill capabilities, plus full plugin directories with multiple skills, commands, agents, hooks) |
 | **Versioning** | Plugin-level version in plugin.json, uniform across all skills in a plugin (Anthropic marketplace format). Synthesized skill-level plugin.json included in downloads, enabling version upgrade detection on Claude.ai/Desktop. | Same | Same |
 | **Claude.ai support** | Partial (connector works, but model must construct curl in sandbox) | Full (MCP dispatch works, but file content burns tokens) | Full (CLI with proxy-aware curl fallback) |
@@ -29,9 +29,9 @@ This document compares all three versions: what they did, how they did it, and w
 
 ### Architecture
 
-V1 was a Cloudflare Worker exposing **10 MCP tools** — `list_skills`, `fetch_skill`, `install_skill`, `save_skill`, `delete_skill`, `bump_version`, `publish_skill`, `check_updates`, `whoami`, and a bootstrap tool. These tools were always loaded into Claude's context regardless of whether the user invoked Skillport.
+V1 started as a Cloudflare Worker with 7 MCP tools (`list_skills`, `fetch_skill`, `check_updates`, `whoami`, `save_skill`, `bump_version`, `publish_skill`) — all business logic directly in the MCP server, no REST API. This was quickly refactored (PR #21, Jan 2026) to the architecture that defined V1: a **single MCP tool** (`skillport_auth`) paired with a **REST API** and a **companion skill**.
 
-Because 10 tool definitions consumed 3,000–5,000 tokens on every message, V1 was quickly refactored to a **single-tool connector** (`skillport_auth`) paired with a **companion skill**. The MCP tool handled authentication only; the skill contained ~500 lines of instructions teaching Claude how to call the REST API via curl or Python.
+In the shipped V1 architecture, the MCP tool handled authentication only — issuing a short-lived bearer token. The skill (~500 lines) taught Claude how to call the REST API endpoints via curl or Python, constructing requests with the bearer token. All marketplace operations (list, fetch, save, bump, publish) moved to REST endpoints.
 
 ### The Skill Dependency
 
@@ -41,10 +41,6 @@ The skill was V1's defining architectural choice — and its biggest constraint.
 - **Domain knowledge (~45%)**: authoring best practices, SKILL.md format, naming conventions, surface tags
 
 The model would read the skill on invocation, then orchestrate a multi-step workflow: get a bearer token, construct the right curl command, parse JSON responses, handle errors, manage token expiration. This worked, but it was fragile. The model would sometimes skip steps, hallucinate successful installations, or mangle bearer tokens across requests.
-
-### The Bootstrap Problem
-
-V1 had a chicken-and-egg problem: users needed the Skillport skill installed to use Skillport, but Skillport was how they installed skills. The solution was a `skillport_auth(operation="bootstrap")` call that returned instructions to download and install the skill — a workaround that added another failure mode to an already complex flow.
 
 ### Claude Gaps Filled
 
@@ -57,9 +53,9 @@ V1 had a chicken-and-egg problem: users needed the Skillport skill installed to 
 
 ### What Went Wrong
 
-- **Context overhead**: 3,000–5,000 tokens loaded on every message, even when unused
-- **Model orchestration failures**: ~40% first-attempt failure rate on complex operations (token management, curl construction, JSON parsing)
+- **Model orchestration burden**: The model had to read the skill, call `skillport_auth` for a token, construct curl commands with correct headers, parse JSON responses, and handle errors — a multi-step chain where any misstep broke the flow
 - **Skill as single point of failure**: If the model misread or skipped the skill instructions, the entire workflow broke
+- **Bootstrap problem**: Users needed the skill installed to use Skillport, but Skillport was how they installed skills
 - **Surface-specific installation UX**: Claude Code could run bash natively; Claude.ai/Desktop users had to copy-paste commands from chat into a terminal
 
 ---
@@ -68,7 +64,7 @@ V1 had a chicken-and-egg problem: users needed the Skillport skill installed to 
 
 ### Architecture
 
-V2 replaced V1's 10 tools and companion skill with **two MCP tools**: `execute` and `search`. This followed the **gworkspace-mcp pattern** — a single dispatch tool that accepts `{ method, args }` and routes server-side, paired with a search tool for on-demand domain knowledge.
+V2 replaced V1's single-tool + skill + REST API architecture with **two MCP tools**: `execute` and `search`. This followed the **gworkspace-mcp pattern** — a single dispatch tool that accepts `{ method, args }` and routes server-side, paired with a search tool for on-demand domain knowledge.
 
 The `execute` tool exposed 11 methods: `listSkills`, `getSkill`, `installSkill`, `saveSkill`, `deleteSkill`, `bumpVersion`, `publishSkill`, `editSkill`, `checkUpdates`, `whoami`, and `debugPlugins`. Auth was fully transparent — the server resolved the user from the MCP session, so the model never touched tokens.
 
@@ -83,7 +79,7 @@ V1's ~500-line skill was cleanly split:
 | API usage (curl templates, token handling, endpoint reference) | Skill (~275 lines, 55%) | **Eliminated.** Replaced by typed `execute({ method, args })` dispatch. |
 | Domain knowledge (authoring practices, formats, conventions) | Skill (~225 lines, 45%) | **Moved to `search` index.** Queryable on demand. |
 
-No companion skill required. The model called `execute` for operations and `search` for guidance. Context cost dropped from 3,000–5,000 tokens to ~1,000 tokens (two tool definitions).
+No companion skill required. The model called `execute` for operations and `search` for guidance. The ~500-line skill load was eliminated entirely — the two tool definitions cost ~1,000 tokens.
 
 ### .skill Packaging
 
@@ -261,7 +257,7 @@ On every invocation, the CLI checks `/cli/version`. If the server has a newer ve
 
 ### V1 → V2: "Stop making the model orchestrate"
 
-V1 asked the model to be an HTTP client — construct URLs, manage tokens, parse JSON, handle errors. Models are unreliable HTTP clients. V2's structured dispatch (`execute({ method, args })`) moved orchestration server-side. The model declares intent; the server executes.
+V1 asked the model to be an HTTP client — read a skill's instructions, call `skillport_auth` for a token, construct curl commands with correct headers, parse JSON responses. Models are unreliable HTTP clients. V2's structured dispatch (`execute({ method, args })`) moved orchestration server-side. The model declares intent; the server executes.
 
 **The lesson**: Give models structured tools, not general-purpose instructions. A model calling `execute({ method: "listSkills" })` succeeds far more reliably than a model constructing `curl -H "Authorization: Bearer sk_api_..." https://...`.
 
@@ -294,15 +290,15 @@ A concrete comparison of token cost for a common operation — "list all skills 
 
 | Step | V1 Tokens | V2 Tokens | V3 Tokens |
 |------|-----------|-----------|-----------|
-| Tool definitions loaded | 3,000–5,000 (10 tools) | ~1,000 (2 tools) | ~800 (3 tools) |
+| Tool definitions loaded | ~500 (1 tool) | ~1,000 (2 tools) | ~800 (3 tools) |
 | Skill/readme loaded | ~2,000 (full skill on invocation) | 0 (no skill) | ~1,500 (readme, first call only) |
 | Auth step | ~200 (call skillport_auth, parse token) | 0 (automatic) | ~150 (call auth.get_code) |
 | Operation | ~500 (construct curl, parse JSON) | ~300 (call execute) | ~100 (run CLI, read stdout) |
 | Response processing | ~300 (model parses curl output) | ~200 (model reads MCP response) | ~100 (model reads CLI stdout) |
-| **Total (first call)** | **~6,000–8,000** | **~1,500** | **~2,650** |
-| **Total (subsequent)** | **~4,000–6,000** | **~1,500** | **~1,000** |
+| **Total (first call)** | **~3,500** | **~1,500** | **~2,650** |
+| **Total (subsequent)** | **~1,500** | **~1,500** | **~1,000** |
 
-V3's first call is higher than V2 because of the readme load, but subsequent calls are cheaper because the CLI handles formatting and the model only sees concise stdout.
+V1's cost was dominated by the skill load on first invocation. V2 eliminated that but kept file content flowing through the model. V3's first call is higher than V2 because of the readme load, but subsequent calls are cheapest because the CLI handles formatting and the model only sees concise stdout.
 
 ---
 
@@ -322,10 +318,9 @@ This gap has persisted from V1 through V3 and remains the primary reason Skillpo
 
 | | V1 | V2 | V3 |
 |-|----|----|-----|
-| **One-line summary** | MCP server + skill teaches model to be an HTTP client | MCP server with structured dispatch replaces skill | CLI does the work; MCP just authenticates |
-| **Model's role** | Orchestrator (reads instructions, constructs requests, manages tokens) | Caller (declares intent via execute, server dispatches) | Launcher (runs CLI commands, reads stdout) |
+| **One-line summary** | Single MCP auth tool + skill teaches model to call REST API | MCP server with structured dispatch replaces skill | CLI does the work; MCP just authenticates |
+| **Model's role** | Orchestrator (reads skill, gets token, constructs curl, parses responses) | Caller (declares intent via execute, server dispatches) | Launcher (runs CLI commands, reads stdout) |
 | **File handling** | Through model (curl payloads) | Through model (MCP responses) | Never through model (disk ↔ CLI ↔ API) |
 | **Skill dependency** | Required | None | None |
 | **Unit of operation** | Skill-level | Skill-level | Skill-level + plugin-level |
-| **First-attempt success rate** | ~60% | ~85% | ~95%+ |
 | **Primary insight** | Models can call APIs if you teach them | Models work better with structured tools than instructions | Models work best when they don't do the work at all |
