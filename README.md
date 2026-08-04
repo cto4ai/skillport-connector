@@ -1,6 +1,8 @@
 > **This is the Skillport Connector repository** — the Claude Connector that bridges your Skill Marketplace to Claude.ai and Claude Desktop.
 > Looking for the Skillport Marketplace template? → [skillport-marketplace](https://github.com/cto4ai/skillport-marketplace)
 
+> **Planning status (2026-08-02):** The deployed Skillport v3 distribution service is frozen and recommended for operational retirement rather than modernization. Its replacement experiment is Atlas: a standalone transactional core with a local `skill-atlas` CLI, followed—only if the checkpoint pilot succeeds—by a Mini-hosted remote MCP access facade authenticated by the single allowed Crafty Google Workspace account. Atlas will not reuse this connector's distribution implementation. The remainder of this README documents the legacy deployed service. See [`docs/retirement-planning/pivot-v4.md`](docs/retirement-planning/pivot-v4.md).
+
 ---
 
 # Skillport
