@@ -157,7 +157,7 @@ Atlas must stop for human selection when same-named copies diverge; it never cho
 
 ### Architecture: shared core, local CLI, remote MCP
 
-Atlas is not implemented yet. The proposed architecture has one shared transactional core with three callers:
+Atlas is implemented through the local portability pilot and named-machine execution. The remote MCP and Hermes scheduling remain proposed. The architecture has one shared transactional core with three callers:
 
 | Component | Responsibility |
 |---|---|
@@ -167,6 +167,8 @@ Atlas is not implemented yet. The proposed architecture has one shared transacti
 | Hermes | Scheduled inventory, drift checks, and notifications after interactive transactions are reliable |
 
 The core is a library, not a daemon or another package manager. The CLI and MCP call the same functions; the MCP must not shell out to a separately evolving implementation. Native installers, managed links, vendor APIs, and SSH remain target adapters.
+
+Named-machine operations call the same core directly on local targets or through a fixed bundled SSH worker streamed to remote targets. Machine identity is checked before every operation and included in the reviewed plan hash. Connection failures remain explicit `offline` or `unobservable` observations; Atlas does not infer remote state or expose arbitrary shell execution.
 
 The intended CLI contract is:
 
@@ -196,7 +198,19 @@ Authentication proves who is calling; it does not prove approval of a particular
 
 The Mini-hosted MCP is the only continuously running Atlas component. The local CLI remains a one-shot, offline-capable recovery path. Hermes may call the same core for schedules and notifications, but it does not choose canonical content, authorize changes, or substitute its own model run for native Claude Code/OMP verification.
 
+#### Step 6 protocol gate
+
+The existing production fleet is not an implementation reference for MCP `2026-07-28`: all six reviewed servers still use legacy `McpAgent`, and none has completed a stateless production migration. What exists is a research-backed reference design plus direct hosted-testbed evidence—strict/dual wire traces, client compatibility checks, and partial conformance coverage—not a production-proven fleet pattern.
+
+Before implementation, re-read `~/Projects/the-workflow/mcp-fleet/README.md` (especially “Client Compatibility Gate” and “Definitive 2026-07-28 Reference Design”), `docs/mcp-limitations-and-workarounds-v2.md`, `docs/2026-08-02-mcp-2026-07-28-client-support.md`, the strict/dual testbed guides, and the Google Workspace OAuth gotchas. Recheck whether any fleet migration has since reached production; reuse it only if its deployed behavior and required clients have been verified.
+
+Atlas's starting hypothesis is one `/mcp` endpoint using `createMcpHandler(serverFactory)`, a fresh `@modelcontextprotocol/server` instance per request, and `legacy: "stateless"` until every required client is wire-verified as modern. Do not copy the legacy `McpAgent` servers, add protocol-session Durable Objects or sticky routing, create a new HTTP+SSE endpoint, or hand-roll the protocol. Keep Atlas's five direct named tools, concise structured results, explicit application state, request-scoped verified OAuth context, sanitized tool-level telemetry, and transaction approval/evidence outside protocol-session state. Map the provider-neutral Atlas telemetry sink to Cloudflare spans without recording plans, skill content, paths, tokens, or tool payloads.
+
+Treat this architecture as unproven until Step 7 tests the deployed Atlas endpoint from Claude/Cowork and ChatGPT/Codex, captures the actual opening request and negotiated version, and exercises plan, independent approval, apply, verification, and rollback. A successful connection alone is not protocol evidence.
+
 ### Implementation sequence
+
+**Current status (2026-08-04):** Steps 1–5 are implemented. The MBP and Mini both return observed machine identity; a disposable Mini transaction passed exact confirmation, apply, native path access, and rollback. Production Mini inventory also exposed a real unresolved state: its configured canonical marketplace path is missing, so Atlas reports it rather than planning a mutation.
 
 1. Create a small standalone `skill-atlas` TypeScript package and CLI. Implement only the read-only checkpoint snapshot and deterministic plan first; do not modify any skill or harness configuration.
 2. Add hash-guarded apply and exact rollback for the checkpoint transaction, using native registration mechanisms and one canonical skill body.
